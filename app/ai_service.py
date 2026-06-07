@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from datetime import datetime
 from typing import Any
 
 from dotenv import load_dotenv
@@ -22,6 +23,54 @@ def _safe_get_openai_client():
     except Exception:
         return None
 
+
+
+def _reference_currency_requirements() -> dict[str, Any]:
+    """Return the reference currency rule used across generated chapters."""
+    current_year = datetime.now().year
+    start_year = current_year - 5
+    return {
+        "current_year": current_year,
+        "recent_reference_window": f"{start_year}-{current_year}",
+        "rule": (
+            f"Use current references. At least 70% of substantive references should be from {start_year}-{current_year}. "
+            "The remaining references should be used for foundational theories, classic models, and other essential older studies."
+        ),
+        "integrity_guard": (
+            "Do not fabricate citations or reference-list entries. If a recent source, foundational theory, statistic, or page-specific detail "
+            "has not been supplied or cannot be stated with confidence, insert a clear placeholder such as "
+            f"[insert verified recent source, {start_year}-{current_year}] or [insert foundational theory/source]."
+        ),
+    }
+
+
+def _level_depth_requirements(profile: dict[str, Any]) -> dict[str, str]:
+    """Return writing-depth guidance based on the selected thesis/dissertation/project level."""
+    level = (profile.get("level") or "Bachelors").strip()
+    guidance_map = {
+        "Bachelors": (
+            "Write as an expert undergraduate student. Use clear definitions, relevant context, logical explanation, basic critical discussion, "
+            "and a defensible but not overly complex methodology."
+        ),
+        "Non-Research Masters": (
+            "Write as an expert non-research master's student. Emphasise professional application, practical relevance, clear synthesis, "
+            "methodological clarity, and implications for practice or institutions."
+        ),
+        "Research Masters (e.g. MPhil)": (
+            "Write as an expert research master's student. Provide deeper critical synthesis, objective-driven literature review, explicit gaps, "
+            "theory-method alignment, and rigorous methodological justification."
+        ),
+        "Professional Doctorate (e.g. DBA, DEd)": (
+            "Write as an expert professional doctorate student. Frame the work around a significant professional or organisational problem, "
+            "show advanced applied scholarship, demonstrate practice-based contribution, and defend methodological choices strongly."
+        ),
+        "PhD": (
+            "Write as an expert doctoral student. Provide publication-quality academic argument, deep theoretical engagement, advanced critical synthesis, "
+            "clear originality, rigorous methodology, and a defensible contribution to knowledge."
+        ),
+    }
+    guidance = profile.get("academic_level_guidance") or guidance_map.get(level, guidance_map["Bachelors"])
+    return {"selected_level": level, "depth_guidance": guidance}
 
 
 def _uploaded_results_for_chapter(profile: dict[str, Any], chapter_number: int) -> dict[str, Any]:
@@ -107,12 +156,17 @@ def build_drafting_prompt(
             "chapter_title": chapter.get("chapter_title"),
         },
         "project_profile": profile,
+        "selected_academic_level_and_depth": _level_depth_requirements(profile),
+        "reference_currency_requirements": _reference_currency_requirements(),
         "uploaded_results_for_this_chapter": _uploaded_results_for_chapter(profile, chapter_number),
         "selected_sections": section_payload,
         "extra_instructions": extra_instructions,
         "chapter_specific_requirements": _chapter_specific_requirements(chapter_number),
         "output_requirements": [
             "Write in formal British English.",
+            "Write at the academic depth expected of the selected level in selected_academic_level_and_depth.",
+            "Use the reference_currency_requirements: at least 70% of substantive references should be current within the stated recent-reference window, and older sources should be reserved for foundational theories, classic models, and essential earlier studies.",
+            "Do not fabricate citations or reference-list entries. Use verified/supplied citations where available. Where a required source is not supplied or cannot be stated confidently, insert a bracketed reference placeholder rather than inventing a source.",
             "Use clear numbered headings matching the selected sections.",
             "Draft only the selected sections.",
             "Do not invent fabricated references, statistics, ethical approvals, sample sizes, or data results.",
@@ -148,7 +202,10 @@ def generate_chapter(
             "When the user has not provided facts, use clear placeholders rather than inventing content. "
             "For Chapter Three methodology in final project mode, write in past tense and avoid proposal-style future tense. "
             "For Chapter Two, format literature gap tables as clean markdown tables with clear columns. "
-            "For Chapter Four, use uploaded results files where available and never invent analysis output."
+            "For Chapter Four, use uploaded results files where available and never invent analysis output. "
+            "Always write at the selected thesis, dissertation, or project-work level. "
+            "Apply the 70/30 reference currency rule: most substantive citations should be from the last five years, while older citations should be used mainly for foundational theories and essential classic studies. "
+            "Do not fabricate citations or references. Use placeholders when a verified source is not available."
         )
         response = client.responses.create(model=model, instructions=instructions, input=prompt)
         text = getattr(response, "output_text", "").strip()
@@ -169,7 +226,18 @@ def generate_fallback_chapter(
     answers = answers or {}
 
     title = profile.get("title", "[Project Title]")
-    lines = [f"# CHAPTER {chapter_number}", f"# {chapter.get('chapter_title', '').upper()}", "", f"Study title: {title}", ""]
+    level_info = _level_depth_requirements(profile)
+    ref_info = _reference_currency_requirements()
+    lines = [
+        f"# CHAPTER {chapter_number}",
+        f"# {chapter.get('chapter_title', '').upper()}",
+        "",
+        f"Study title: {title}",
+        f"Academic level: {level_info['selected_level']}",
+        f"Depth guide: {level_info['depth_guidance']}",
+        f"Reference rule: {ref_info['rule']}",
+        "",
+    ]
 
     for index, section in enumerate(sections, 1):
         section_title = section["section_title"]
@@ -279,15 +347,11 @@ def _fallback_results_section(section_answers: dict[str, Any], profile: dict[str
         )
 
     if objectives:
-        table_lines = [
-            "**Objective-to-results mapping template:**",
-            "",
-            "| Research Objective | Uploaded Result/Table | Interpretation Required | Discussion Link |",
-            "|---|---|---|---|",
-        ]
+        lines.append("\n**Objective-to-results mapping template:**\n")
+        lines.append("| Research Objective | Uploaded Result/Table | Interpretation Required | Discussion Link |")
+        lines.append("|---|---|---|---|")
         for objective in objectives:
-            table_lines.append(f"| {objective} | [identify table/statistic/theme from uploaded output] | [interpret the result] | [link to theory and prior studies] |")
-        lines.append("\n".join(table_lines))
+            lines.append(f"| {objective} | [identify table/statistic/theme from uploaded output] | [interpret the result] | [link to theory and prior studies] |")
 
     if section_answers:
         joined = []
