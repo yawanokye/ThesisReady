@@ -117,3 +117,28 @@ th { background: #f2f4f7; }
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; }
 }
+
+.upload-box {
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  padding: 14px;
+  margin: 12px 0 16px;
+  background: #fbfcff;
+}
+.upload-box h3 {
+  margin: 0 0 6px;
+}
+.compact-actions {
+  margin-top: 8px;
+}
+.preview-box {
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  background: #f2f4f7;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  color: var(--text);
+  font-size: 13px;
+}
