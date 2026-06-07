@@ -334,6 +334,22 @@
           "group_title": "Methodology Sections",
           "sections": [
             {
+              "section_id": "ch3_intro",
+              "section_title": "Introduction",
+              "default_selected": true,
+              "guiding_questions": [
+                "What is the purpose of Chapter Three?",
+                "What main methodological areas does the chapter cover?",
+                "How does the chapter connect the research objectives to the methods used?"
+              ],
+              "rules": [
+                "Introduce the chapter and state that it presents the methods used for the study.",
+                "Briefly mention the research design, population, sampling, data collection, analysis, and ethical procedures covered in the chapter.",
+                "Do not introduce new variables, objectives, or theories.",
+                "Write in past tense for a completed project, for example: this chapter presents the methods that were used in the study."
+              ]
+            },
+            {
               "section_id": "ch3_philosophy",
               "section_title": "Research Philosophy, Paradigm, and Approach",
               "default_selected": true,
@@ -602,6 +618,24 @@
               ]
             },
             {
+              "section_id": "ch4_uploaded_results",
+              "section_title": "Uploaded Results and Analytical Output",
+              "default_selected": true,
+              "guiding_questions": [
+                "What result file or analysis output has been uploaded for this chapter?",
+                "Which tables, models, themes, coefficients, test statistics, or figures should be prioritised?",
+                "Which research objectives or hypotheses does the uploaded output address?",
+                "Are there supervisor instructions on how the results should be presented?"
+              ],
+              "rules": [
+                "Use the uploaded results or analysis output to support the Chapter Four write-up.",
+                "Report only results that appear in the uploaded output or student-supplied answers.",
+                "Map each uploaded result to the relevant research objective or hypothesis.",
+                "Convert software output into clear academic tables and narrative where possible.",
+                "Do not invent sample sizes, coefficients, p-values, themes, quotations, reliability values, or model fit statistics."
+              ]
+            },
+            {
               "section_id": "ch4_profile",
               "section_title": "Response Rate and Respondent Profile",
               "default_selected": true,
@@ -668,6 +702,11 @@
             }
           ]
         }
+      ],
+      "drafting_guidance": [
+        "Use uploaded results or analysis output for Chapter Four where available.",
+        "Present findings objective by objective and avoid inventing statistics not contained in the upload or answers.",
+        "Where the upload is unclear, ask for clarification or use placeholders rather than making unsupported claims."
       ]
     },
     {
