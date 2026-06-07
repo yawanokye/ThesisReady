@@ -23,6 +23,14 @@ def _safe_get_openai_client():
         return None
 
 
+
+def _uploaded_results_for_chapter(profile: dict[str, Any], chapter_number: int) -> dict[str, Any]:
+    uploaded = profile.get("uploaded_results") or {}
+    result = uploaded.get(str(chapter_number))
+    if chapter_number == 4 and not result:
+        result = uploaded.get("4")
+    return result or {}
+
 def _chapter_specific_requirements(chapter_number: int) -> list[str]:
     """Return chapter-level drafting rules that apply beyond section rules."""
     common = [
@@ -52,8 +60,12 @@ def _chapter_specific_requirements(chapter_number: int) -> list[str]:
     if chapter_number == 4:
         return common + [
             "Present results objective by objective.",
+            "Use uploaded results, statistical output, qualitative coding output, or analysis tables where available.",
+            "Convert uploaded software output into clear academic tables and narrative interpretation where possible.",
+            "Map each result to the relevant research objective or hypothesis.",
             "Use placeholders for statistical output only where actual results have not been supplied.",
-            "Do not invent coefficients, p-values, sample sizes, reliability values, or model fit statistics.",
+            "Do not invent coefficients, p-values, sample sizes, reliability values, model fit statistics, themes, or quotations.",
+            "Where the uploaded output is unclear or incomplete, state what additional output is needed instead of making unsupported claims.",
         ]
 
     if chapter_number == 5:
@@ -95,6 +107,7 @@ def build_drafting_prompt(
             "chapter_title": chapter.get("chapter_title"),
         },
         "project_profile": profile,
+        "uploaded_results_for_this_chapter": _uploaded_results_for_chapter(profile, chapter_number),
         "selected_sections": section_payload,
         "extra_instructions": extra_instructions,
         "chapter_specific_requirements": _chapter_specific_requirements(chapter_number),
@@ -108,7 +121,8 @@ def build_drafting_prompt(
             "Use markdown tables only where a table is clearly requested or useful.",
             "For Chapter Two tables, use a properly structured markdown table with meaningful column headers and one idea per cell.",
             "For Chapter Three, use past tense for completed project work and avoid future-tense proposal wording.",
-            "For Chapter Four, use placeholders where actual statistical output has not been supplied.",
+            "For Chapter Four, first use any uploaded results or analysis output attached to the project profile, then use the student answers. Use placeholders only where actual output has not been supplied.",
+            "For Chapter Four, report only results found in uploaded files or student answers. Do not fabricate numbers, tables, themes, or interpretation.",
             "For Chapter Five, base conclusions and recommendations only on findings supplied in the profile or answers.",
         ],
     }
@@ -133,7 +147,8 @@ def generate_chapter(
             "You do not fabricate sources, results, approvals, page numbers, or evidence. "
             "When the user has not provided facts, use clear placeholders rather than inventing content. "
             "For Chapter Three methodology in final project mode, write in past tense and avoid proposal-style future tense. "
-            "For Chapter Two, format literature gap tables as clean markdown tables with clear columns."
+            "For Chapter Two, format literature gap tables as clean markdown tables with clear columns. "
+            "For Chapter Four, use uploaded results files where available and never invent analysis output."
         )
         response = client.responses.create(model=model, instructions=instructions, input=prompt)
         text = getattr(response, "output_text", "").strip()
@@ -163,6 +178,8 @@ def generate_fallback_chapter(
         lines.append("")
         if section["section_id"] == "ch2_gap_table":
             lines.append(_fallback_literature_gap_table(section_answers, profile))
+        elif chapter_number == 4 and section["section_id"] in {"ch4_uploaded_results", "ch4_results_objectives"}:
+            lines.append(_fallback_results_section(section_answers, profile, chapter_number))
         elif section_answers:
             lines.append(_draft_from_answers(section_title, section.get("rules", []), section_answers, profile, chapter_number))
         else:
@@ -236,6 +253,51 @@ def _fallback_literature_gap_table(section_answers: dict[str, Any], profile: dic
         )
     return "\n".join(rows)
 
+
+
+def _fallback_results_section(section_answers: dict[str, Any], profile: dict[str, Any], chapter_number: int) -> str:
+    uploaded = _uploaded_results_for_chapter(profile, chapter_number)
+    objectives = profile.get("objectives") or []
+    if isinstance(objectives, str):
+        objectives = [obj.strip() for obj in re.split(r"\n|;", objectives) if obj.strip()]
+
+    lines: list[str] = []
+    if uploaded:
+        lines.append(
+            f"The results write-up should be developed from the uploaded file **{uploaded.get('filename', 'results file')}**. "
+            f"The extracted output contains {uploaded.get('characters_extracted', 0)} characters. "
+            "Only statistics, themes, tables, and findings that appear in the uploaded output should be reported."
+        )
+        preview = str(uploaded.get("preview") or "").strip()
+        if preview:
+            lines.append("\n**Extracted results preview:**\n")
+            lines.append(preview[:1800])
+    else:
+        lines.append(
+            "No result file has been uploaded for this chapter. Upload SPSS, Excel, CSV, Word, PDF, or text output, or paste the key results in the guided questions. "
+            "Until results are supplied, the chapter should use placeholders rather than invented statistics."
+        )
+
+    if objectives:
+        table_lines = [
+            "**Objective-to-results mapping template:**",
+            "",
+            "| Research Objective | Uploaded Result/Table | Interpretation Required | Discussion Link |",
+            "|---|---|---|---|",
+        ]
+        for objective in objectives:
+            table_lines.append(f"| {objective} | [identify table/statistic/theme from uploaded output] | [interpret the result] | [link to theory and prior studies] |")
+        lines.append("\n".join(table_lines))
+
+    if section_answers:
+        joined = []
+        for key, value in section_answers.items():
+            if str(value).strip():
+                joined.append(f"{key}: {value}")
+        if joined:
+            lines.append("\n**Student guidance supplied:** " + " ".join(joined))
+
+    return "\n\n".join(lines)
 
 def split_paragraphs(text: str) -> list[str]:
     blocks = [b.strip() for b in re.split(r"\n\s*\n", text or "") if b.strip()]
