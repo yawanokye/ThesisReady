@@ -9,8 +9,8 @@
 <body>
   <header class="hero">
     <div>
-      <p class="eyebrow">ProjectReady AI MVP</p>
-      <h1>Draft project chapters from custom guidelines</h1>
+      <p class="eyebrow">ProjectReady AI</p>
+      <h1>Draft Thesis/Dissertation/Project work chapters with ProjectReady AI</h1>
       <p class="lead">Create a project profile, select chapter sections, generate a draft, then check compliance against the selected rules.</p>
     </div>
   </header>
@@ -21,15 +21,16 @@
       <label>Project title
         <input id="title" placeholder="e.g. Financial Literacy and Retirement Planning among Informal Workers" />
       </label>
-      <label>Programme
-        <input id="programme" placeholder="e.g. BCom Finance" />
+      <label>Level of thesis/dissertation/project work
+        <select id="level">
+          <option value="Bachelors">Bachelors</option>
+          <option value="Non-Research Masters">Non-Research Masters</option>
+          <option value="Research Masters (e.g. MPhil)">Research Masters (e.g. MPhil)</option>
+          <option value="Professional Doctorate (e.g. DBA, DEd)">Professional Doctorate (e.g. DBA, DEd)</option>
+          <option value="PhD">PhD</option>
+        </select>
       </label>
-      <label>Department
-        <input id="department" placeholder="e.g. Department of Finance" />
-      </label>
-      <label>Institution
-        <input id="institution" placeholder="e.g. University of Cape Coast" />
-      </label>
+      <p id="levelDepthHint" class="hint level-hint"></p>
       <label>Research area
         <input id="research_area" placeholder="e.g. Financial literacy" />
       </label>
@@ -67,7 +68,6 @@
     <section class="card wide">
       <div class="row-between">
         <h2>4. Generate and check</h2>
-        <label class="inline"><input type="checkbox" id="useAi" checked /> Use OpenAI when API key is configured</label>
       </div>
       <div class="upload-box">
         <h3>Upload results output for Chapter Four</h3>
@@ -76,7 +76,7 @@
           <input id="resultsFile" type="file" accept=".csv,.tsv,.txt,.md,.docx,.xlsx,.xlsm,.pdf" />
         </label>
         <div class="actions compact-actions">
-          <button id="uploadResultsBtn" type="button">Upload results for current chapter</button>
+          <button id="uploadResultsBtn" type="button">Upload results</button>
         </div>
         <p id="uploadStatus" class="status"></p>
         <pre id="uploadPreview" class="preview-box"></pre>
