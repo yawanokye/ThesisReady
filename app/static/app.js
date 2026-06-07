@@ -5,6 +5,21 @@ let currentSections = [];
 
 const $ = (id) => document.getElementById(id);
 
+const levelDepthGuidance = {
+  "Bachelors": "Use clear undergraduate depth: accurate definitions, relevant context, basic critical discussion, and a defensible but not overly complex methodology.",
+  "Non-Research Masters": "Use applied master's depth: stronger synthesis, professional relevance, practical implications, and clear methodological justification.",
+  "Research Masters (e.g. MPhil)": "Use research master's depth: critical synthesis, explicit gaps, theory-method alignment, rigorous methodology, and strong objective-by-objective argument.",
+  "Professional Doctorate (e.g. DBA, DEd)": "Use professional doctorate depth: advanced applied scholarship, organisational or professional problem framing, evidence-informed practice contribution, and defensible methodology.",
+  "PhD": "Use doctoral depth: original contribution, deep theoretical engagement, advanced critical synthesis, rigorous methodological defence, and publication-quality academic argument."
+};
+
+function updateLevelHint() {
+  const selected = $("level")?.value || "Bachelors";
+  if ($("levelDepthHint")) {
+    $("levelDepthHint").textContent = levelDepthGuidance[selected] || "";
+  }
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
@@ -90,12 +105,15 @@ function renderAnswers() {
 }
 
 function collectProfile() {
+  const selectedLevel = $("level")?.value || "Bachelors";
   return {
     title: $("title").value.trim(),
-    programme: $("programme").value.trim(),
-    department: $("department").value.trim(),
-    institution: $("institution").value.trim(),
-    level: "Project work",
+    programme: "",
+    department: "",
+    institution: "",
+    level: selectedLevel,
+    academic_level_guidance: levelDepthGuidance[selectedLevel] || "",
+    reference_currency_rule: "Use current references. At least 70% of substantive references should be from the last five years, with the remaining references reserved for foundational theories and other essential older studies.",
     research_area: $("research_area").value.trim(),
     study_context: $("study_context").value.trim(),
     research_approach: $("research_approach").value,
@@ -224,6 +242,10 @@ $("uploadResultsBtn").addEventListener("click", () => uploadResults().catch(err 
 $("checkBtn").addEventListener("click", () => runCheck().catch(err => $("draftStatus").textContent = err.message));
 $("downloadDraftBtn").addEventListener("click", () => download(`/api/projects/${currentProjectId}/export/chapter/${currentChapter}`));
 $("downloadCheckBtn").addEventListener("click", () => download(`/api/projects/${currentProjectId}/export/check/${currentChapter}`));
+if ($("level")) {
+  $("level").addEventListener("change", updateLevelHint);
+  updateLevelHint();
+}
 
 loadTemplate().catch(err => {
   document.body.innerHTML = `<pre>Failed to load app: ${escapeHtml(err.message)}</pre>`;
