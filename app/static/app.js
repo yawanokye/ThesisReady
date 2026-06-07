@@ -14,9 +14,11 @@ const levelDepthGuidance = {
 };
 
 function updateLevelHint() {
-  const selected = $("level")?.value || "Bachelors";
+  // Keep the level-depth guidance internal. The selected level still guides the AI prompt,
+  // but the explanatory text is not displayed to users.
   if ($("levelDepthHint")) {
-    $("levelDepthHint").textContent = levelDepthGuidance[selected] || "";
+    $("levelDepthHint").textContent = "";
+    $("levelDepthHint").hidden = true;
   }
 }
 
@@ -113,7 +115,7 @@ function collectProfile() {
     institution: "",
     level: selectedLevel,
     academic_level_guidance: levelDepthGuidance[selectedLevel] || "",
-    reference_currency_rule: "Use current references. At least 70% of substantive references should be from the last five years, with the remaining references reserved for foundational theories and other essential older studies.",
+    reference_currency_rule: "Aim for at least 70% of substantive references from the last five years. Where current references do not exist for a specific issue, use the most relevant credible available sources, including foundational theories, classic models, and essential older studies.",
     research_area: $("research_area").value.trim(),
     study_context: $("study_context").value.trim(),
     research_approach: $("research_approach").value,
@@ -157,12 +159,13 @@ async function generateDraft() {
     selected_section_ids: selectedSectionIds(),
     answers: collectAnswers(),
     extra_instructions: $("extraInstructions").value.trim(),
-    use_ai: $("useAi").checked
+    use_ai: $("useAi") ? $("useAi").checked : true
   };
   $("draftStatus").textContent = "Generating draft...";
   const result = await api(`/api/projects/${currentProjectId}/draft`, { method: "POST", body: JSON.stringify(payload) });
   $("draftOutput").value = result.draft;
-  $("draftStatus").textContent = `Draft generated using ${result.source}.`;
+  renderDraftPreview(result.draft);
+  $("draftStatus").textContent = "Draft generated based on the information provided.";
   $("downloadDraftBtn").disabled = false;
 }
 
@@ -232,8 +235,23 @@ function escapeHtml(value) {
   }[ch]));
 }
 
+function highlightPlaceholders(value) {
+  const safe = escapeHtml(value);
+  return safe.replace(/(\[[^\]\n]{3,}\])/g, '<span class="placeholder-text">$1</span>');
+}
+
+function renderDraftPreview(value) {
+  const preview = $("draftPreview");
+  if (!preview) return;
+  preview.innerHTML = highlightPlaceholders(value || "");
+}
+
 function download(path) {
   window.location.href = path;
+}
+
+if ($("draftOutput")) {
+  $("draftOutput").addEventListener("input", () => renderDraftPreview($("draftOutput").value));
 }
 
 $("createProjectBtn").addEventListener("click", () => createProject().catch(err => $("projectStatus").textContent = err.message));
