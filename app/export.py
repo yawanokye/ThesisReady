@@ -5,7 +5,29 @@ from pathlib import Path
 from typing import Any
 
 from docx import Document
-from docx.shared import Pt
+from docx.shared import Pt, RGBColor
+
+
+PLACEHOLDER_PATTERN = re.compile(r"(\[[^\]\n]{3,}\])")
+PLACEHOLDER_RED = RGBColor(180, 35, 24)
+
+
+def _add_runs_with_placeholder_colour(paragraph, text: str) -> None:
+    """Add text to a paragraph and colour bracketed placeholders red."""
+    for part in PLACEHOLDER_PATTERN.split(str(text or "")):
+        if not part:
+            continue
+        run = paragraph.add_run(part)
+        if PLACEHOLDER_PATTERN.fullmatch(part):
+            run.font.color.rgb = PLACEHOLDER_RED
+            run.bold = True
+
+
+def _set_cell_text_with_placeholder_colour(cell, text: str) -> None:
+    """Set Word table cell text and colour bracketed placeholders red."""
+    cell.text = ""
+    paragraph = cell.paragraphs[0]
+    _add_runs_with_placeholder_colour(paragraph, text)
 
 
 def _split_blocks(markdown_text: str) -> list[str]:
@@ -81,34 +103,40 @@ def _add_markdown_table(doc: Document, block: str) -> None:
     table.style = "Table Grid"
 
     for col_index, value in enumerate(rows[0]):
-        table.rows[0].cells[col_index].text = value
+        _set_cell_text_with_placeholder_colour(table.rows[0].cells[col_index], value)
 
     for row_values in rows[1:]:
         cells = table.add_row().cells
         for col_index, value in enumerate(row_values):
-            cells[col_index].text = value
+            _set_cell_text_with_placeholder_colour(cells[col_index], value)
 
     doc.add_paragraph("")
 
 
 def _add_text_block(doc: Document, block: str) -> None:
     if block.startswith("### "):
-        doc.add_heading(block.replace("#", "").strip(), level=3)
+        paragraph = doc.add_heading("", level=3)
+        _add_runs_with_placeholder_colour(paragraph, block.replace("#", "").strip())
     elif block.startswith("## "):
-        doc.add_heading(block.replace("#", "").strip(), level=2)
+        paragraph = doc.add_heading("", level=2)
+        _add_runs_with_placeholder_colour(paragraph, block.replace("#", "").strip())
     elif block.startswith("# "):
-        doc.add_heading(block.replace("#", "").strip(), level=1)
+        paragraph = doc.add_heading("", level=1)
+        _add_runs_with_placeholder_colour(paragraph, block.replace("#", "").strip())
     else:
         for line in block.splitlines():
             stripped = line.strip()
             if not stripped:
                 continue
             if stripped.startswith("- "):
-                doc.add_paragraph(stripped[2:], style="List Bullet")
+                paragraph = doc.add_paragraph(style="List Bullet")
+                _add_runs_with_placeholder_colour(paragraph, stripped[2:])
             elif re.match(r"^\d+\.\s+", stripped):
-                doc.add_paragraph(re.sub(r"^\d+\.\s+", "", stripped), style="List Number")
+                paragraph = doc.add_paragraph(style="List Number")
+                _add_runs_with_placeholder_colour(paragraph, re.sub(r"^\d+\.\s+", "", stripped))
             else:
-                doc.add_paragraph(stripped)
+                paragraph = doc.add_paragraph()
+                _add_runs_with_placeholder_colour(paragraph, stripped)
 
 
 def export_chapter_docx(project: dict[str, Any], chapter_number: int, draft: str, out_dir: Path) -> Path:
@@ -157,11 +185,11 @@ def export_compliance_docx(project: dict[str, Any], chapter_number: int, check: 
 
     for item in check.get("items", []):
         row = table.add_row().cells
-        row[0].text = item.get("section_title", "")
-        row[1].text = item.get("requirement", "")
-        row[2].text = item.get("status", "")
-        row[3].text = item.get("evidence", "")
-        row[4].text = item.get("suggested_action", "")
+        _set_cell_text_with_placeholder_colour(row[0], item.get("section_title", ""))
+        _set_cell_text_with_placeholder_colour(row[1], item.get("requirement", ""))
+        _set_cell_text_with_placeholder_colour(row[2], item.get("status", ""))
+        _set_cell_text_with_placeholder_colour(row[3], item.get("evidence", ""))
+        _set_cell_text_with_placeholder_colour(row[4], item.get("suggested_action", ""))
 
     doc.save(path)
     return path
