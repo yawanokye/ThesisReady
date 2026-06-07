@@ -69,6 +69,18 @@
         <h2>4. Generate and check</h2>
         <label class="inline"><input type="checkbox" id="useAi" checked /> Use OpenAI when API key is configured</label>
       </div>
+      <div class="upload-box">
+        <h3>Upload results output for Chapter Four</h3>
+        <p class="hint">Upload SPSS/Excel/CSV/Word/PDF/text results so the app can use the actual output when drafting the results and discussion chapter.</p>
+        <label>Results file
+          <input id="resultsFile" type="file" accept=".csv,.tsv,.txt,.md,.docx,.xlsx,.xlsm,.pdf" />
+        </label>
+        <div class="actions compact-actions">
+          <button id="uploadResultsBtn" type="button">Upload results for current chapter</button>
+        </div>
+        <p id="uploadStatus" class="status"></p>
+        <pre id="uploadPreview" class="preview-box"></pre>
+      </div>
       <label>Extra instructions
         <textarea id="extraInstructions" rows="2" placeholder="e.g. Use a quantitative explanatory design and British English"></textarea>
       </label>
