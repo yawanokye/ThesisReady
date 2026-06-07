@@ -1,7 +1,7 @@
 {
   "template_id": "default_thesis_project_template",
   "template_name": "Default Project Work and Thesis Template",
-  "description": "A customisable project work template adapted from the thesis self-evaluation checklist. Users may select only the sections required by their institution, supervisor, programme, or research design.",
+  "description": "A customisable project work template adapted from the thesis self-evaluation checklist. Users may select only the sections required by their institution, supervisor, programme, or research design. The project profile also lets users choose the level of thesis, dissertation, or project work so the drafting depth can match Bachelors, Non-Research Masters, Research Masters, Professional Doctorate, or PhD expectations.",
   "chapters": [
     {
       "chapter_number": 1,
@@ -791,5 +791,32 @@
         }
       ]
     }
-  ]
+  ],
+  "academic_levels": [
+    {
+      "value": "Bachelors",
+      "depth": "Clear undergraduate-level academic writing with relevant definitions, context, and basic critical discussion."
+    },
+    {
+      "value": "Non-Research Masters",
+      "depth": "Applied master's-level writing with professional relevance, stronger synthesis, and practical implications."
+    },
+    {
+      "value": "Research Masters (e.g. MPhil)",
+      "depth": "Research master's-level writing with critical synthesis, theory-method alignment, explicit gaps, and rigorous methods."
+    },
+    {
+      "value": "Professional Doctorate (e.g. DBA, DEd)",
+      "depth": "Professional doctorate-level writing with advanced applied scholarship, professional problem framing, and practice contribution."
+    },
+    {
+      "value": "PhD",
+      "depth": "Doctoral-level writing with original contribution, advanced theory, rigorous methodology, and publication-quality argument."
+    }
+  ],
+  "reference_currency_rule": {
+    "recent_reference_share": "At least 70% of substantive references should be from the last five years.",
+    "older_reference_share": "Older references should be limited mainly to foundational theories, classic models, and essential earlier studies.",
+    "integrity_guard": "Do not fabricate sources. Use verified or supplied citations, otherwise insert a clear placeholder for a required source."
+  }
 }
