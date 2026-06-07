@@ -81,11 +81,31 @@ def _uploaded_results_for_chapter(profile: dict[str, Any], chapter_number: int) 
         result = uploaded.get("4")
     return result or {}
 
+def _human_scholarly_style_requirements() -> list[str]:
+    """Return high-standard academic writing rules for natural, polished chapter drafting."""
+    return [
+        "Write as a distinction-level student at the selected academic level, with a natural, polished, and confident academic voice.",
+        "Use a human scholarly style: precise claims, varied sentence length, coherent paragraph flow, and smooth transitions.",
+        "Avoid mechanical, generic, and repetitive AI-style phrasing such as 'in today's world', 'it is important to note', 'this study is very important', 'delve into', 'plays a crucial role', and repeated formulaic paragraph openings.",
+        "Do not merely list ideas. Build an argument by explaining relationships among concepts, comparing studies, identifying tensions, and showing why the present study is necessary.",
+        "Every substantive paragraph should have a clear topic sentence, supporting explanation or evidence, and a closing implication that links back to the study problem, objective, method, finding, or recommendation.",
+        "Use critical synthesis rather than annotated-summary writing, especially in the literature review and discussion chapters.",
+        "Integrate theory, empirical evidence, context, methodology, and findings in a way that sounds like a carefully supervised academic draft, not a template.",
+        "Maintain discipline-appropriate terminology, but avoid unnecessary verbosity and inflated claims.",
+        "Use signposting only where it helps the reader. Do not overuse headings or repeated introductory sentences.",
+        "Write in third-person academic style unless the student's institution requires otherwise.",
+        "Keep the work defensible: do not overstate contribution, causality, generalisability, or policy implications beyond the evidence supplied.",
+    ]
+
+
 def _chapter_specific_requirements(chapter_number: int) -> list[str]:
     """Return chapter-level drafting rules that apply beyond section rules."""
     common = [
         "Use valid markdown for headings, paragraphs, lists, and tables.",
         "Keep paragraphs coherent and academic, with clear topic sentences and transitions.",
+        "Write with a natural, polished academic voice rather than a template-like or mechanical tone.",
+        "Make the chapter read as a coherent scholarly argument, not a collection of disconnected notes.",
+        "Avoid generic filler, excessive repetition, unsupported claims, and vague expressions.",
     ]
 
     if chapter_number == 2:
@@ -159,17 +179,22 @@ def build_drafting_prompt(
         "project_profile": profile,
         "selected_academic_level_and_depth": _level_depth_requirements(profile),
         "reference_currency_requirements": _reference_currency_requirements(),
+        "human_scholarly_style_requirements": _human_scholarly_style_requirements(),
         "uploaded_results_for_this_chapter": _uploaded_results_for_chapter(profile, chapter_number),
         "selected_sections": section_payload,
         "extra_instructions": extra_instructions,
         "chapter_specific_requirements": _chapter_specific_requirements(chapter_number),
         "output_requirements": [
             "Write in formal British English.",
+            "Write at distinction-level quality for the selected academic level, while remaining appropriate to that level.",
+            "Follow the human_scholarly_style_requirements so the writing sounds natural, rigorous, context-specific, and carefully supervised rather than generic or mechanical.",
             "Write at the academic depth expected of the selected level in selected_academic_level_and_depth.",
             "Use the reference_currency_requirements: aim for at least 70% of substantive references within the stated recent-reference window, but where current sources do not exist, use the strongest credible available sources instead.",
             "Do not fabricate citations or reference-list entries. Use verified/supplied citations where available. Where a required source is not supplied or cannot be stated confidently, insert a bracketed reference placeholder rather than inventing a source.",
             "Use clear numbered headings matching the selected sections.",
             "Draft only the selected sections.",
+            "Use analytical and connective prose: show why each point matters to the study rather than merely naming concepts, authors, variables, or methods.",
+            "Prefer precise, discipline-appropriate wording over exaggerated claims or promotional language.",
             "Do not invent fabricated references, statistics, ethical approvals, sample sizes, or data results.",
             "Where evidence is missing, write a bracketed placeholder such as [insert recent empirical evidence].",
             "Keep variables, objectives, questions, hypotheses, theories, context, and methods internally consistent.",
@@ -199,12 +224,16 @@ def generate_chapter(
         instructions = (
             "You are ProjectReady AI, an academic project-work drafting and compliance assistant. "
             "You help students draft chapters from selected guidelines. You support learning and compliance. "
+            "Write in a natural, high-standard scholarly voice that sounds like a carefully supervised distinction-level student at the selected academic level. "
+            "Avoid generic AI-style phrasing, repetition, filler, overclaiming, and template-like prose. "
+            "Build coherent academic arguments with critical synthesis, contextual relevance, and defensible reasoning. "
             "You do not fabricate sources, results, approvals, page numbers, or evidence. "
             "When the user has not provided facts, use clear placeholders rather than inventing content. "
             "For Chapter Three methodology in final project mode, write in past tense and avoid proposal-style future tense. "
             "For Chapter Two, format literature gap tables as clean markdown tables with clear columns. "
             "For Chapter Four, use uploaded results files where available and never invent analysis output. "
             "Always write at the selected thesis, dissertation, or project-work level. "
+            "Make each section read like publishable or supervisor-ready academic prose, with a clear line of reasoning and strong paragraph development. "
             "Apply the reference currency rule: aim for most substantive citations to be from the last five years, but where recent literature does not exist, use credible available sources, including foundational theories and essential older studies. "
             "Do not fabricate citations or references. Use placeholders only when a credible source is not available or has not been supplied."
         )
@@ -275,15 +304,15 @@ def _draft_from_answers(
     rules_text = " ".join(rules[:3])
     if chapter_number == 3:
         return (
-            f"This section was developed using the information supplied by the student. "
-            f"Key information provided: {answer_text}. The section addressed the following methodological expectations: {rules_text}. "
-            f"It should be refined with supervisor-approved details, exact dates, instruments, approvals, and citations before final submission."
+            f"This section was developed from the details supplied for the study. "
+            f"The key information was: {answer_text}. The methodological discussion was expected to address: {rules_text}. "
+            f"The final version should add supervisor-approved details, exact dates, instruments, approvals, and verified citations where required."
         )
 
     return (
-        f"This section should be developed using the information supplied by the student. "
-        f"Key information provided: {answer_text}. The writing should satisfy the following guideline expectations: {rules_text}. "
-        f"The section should be refined with recent evidence, relevant citations, and supervisor-approved details before final submission."
+        f"This section was developed from the details supplied for the study. "
+        f"The key information was: {answer_text}. The discussion should address the following guideline expectations: {rules_text}. "
+        f"The final version should add verified recent evidence, relevant citations, and supervisor-approved details where required."
     )
 
 
@@ -298,7 +327,7 @@ def _placeholder_paragraph(section_title: str, rules: list[str], profile: dict[s
         )
 
     return (
-        f"This section will be drafted for {title}. The student must provide the required project-specific information. "
+        f"This section requires further project-specific detail for {title}. "
         f"Guideline focus: {requirements} [provide study-specific details, evidence, and citations here]."
     )
 
