@@ -148,6 +148,32 @@ async function generateDraft() {
   $("downloadDraftBtn").disabled = false;
 }
 
+async function uploadResults() {
+  if (!currentProjectId) await createProject();
+  const input = $("resultsFile");
+  if (!input || !input.files || input.files.length === 0) {
+    $("uploadStatus").textContent = "Please select a results file first.";
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("file", input.files[0]);
+  formData.append("chapter_number", String(currentChapter || 4));
+
+  $("uploadStatus").textContent = "Uploading and extracting results...";
+  const response = await fetch(`/api/projects/${currentProjectId}/upload-results`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || response.statusText);
+  }
+  const result = await response.json();
+  $("uploadStatus").textContent = `Uploaded ${result.filename}. Extracted ${result.characters_extracted} characters for Chapter ${result.chapter_number}.`;
+  $("uploadPreview").textContent = result.preview || "No preview available.";
+}
+
 async function runCheck() {
   if (!currentProjectId) {
     $("draftStatus").textContent = "Create a project and generate a draft first.";
@@ -194,6 +220,7 @@ function download(path) {
 
 $("createProjectBtn").addEventListener("click", () => createProject().catch(err => $("projectStatus").textContent = err.message));
 $("draftBtn").addEventListener("click", () => generateDraft().catch(err => $("draftStatus").textContent = err.message));
+$("uploadResultsBtn").addEventListener("click", () => uploadResults().catch(err => $("uploadStatus").textContent = err.message));
 $("checkBtn").addEventListener("click", () => runCheck().catch(err => $("draftStatus").textContent = err.message));
 $("downloadDraftBtn").addEventListener("click", () => download(`/api/projects/${currentProjectId}/export/chapter/${currentChapter}`));
 $("downloadCheckBtn").addEventListener("click", () => download(`/api/projects/${currentProjectId}/export/check/${currentChapter}`));
