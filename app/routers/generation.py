@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from app.ai_service import generate_chapter
 from app.compliance import check_chapter
 from app.database import get_conn, row_to_dict
 from app.export import export_chapter_docx, export_compliance_docx
+from app.result_uploads import extract_result_file
 from app.schemas import ComplianceRequest, DraftRequest
 from app.template_store import get_chapter
 
@@ -56,6 +58,58 @@ def draft_chapter(project_id: str, payload: DraftRequest):
         "chapter_title": chapter.get("chapter_title"),
         "draft": draft,
         "source": source,
+    }
+
+
+@router.post("/{project_id}/upload-results")
+async def upload_results(
+    project_id: str,
+    file: UploadFile = File(...),
+    chapter_number: int = Form(4),
+):
+    """Upload result output so Chapter Four can use it during drafting.
+
+    The extracted content is saved inside the project profile under
+    profile["uploaded_results"][chapter_number]. This avoids a database
+    migration while still making the content available to the drafting prompt.
+    """
+    project = _get_project_or_404(project_id)
+
+    filename = file.filename or "results_upload"
+    contents = await file.read()
+    try:
+        extracted = extract_result_file(filename, contents)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Could not process uploaded file: {exc}") from exc
+
+    profile = project.get("profile", {})
+    uploaded_results = profile.get("uploaded_results") or {}
+    uploaded_results[str(chapter_number)] = {
+        **extracted,
+        "content_type": file.content_type or "",
+        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+        "chapter_number": chapter_number,
+    }
+    profile["uploaded_results"] = uploaded_results
+
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE projects SET profile_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (json.dumps(profile), project_id),
+        )
+        conn.commit()
+
+    return {
+        "project_id": project_id,
+        "chapter_number": chapter_number,
+        "filename": extracted["filename"],
+        "file_type": extracted["file_type"],
+        "characters_extracted": extracted["characters_extracted"],
+        "truncated": extracted["truncated"],
+        "preview": extracted["preview"],
+        "message": "Results uploaded and attached to the project profile.",
     }
 
 
