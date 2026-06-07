@@ -33,13 +33,14 @@ def _reference_currency_requirements() -> dict[str, Any]:
         "current_year": current_year,
         "recent_reference_window": f"{start_year}-{current_year}",
         "rule": (
-            f"Use current references. At least 70% of substantive references should be from {start_year}-{current_year}. "
-            "The remaining references should be used for foundational theories, classic models, and other essential older studies."
+            f"Aim for at least 70% of substantive references to be from {start_year}-{current_year}. "
+            "Where current references do not exist for a specific concept, method, context, or theory, use the strongest credible available sources. "
+            "Older sources are acceptable for foundational theories, classic models, scarce-literature areas, and essential earlier studies."
         ),
         "integrity_guard": (
-            "Do not fabricate citations or reference-list entries. If a recent source, foundational theory, statistic, or page-specific detail "
-            "has not been supplied or cannot be stated with confidence, insert a clear placeholder such as "
-            f"[insert verified recent source, {start_year}-{current_year}] or [insert foundational theory/source]."
+            "Do not fabricate citations or reference-list entries. Use sources supplied by the student or sources that can be stated with confidence. "
+            "If no credible source details are available, insert a clear bracketed placeholder such as "
+            f"[insert verified recent source if available, {start_year}-{current_year}] or [insert credible available source]."
         ),
     }
 
@@ -165,7 +166,7 @@ def build_drafting_prompt(
         "output_requirements": [
             "Write in formal British English.",
             "Write at the academic depth expected of the selected level in selected_academic_level_and_depth.",
-            "Use the reference_currency_requirements: at least 70% of substantive references should be current within the stated recent-reference window, and older sources should be reserved for foundational theories, classic models, and essential earlier studies.",
+            "Use the reference_currency_requirements: aim for at least 70% of substantive references within the stated recent-reference window, but where current sources do not exist, use the strongest credible available sources instead.",
             "Do not fabricate citations or reference-list entries. Use verified/supplied citations where available. Where a required source is not supplied or cannot be stated confidently, insert a bracketed reference placeholder rather than inventing a source.",
             "Use clear numbered headings matching the selected sections.",
             "Draft only the selected sections.",
@@ -204,8 +205,8 @@ def generate_chapter(
             "For Chapter Two, format literature gap tables as clean markdown tables with clear columns. "
             "For Chapter Four, use uploaded results files where available and never invent analysis output. "
             "Always write at the selected thesis, dissertation, or project-work level. "
-            "Apply the 70/30 reference currency rule: most substantive citations should be from the last five years, while older citations should be used mainly for foundational theories and essential classic studies. "
-            "Do not fabricate citations or references. Use placeholders when a verified source is not available."
+            "Apply the reference currency rule: aim for most substantive citations to be from the last five years, but where recent literature does not exist, use credible available sources, including foundational theories and essential older studies. "
+            "Do not fabricate citations or references. Use placeholders only when a credible source is not available or has not been supplied."
         )
         response = client.responses.create(model=model, instructions=instructions, input=prompt)
         text = getattr(response, "output_text", "").strip()
@@ -234,8 +235,6 @@ def generate_fallback_chapter(
         "",
         f"Study title: {title}",
         f"Academic level: {level_info['selected_level']}",
-        f"Depth guide: {level_info['depth_guidance']}",
-        f"Reference rule: {ref_info['rule']}",
         "",
     ]
 
