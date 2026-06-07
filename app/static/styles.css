@@ -143,4 +143,27 @@ th { background: #f2f4f7; }
   font-size: 13px;
 }
 
-.level-hint { margin-top: -4px; line-height: 1.5; }
+.level-hint { display: none; }
+
+.preview-heading {
+  margin-top: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.draft-preview {
+  min-height: 220px;
+  max-height: 520px;
+  overflow: auto;
+  white-space: pre-wrap;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.placeholder-text {
+  color: var(--bad);
+  font-weight: 700;
+}
