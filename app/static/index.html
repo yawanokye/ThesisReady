@@ -30,7 +30,7 @@
           <option value="PhD">PhD</option>
         </select>
       </label>
-      <p id="levelDepthHint" class="hint level-hint"></p>
+      <p id="levelDepthHint" class="hint level-hint" hidden></p>
       <label>Research area
         <input id="research_area" placeholder="e.g. Financial literacy" />
       </label>
@@ -93,6 +93,8 @@
       </div>
       <p id="draftStatus" class="status"></p>
       <textarea id="draftOutput" rows="18" placeholder="Draft will appear here"></textarea>
+      <div class="preview-heading">Formatted draft preview</div>
+      <pre id="draftPreview" class="draft-preview"></pre>
     </section>
 
     <section class="card wide">
