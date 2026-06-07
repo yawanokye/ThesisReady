@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ProjectReady AI</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="hero">
+    <div>
+      <p class="eyebrow">ProjectReady AI MVP</p>
+      <h1>Draft project chapters from custom guidelines</h1>
+      <p class="lead">Create a project profile, select chapter sections, generate a draft, then check compliance against the selected rules.</p>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="card">
+      <h2>1. Create project profile</h2>
+      <label>Project title
+        <input id="title" placeholder="e.g. Financial Literacy and Retirement Planning among Informal Workers" />
+      </label>
+      <label>Programme
+        <input id="programme" placeholder="e.g. BCom Finance" />
+      </label>
+      <label>Department
+        <input id="department" placeholder="e.g. Department of Finance" />
+      </label>
+      <label>Institution
+        <input id="institution" placeholder="e.g. University of Cape Coast" />
+      </label>
+      <label>Research area
+        <input id="research_area" placeholder="e.g. Financial literacy" />
+      </label>
+      <label>Study context
+        <textarea id="study_context" rows="3" placeholder="Describe the setting, population, and why the topic matters"></textarea>
+      </label>
+      <label>Research approach
+        <select id="research_approach">
+          <option>Quantitative</option>
+          <option>Qualitative</option>
+          <option>Mixed methods</option>
+        </select>
+      </label>
+      <label>Objectives, one per line
+        <textarea id="objectives" rows="4" placeholder="Examine the effect of X on Y&#10;Assess the role of Z"></textarea>
+      </label>
+      <button id="createProjectBtn">Create project</button>
+      <p id="projectStatus" class="status"></p>
+    </section>
+
+    <section class="card">
+      <h2>2. Select chapter and sections</h2>
+      <label>Chapter
+        <select id="chapterSelect"></select>
+      </label>
+      <div id="sectionsBox" class="sections"></div>
+    </section>
+
+    <section class="card wide">
+      <h2>3. Guided details</h2>
+      <p class="hint">Add details for the selected sections. The app will use these details in the draft. Leave unknown facts blank rather than inventing them.</p>
+      <div id="answersBox"></div>
+    </section>
+
+    <section class="card wide">
+      <div class="row-between">
+        <h2>4. Generate and check</h2>
+        <label class="inline"><input type="checkbox" id="useAi" checked /> Use OpenAI when API key is configured</label>
+      </div>
+      <label>Extra instructions
+        <textarea id="extraInstructions" rows="2" placeholder="e.g. Use a quantitative explanatory design and British English"></textarea>
+      </label>
+      <div class="actions">
+        <button id="draftBtn">Generate chapter draft</button>
+        <button id="checkBtn">Run compliance check</button>
+        <button id="downloadDraftBtn" disabled>Download draft DOCX</button>
+        <button id="downloadCheckBtn" disabled>Download checklist DOCX</button>
+      </div>
+      <p id="draftStatus" class="status"></p>
+      <textarea id="draftOutput" rows="18" placeholder="Draft will appear here"></textarea>
+    </section>
+
+    <section class="card wide">
+      <h2>5. Compliance report</h2>
+      <div id="scoreBox" class="score"></div>
+      <div class="table-wrap">
+        <table id="checkTable">
+          <thead>
+            <tr>
+              <th>Section</th>
+              <th>Requirement</th>
+              <th>Status</th>
+              <th>Evidence</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
