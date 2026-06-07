@@ -142,3 +142,5 @@ th { background: #f2f4f7; }
   color: var(--text);
   font-size: 13px;
 }
+
+.level-hint { margin-top: -4px; line-height: 1.5; }
