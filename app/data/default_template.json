@@ -815,8 +815,8 @@
     }
   ],
   "reference_currency_rule": {
-    "recent_reference_share": "At least 70% of substantive references should be from the last five years.",
-    "older_reference_share": "Older references should be limited mainly to foundational theories, classic models, and essential earlier studies.",
-    "integrity_guard": "Do not fabricate sources. Use verified or supplied citations, otherwise insert a clear placeholder for a required source."
+    "recent_reference_share": "Aim for at least 70% of substantive references from the last five years where current literature exists.",
+    "older_reference_share": "Where recent references do not exist, use the most relevant credible available sources. Older sources are also acceptable for foundational theories, classic models, scarce-literature areas, and essential earlier studies.",
+    "integrity_guard": "Do not fabricate sources. Use verified or supplied citations where available. If no credible source details are available, insert a clear bracketed placeholder for the required source."
   }
 }
