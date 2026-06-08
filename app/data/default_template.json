@@ -42,7 +42,7 @@
                 "What evidence shows that the problem exists?",
                 "What weaknesses exist in previous studies, policies, or practice?",
                 "Where is the problem situated?",
-                "What precise focus will the study address?",
+                "What precise focus did the study address?",
                 "What exact statistics or factual evidence prove that the problem exists?",
                 "Which verified sources should be cited in the problem statement?"
               ],
@@ -121,7 +121,7 @@
               "section_title": "Significance of the Study",
               "default_selected": true,
               "guiding_questions": [
-                "Who will benefit from the study?",
+                "Who benefits from the study?",
                 "What is the theoretical contribution?",
                 "What is the practical contribution?",
                 "What is the policy or institutional contribution?"
@@ -137,7 +137,7 @@
               "section_title": "Scope of the Study",
               "default_selected": false,
               "guiding_questions": [
-                "What subject, geographical, population, and methodological scope will the study cover?"
+                "What subject, geographical, population, and methodological scope does the study cover?"
               ],
               "rules": [
                 "Define the boundaries of the study clearly.",
@@ -150,7 +150,7 @@
               "default_selected": true,
               "guiding_questions": [
                 "What genuine constraints may affect the study?",
-                "How will these constraints be managed?"
+                "How were these constraints managed, or how were they controlled in the study?"
               ],
               "rules": [
                 "Acknowledge genuine constraints without weakening the study unnecessarily.",
@@ -187,7 +187,7 @@
               "section_title": "Organisation of the Study",
               "default_selected": true,
               "guiding_questions": [
-                "How many chapters will the project have?",
+                "How many chapters does the project have?",
                 "What does each chapter cover?"
               ],
               "rules": [
@@ -211,7 +211,7 @@
               "section_title": "Introduction",
               "default_selected": true,
               "guiding_questions": [
-                "What will Chapter Two review and how will it be organised?"
+                "What does Chapter Two review, and how is it organised?"
               ],
               "rules": [
                 "Introduce the chapter and explain the organisation of the literature review."
@@ -616,7 +616,7 @@
       "drafting_guidance": [
         "Write the methodology as a completed final project, dissertation, or thesis chapter.",
         "Use past tense throughout, for example: the study adopted, data were collected, respondents were selected, and data were analysed.",
-        "Avoid proposal wording such as will use, will collect, will be analysed, and will be conducted."
+        "Avoid proposal wording such as will use, will collect, will be analysed, and will be conducted. The generated chapter should read as a completed academic project, not a proposal."
       ]
     },
     {
@@ -631,7 +631,7 @@
               "section_title": "Introduction",
               "default_selected": true,
               "guiding_questions": [
-                "What results will the chapter present?"
+                "What results does the chapter present?"
               ],
               "rules": [
                 "Introduce the chapter and remind the reader of the objectives."
@@ -813,6 +813,12 @@
         }
       ]
     }
+  ],
+  "global_writing_guidance": [
+    "Use the selected level only to guide academic depth internally. Do not state in the generated chapter that the writing is designed to meet a level, checklist, template, or software requirement.",
+    "Write in a mature scholarly voice with well-developed academic sentences. Avoid very short, choppy sentences unless needed for clarity or emphasis.",
+    "Avoid weak problem-statement openings such as 'The research problem is that'. Frame the problem through evidence, contradiction, gap, policy concern, or unresolved practical challenge.",
+    "Avoid future-tense proposal wording. Draft chapters as part of a completed project, dissertation, or thesis, using past tense for methods and results and present tense for interpretation where appropriate."
   ],
   "academic_levels": [
     {
