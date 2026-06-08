@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Create account | ProjectReady AI</title>
+  <meta name="description" content="Create a ProjectReady AI account and set up your academic project profile." />
+  <link rel="stylesheet" href="/static/landing.css" />
+  <link rel="stylesheet" href="/static/register.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/"><span class="brand-mark">PR</span><span>ProjectReady AI</span></a>
+    <div class="header-actions">
+      <a class="ghost-btn" href="/">Home</a>
+      <a class="secondary-btn" href="/workspace">Open workspace</a>
+    </div>
+  </header>
+
+  <main class="register-shell">
+    <section class="register-intro">
+      <p class="eyebrow">Create your workspace</p>
+      <h1>Set up your academic project profile.</h1>
+      <p>ProjectReady AI uses your level, school format, research approach, objectives and evidence notes to guide chapter drafting and compliance review.</p>
+      <div class="register-note">
+        <strong>Responsible use</strong>
+        <span>You remain responsible for verifying originality, citations, data, results and final submission requirements.</span>
+      </div>
+    </section>
+
+    <section class="register-card">
+      <form id="registrationForm">
+        <fieldset>
+          <legend>Account details</legend>
+          <div class="two-col">
+            <label>Full name
+              <input id="full_name" name="full_name" autocomplete="name" required />
+            </label>
+            <label>Email address
+              <input id="email" name="email" type="email" autocomplete="email" required />
+            </label>
+          </div>
+          <div class="two-col">
+            <label>Country
+              <input id="country" name="country" autocomplete="country-name" placeholder="e.g. Ghana" />
+            </label>
+            <label>Account type
+              <select id="account_type" name="account_type">
+                <option>Student</option>
+                <option>Supervisor</option>
+                <option>Institution / Department</option>
+                <option>Research Consultant</option>
+              </select>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Academic profile</legend>
+          <label>Level of thesis/dissertation/project work
+            <select id="level" name="level">
+              <option value="Bachelors">Bachelors</option>
+              <option value="Non-Research Masters">Non-Research Masters</option>
+              <option value="Research Masters (e.g. MPhil)">Research Masters (e.g. MPhil)</option>
+              <option value="Professional Doctorate (e.g. DBA, DEd)">Professional Doctorate (e.g. DBA, DEd)</option>
+              <option value="PhD">PhD</option>
+            </select>
+          </label>
+          <div class="two-col">
+            <label>Institution name
+              <input id="institution" name="institution" placeholder="Optional" />
+            </label>
+            <label>Programme
+              <input id="programme" name="programme" placeholder="Optional" />
+            </label>
+          </div>
+          <div class="two-col">
+            <label>Department
+              <input id="department" name="department" placeholder="Optional" />
+            </label>
+            <label>Preferred citation style
+              <select id="citation_style" name="citation_style">
+                <option>APA 7th</option>
+                <option>Harvard</option>
+                <option>Chicago Author-Date</option>
+                <option>IEEE</option>
+                <option>Vancouver</option>
+                <option>MLA</option>
+                <option>Other</option>
+              </select>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Project setup</legend>
+          <label>Project title
+            <input id="title" name="title" placeholder="e.g. Financial Literacy and Retirement Planning among Informal Workers" required />
+          </label>
+          <div class="two-col">
+            <label>Thesis/dissertation/project format
+              <select id="thesis_format" name="thesis_format">
+                <option value="Standard five-chapter thesis/dissertation">Standard five-chapter thesis/dissertation</option>
+                <option value="Three-chapter project report">Three-chapter project report</option>
+                <option value="Article/manuscript-based dissertation">Article/manuscript-based dissertation</option>
+                <option value="Applied professional project">Applied professional project</option>
+                <option value="Secondary data/econometrics dissertation">Secondary data/econometrics dissertation</option>
+                <option value="Qualitative case-study dissertation">Qualitative case-study dissertation</option>
+                <option value="Custom school format">Custom school format</option>
+              </select>
+            </label>
+            <label>Data source and analytical orientation
+              <select id="data_type" name="data_type">
+                <option value="Primary survey data">Primary survey data</option>
+                <option value="Secondary data">Secondary data</option>
+                <option value="Econometrics">Econometrics</option>
+                <option value="Time-series econometrics">Time-series econometrics</option>
+                <option value="Panel data econometrics">Panel data econometrics</option>
+                <option value="Qualitative data">Qualitative data</option>
+                <option value="Mixed methods">Mixed methods</option>
+              </select>
+            </label>
+          </div>
+          <label>Research area
+            <input id="research_area" name="research_area" placeholder="e.g. Financial literacy, procurement, inflation, employee performance" />
+          </label>
+          <label>Study context
+            <textarea id="study_context" name="study_context" rows="3" placeholder="Describe the country, sector, organisation, population, dataset, period or research setting."></textarea>
+          </label>
+          <label>Objectives, one per line
+            <textarea id="objectives" name="objectives" rows="4" placeholder="Examine the effect of X on Y&#10;Analyse the moderating role of Z"></textarea>
+          </label>
+          <label>School-specific format notes
+            <textarea id="format_notes" name="format_notes" rows="3" placeholder="Paste your school format, required headings, word limits, citation style or supervisor instructions."></textarea>
+          </label>
+          <label>Verified references, facts and statistics
+            <textarea id="citation_evidence_notes" name="citation_evidence_notes" rows="4" placeholder="Paste verified sources, report details, DOI links, policy evidence, dataset notes or key statistics for the problem statement."></textarea>
+          </label>
+        </fieldset>
+
+        <label class="terms-row">
+          <input id="responsibility" type="checkbox" required />
+          <span>I understand that ProjectReady AI supports drafting and academic guidance. I remain responsible for verifying accuracy, originality, citations, data, results and final submission requirements.</span>
+        </label>
+
+        <button class="primary-btn submit-btn" type="submit">Create workspace profile</button>
+        <p id="registerStatus" class="form-status"></p>
+      </form>
+    </section>
+  </main>
+
+  <script src="/static/register.js"></script>
+</body>
+</html>
