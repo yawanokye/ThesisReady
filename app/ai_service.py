@@ -111,6 +111,52 @@ def _level_depth_requirements(profile: dict[str, Any]) -> dict[str, str]:
     return {"selected_level": level, "depth_guidance": guidance}
 
 
+def _format_and_method_requirements(profile: dict[str, Any]) -> dict[str, Any]:
+    """Return rules for institutional format flexibility and secondary/econometric work."""
+    thesis_format = (profile.get("thesis_format") or "Standard five-chapter thesis/dissertation").strip()
+    method_stream = (profile.get("method_stream") or profile.get("data_type") or profile.get("research_approach") or "Primary survey data").strip()
+    format_notes = (profile.get("format_notes") or "").strip()
+
+    rules = [
+        "Treat the selected sections as the student's school-specific format. Draft only the selected headings and do not force unselected sections into the chapter.",
+        "Where the student's school format notes conflict with the default template, follow the school format notes unless they require fabrication or academic misconduct.",
+        "Use section headings naturally. Do not state that a heading was selected, required by a template, or included to satisfy the app.",
+        "Adapt wording to the selected thesis/dissertation/project format, whether standard thesis, applied project, article-based dissertation, qualitative case study, or secondary-data/econometric study.",
+    ]
+
+    stream = method_stream.lower()
+    if any(term in stream for term in ["secondary", "econometric", "time-series", "time series", "panel"]):
+        rules.extend([
+            "For secondary-data and econometric studies, do not write as if the study used respondents, questionnaires, interviews, pilot testing, response rate, or survey administration unless the user explicitly supplied primary-data details.",
+            "Use dataset, observation, unit of analysis, period, frequency, source, coverage, missing values, transformations, and model specification language rather than respondent-based survey language.",
+            "Chapter Three should include data sources, sample period, variable definitions, transformations, model equations, estimator justification, diagnostic tests, robustness checks, software, and reproducibility where those sections are selected.",
+            "Chapter Four should use uploaded results or supplied tables to report descriptive statistics, trends, diagnostic tests, econometric model results, robustness checks, and economic or policy interpretation where available.",
+            "Avoid unsupported causal interpretation. Use terms such as association, relationship, effect, predictive relationship, or estimated effect according to the design and identification strategy supplied.",
+            "Where econometric details are missing, use placeholders such as [insert model specification], [insert data source and period], [insert diagnostic test result], or [insert robustness check] rather than inventing output.",
+        ])
+    if "time" in stream:
+        rules.extend([
+            "For time-series studies, address frequency, sample period, stationarity, structural breaks, lag selection, cointegration, serial correlation, model stability, forecasting accuracy, and interpretation of dynamic relationships where relevant and supplied.",
+            "Use time-series terminology carefully, for example unit-root test, ARDL, VAR, VECM, ARIMA, GARCH, impulse response, variance decomposition, or error-correction only when the method is supplied or clearly appropriate."
+        ])
+    if "panel" in stream:
+        rules.extend([
+            "For panel-data studies, address country/firm/unit coverage, time period, fixed effects, random effects, Hausman test, cross-sectional dependence, heteroskedasticity, serial correlation, endogeneity, robust or clustered standard errors, and dynamic panel methods where relevant and supplied."
+        ])
+    if "qualitative" in stream:
+        rules.extend([
+            "For qualitative studies, use participants, documents, cases, interviews, observations, coding, themes, trustworthiness, credibility, transferability, dependability, confirmability, and reflexivity where relevant.",
+            "Do not force quantitative statistics, hypotheses, or econometric diagnostics into qualitative chapters unless required by a mixed-methods design."
+        ])
+
+    return {
+        "selected_format": thesis_format,
+        "method_stream": method_stream,
+        "format_notes": format_notes,
+        "rules": rules,
+    }
+
+
 def _uploaded_results_for_chapter(profile: dict[str, Any], chapter_number: int) -> dict[str, Any]:
     uploaded = profile.get("uploaded_results") or {}
     result = uploaded.get(str(chapter_number))
@@ -227,6 +273,7 @@ def build_drafting_prompt(
         },
         "project_profile": profile,
         "selected_academic_level_and_depth": _level_depth_requirements(profile),
+        "format_and_method_requirements": _format_and_method_requirements(profile),
         "reference_currency_requirements": _reference_currency_requirements(),
         "citation_and_evidence_requirements": _citation_and_evidence_requirements(chapter_number),
         "human_scholarly_style_requirements": _human_scholarly_style_requirements(),
@@ -245,7 +292,9 @@ def build_drafting_prompt(
             "For Chapter One, make the Background and Statement of the Problem factual and evidence-led. Use relevant accurate statistics, policy evidence, institutional evidence, or empirical findings to support the problem where supplied or confidently known.",
             "Do not fabricate citations, statistics, or reference-list entries. Use verified/supplied citations and facts where available. Where a required source, statistic, or fact is not supplied or cannot be stated confidently, insert a bracketed placeholder rather than inventing it.",
             "Use clear numbered headings matching the selected sections.",
-            "Draft only the selected sections.",
+            "Draft only the selected sections and treat them as the student's school-specific format. Do not force a single institutional structure where the user has selected different sections.",
+            "Apply the format_and_method_requirements so the chapter fits the selected thesis format and data orientation.",
+            "For secondary data and econometric studies, avoid survey-only language unless primary data details were supplied. Use dataset, observation, model, period, frequency, estimator, diagnostic, and robustness language where relevant.",
             "Use analytical and connective prose: show why each point matters to the study rather than merely naming concepts, authors, variables, or methods.",
             "Avoid weak or unscholarly problem-statement phrasing such as 'The research problem is that...'. Use an evidence-led academic formulation instead.",
             "Write as a completed academic project, dissertation, or thesis. Avoid proposal-style future tense across the write-up, except where Chapter Five legitimately suggests future research using 'should', 'could', or 'may'.",
@@ -344,7 +393,9 @@ def generate_chapter(
             "Make each section read like publishable or supervisor-ready academic prose, with a clear line of reasoning and strong paragraph development. "
             "Apply the reference currency rule: aim for most substantive citations to be from the last five years, but where recent literature does not exist, use credible available sources, including foundational theories and essential older studies. "
             "Include relevant and accurate in-text citations throughout the write-up. For the problem statement, use factual evidence and accurate statistics to show that the problem exists, where those facts are supplied or can be stated confidently. "
-            "Do not fabricate citations, references, statistics, or institutional evidence. Use clear bracketed placeholders only when a credible source, fact, or statistic is not available or has not been supplied."
+            "Do not fabricate citations, references, statistics, or institutional evidence. Use clear bracketed placeholders only when a credible source, fact, or statistic is not available or has not been supplied. "
+            "Support many institutional thesis formats by treating the selected sections and school-specific notes as the governing structure. "
+            "For secondary data and econometric work, use appropriate dataset, model, estimator, diagnostic, robustness, and economic interpretation language instead of primary survey wording unless primary data were actually used."
         )
         response = client.responses.create(model=model, instructions=instructions, input=prompt)
         text = getattr(response, "output_text", "").strip()
@@ -429,6 +480,13 @@ def _placeholder_paragraph(section_title: str, rules: list[str], profile: dict[s
     requirements = " ".join(rules[:4]) if rules else "Follow the selected institutional requirements."
 
     if chapter_number == 3:
+        stream = str(profile.get("method_stream") or profile.get("data_type") or "").lower()
+        if any(term in stream for term in ["secondary", "econometric", "time-series", "time series", "panel"]):
+            return (
+                f"This section requires the secondary-data and econometric details that were actually used in {title}. "
+                f"The account should remain in past tense and should cover these expectations: {requirements} "
+                f"[insert data source, period, unit of analysis, variable construction, model specification, estimator, diagnostics, robustness checks, software, and verified methodological citations here]."
+            )
         return (
             f"This section requires the project-specific methodological details that were actually used in {title}. "
             f"The account should remain in past tense and should cover these methodological expectations: {requirements} "
