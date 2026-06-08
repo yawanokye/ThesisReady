@@ -13,6 +13,47 @@ const levelDepthGuidance = {
   "PhD": "Use doctoral depth: original contribution, deep theoretical engagement, advanced critical synthesis, rigorous methodological defence, and publication-quality academic argument."
 };
 
+
+function applyRegistrationProfile() {
+  let profile = null;
+  try {
+    profile = JSON.parse(localStorage.getItem("projectready_registration_profile") || "null");
+  } catch (error) {
+    profile = null;
+  }
+  if (!profile) return;
+
+  const mapping = {
+    title: "title",
+    level: "level",
+    thesis_format: "thesis_format",
+    data_type: "data_type",
+    research_area: "research_area",
+    study_context: "study_context",
+    objectives: "objectives",
+    format_notes: "format_notes",
+    citation_evidence_notes: "citation_evidence_notes"
+  };
+
+  for (const [key, elementId] of Object.entries(mapping)) {
+    const element = $(elementId);
+    if (element && profile[key]) {
+      element.value = profile[key];
+    }
+  }
+
+  const notes = [];
+  if (profile.institution) notes.push(`Institution: ${profile.institution}`);
+  if (profile.department) notes.push(`Department: ${profile.department}`);
+  if (profile.programme) notes.push(`Programme: ${profile.programme}`);
+  if (profile.citation_style) notes.push(`Preferred citation style: ${profile.citation_style}`);
+  const formatNotes = $("format_notes");
+  if (formatNotes && notes.length) {
+    const existing = formatNotes.value.trim();
+    formatNotes.value = existing ? `${existing}\n${notes.join("\n")}` : notes.join("\n");
+  }
+}
+
 function updateLevelHint() {
   // Keep the level-depth guidance internal. The selected level still guides the AI prompt,
   // but the explanatory text is not displayed to users.
@@ -310,6 +351,8 @@ if ($("data_type")) {
     if (template) renderSections();
   });
 }
+
+applyRegistrationProfile();
 
 loadTemplate().catch(err => {
   document.body.innerHTML = `<pre>Failed to load app: ${escapeHtml(err.message)}</pre>`;
