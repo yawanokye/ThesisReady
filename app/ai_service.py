@@ -45,6 +45,43 @@ def _reference_currency_requirements() -> dict[str, Any]:
     }
 
 
+def _citation_and_evidence_requirements(chapter_number: int) -> dict[str, Any]:
+    """Return rules for evidence-led writing, citation accuracy, and problem-statement statistics."""
+    current_year = datetime.now().year
+    start_year = current_year - 5
+    common_rules = [
+        "Include relevant and accurate in-text citations in every substantive section of the write-up.",
+        "Use author-year citation style unless the user or institution requests another style.",
+        "Do not cite a source unless the source was supplied by the student, included in the profile/reference notes, present in uploaded material, or can be stated confidently without guessing.",
+        "Where a citation is needed but no reliable source details are available, insert a red bracketed placeholder in the draft, such as [insert verified source for this claim] rather than inventing a citation.",
+        "Support factual claims with evidence. Use statistics, policy evidence, institutional records, peer-reviewed studies, official reports, or credible datasets where available.",
+        f"Prioritise recent references from {start_year}-{current_year}, but use older sources when they are foundational theories, classic models, or the best credible evidence available.",
+        "Do not create a reference list entry for any source unless enough accurate bibliographic information is supplied or known with confidence.",
+    ]
+    if chapter_number == 1:
+        common_rules.extend([
+            "The Background and Statement of the Problem must be evidence-led. They should include relevant factual evidence and accurate statistics where available.",
+            "The Statement of the Problem must not rely on unsupported claims. It should identify the problem, provide evidence that the problem exists, show who or what is affected, and state the research gap.",
+            "Use current and context-relevant statistics from credible sources such as official reports, national statistics, industry reports, policy documents, or peer-reviewed studies where supplied or confidently known.",
+            "Where exact statistics are not supplied, do not invent figures. Use placeholders such as [insert current statistic from Ghana Statistical Service, World Bank, ministry report, institutional records, or peer-reviewed study] and keep the argument coherent.",
+        ])
+    if chapter_number == 2:
+        common_rules.extend([
+            "The literature review must cite studies accurately when discussing theories, concepts, empirical findings, contradictions, and gaps.",
+            "Every empirical-study paragraph should identify the author/year, context, method, key finding, and relevance to the current study where available.",
+        ])
+    if chapter_number == 4:
+        common_rules.extend([
+            "Do not invent results or statistics. Interpret only the uploaded or supplied results.",
+            "In the discussion, cite relevant theory and prior studies when explaining whether the findings agree, contradict, or extend existing evidence.",
+        ])
+    return {
+        "citation_style": "Author-year in-text citations by default, unless another style is supplied.",
+        "recent_reference_window": f"{start_year}-{current_year}",
+        "rules": common_rules,
+    }
+
+
 def _level_depth_requirements(profile: dict[str, Any]) -> dict[str, str]:
     """Return writing-depth guidance based on the selected thesis/dissertation/project level."""
     level = (profile.get("level") or "Bachelors").strip()
@@ -179,6 +216,7 @@ def build_drafting_prompt(
         "project_profile": profile,
         "selected_academic_level_and_depth": _level_depth_requirements(profile),
         "reference_currency_requirements": _reference_currency_requirements(),
+        "citation_and_evidence_requirements": _citation_and_evidence_requirements(chapter_number),
         "human_scholarly_style_requirements": _human_scholarly_style_requirements(),
         "uploaded_results_for_this_chapter": _uploaded_results_for_chapter(profile, chapter_number),
         "selected_sections": section_payload,
@@ -190,7 +228,9 @@ def build_drafting_prompt(
             "Follow the human_scholarly_style_requirements so the writing sounds natural, rigorous, context-specific, and carefully supervised rather than generic or mechanical.",
             "Write at the academic depth expected of the selected level in selected_academic_level_and_depth.",
             "Use the reference_currency_requirements: aim for at least 70% of substantive references within the stated recent-reference window, but where current sources do not exist, use the strongest credible available sources instead.",
-            "Do not fabricate citations or reference-list entries. Use verified/supplied citations where available. Where a required source is not supplied or cannot be stated confidently, insert a bracketed reference placeholder rather than inventing a source.",
+            "Use the citation_and_evidence_requirements: include relevant, accurate in-text citations across all substantive write-up sections, especially literature, methodology justification, discussion, and problem framing.",
+            "For Chapter One, make the Background and Statement of the Problem factual and evidence-led. Use relevant accurate statistics, policy evidence, institutional evidence, or empirical findings to support the problem where supplied or confidently known.",
+            "Do not fabricate citations, statistics, or reference-list entries. Use verified/supplied citations and facts where available. Where a required source, statistic, or fact is not supplied or cannot be stated confidently, insert a bracketed placeholder rather than inventing it.",
             "Use clear numbered headings matching the selected sections.",
             "Draft only the selected sections.",
             "Use analytical and connective prose: show why each point matters to the study rather than merely naming concepts, authors, variables, or methods.",
@@ -235,7 +275,8 @@ def generate_chapter(
             "Always write at the selected thesis, dissertation, or project-work level. "
             "Make each section read like publishable or supervisor-ready academic prose, with a clear line of reasoning and strong paragraph development. "
             "Apply the reference currency rule: aim for most substantive citations to be from the last five years, but where recent literature does not exist, use credible available sources, including foundational theories and essential older studies. "
-            "Do not fabricate citations or references. Use placeholders only when a credible source is not available or has not been supplied."
+            "Include relevant and accurate in-text citations throughout the write-up. For the problem statement, use factual evidence and accurate statistics to show that the problem exists, where those facts are supplied or can be stated confidently. "
+            "Do not fabricate citations, references, statistics, or institutional evidence. Use clear bracketed placeholders only when a credible source, fact, or statistic is not available or has not been supplied."
         )
         response = client.responses.create(model=model, instructions=instructions, input=prompt)
         text = getattr(response, "output_text", "").strip()
@@ -312,7 +353,7 @@ def _draft_from_answers(
     return (
         f"This section was developed from the details supplied for the study. "
         f"The key information was: {answer_text}. The discussion should address the following guideline expectations: {rules_text}. "
-        f"The final version should add verified recent evidence, relevant citations, and supervisor-approved details where required."
+        f"The final version should add accurate in-text citations, verified recent evidence, relevant statistics where appropriate, and supervisor-approved details where required."
     )
 
 
@@ -328,7 +369,7 @@ def _placeholder_paragraph(section_title: str, rules: list[str], profile: dict[s
 
     return (
         f"This section requires further project-specific detail for {title}. "
-        f"Guideline focus: {requirements} [provide study-specific details, evidence, and citations here]."
+        f"Guideline focus: {requirements} [provide study-specific details, accurate evidence, statistics where relevant, and verified in-text citations here]."
     )
 
 
