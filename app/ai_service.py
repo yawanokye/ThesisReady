@@ -121,14 +121,17 @@ def _uploaded_results_for_chapter(profile: dict[str, Any], chapter_number: int) 
 def _human_scholarly_style_requirements() -> list[str]:
     """Return high-standard academic writing rules for natural, polished chapter drafting."""
     return [
-        "Write as a distinction-level student at the selected academic level, with a natural, polished, and confident academic voice.",
-        "Use a human scholarly style: precise claims, varied sentence length, coherent paragraph flow, and smooth transitions.",
-        "Avoid mechanical, generic, and repetitive AI-style phrasing such as 'in today's world', 'it is important to note', 'this study is very important', 'delve into', 'plays a crucial role', and repeated formulaic paragraph openings.",
+        "Use the selected academic level only as internal depth guidance. Do not mention the selected level, do not say the writing is produced to meet a level, and do not include meta-commentary about the project being written at a particular standard.",
+        "Write in a mature, natural scholarly voice that resembles a carefully supervised student draft: precise, analytical, context-specific, and free from generic AI patterns.",
+        "Avoid very short, clipped sentences except where a short sentence is needed for emphasis, transition, or clarity. Prefer well-developed academic sentences that connect evidence, reasoning, and implication.",
+        "Vary sentence structure, but avoid overusing sentence frames such as 'This study...', 'The study...', 'The research problem is...', or 'This section...'.",
+        "Do not begin a problem statement with wording such as 'The research problem is that...'. Frame the problem analytically, for example through a tension, contradiction, persistent gap, policy concern, empirical inconsistency, or unresolved practical challenge.",
+        "Avoid mechanical, generic, and repetitive AI-style phrasing such as 'in today's world', 'it is important to note', 'this study is very important', 'delve into', 'plays a crucial role', 'it is imperative', and repeated formulaic paragraph openings.",
         "Do not merely list ideas. Build an argument by explaining relationships among concepts, comparing studies, identifying tensions, and showing why the present study is necessary.",
-        "Every substantive paragraph should have a clear topic sentence, supporting explanation or evidence, and a closing implication that links back to the study problem, objective, method, finding, or recommendation.",
+        "Every substantive paragraph should develop one clear idea through a topic sentence, evidence or reasoning, interpretation, and a closing implication linked to the study problem, objective, method, finding, or recommendation.",
         "Use critical synthesis rather than annotated-summary writing, especially in the literature review and discussion chapters.",
         "Integrate theory, empirical evidence, context, methodology, and findings in a way that sounds like a carefully supervised academic draft, not a template.",
-        "Maintain discipline-appropriate terminology, but avoid unnecessary verbosity and inflated claims.",
+        "Maintain discipline-appropriate terminology, but avoid unnecessary verbosity, inflated claims, and promotional language.",
         "Use signposting only where it helps the reader. Do not overuse headings or repeated introductory sentences.",
         "Write in third-person academic style unless the student's institution requires otherwise.",
         "Keep the work defensible: do not overstate contribution, causality, generalisability, or policy implications beyond the evidence supplied.",
@@ -139,11 +142,20 @@ def _chapter_specific_requirements(chapter_number: int) -> list[str]:
     """Return chapter-level drafting rules that apply beyond section rules."""
     common = [
         "Use valid markdown for headings, paragraphs, lists, and tables.",
-        "Keep paragraphs coherent and academic, with clear topic sentences and transitions.",
+        "Keep paragraphs coherent and academic, with clear topic sentences, developed reasoning, and smooth transitions.",
         "Write with a natural, polished academic voice rather than a template-like or mechanical tone.",
         "Make the chapter read as a coherent scholarly argument, not a collection of disconnected notes.",
-        "Avoid generic filler, excessive repetition, unsupported claims, and vague expressions.",
+        "Avoid generic filler, excessive repetition, unsupported claims, vague expressions, and very short choppy sentences.",
+        "Treat the chapter as part of a completed project, dissertation, or thesis. Do not use future-tense proposal wording such as 'will examine', 'will collect', 'will use', 'will adopt', 'will analyse', or 'will be conducted'.",
+        "Do not mention that the writing is designed to meet a selected academic level, checklist, template, or software requirement. The chapter should read like normal scholarly prose.",
     ]
+
+    if chapter_number == 1:
+        return common + [
+            "Frame the statement of the problem through evidence, contradiction, gap, or unresolved practical concern rather than beginning with 'The research problem is that...'.",
+            "Use connected paragraphs that move from context to evidence, evidence to gap, and gap to research focus.",
+            "Use accurate statistics and factual evidence where supplied or confidently known. Where statistics are needed but not supplied, insert a bracketed placeholder rather than inventing figures.",
+        ]
 
     if chapter_number == 2:
         return common + [
@@ -224,9 +236,10 @@ def build_drafting_prompt(
         "chapter_specific_requirements": _chapter_specific_requirements(chapter_number),
         "output_requirements": [
             "Write in formal British English.",
-            "Write at distinction-level quality for the selected academic level, while remaining appropriate to that level.",
+            "Use the selected academic level internally to determine depth and sophistication, but never mention the selected level in the generated chapter text.",
             "Follow the human_scholarly_style_requirements so the writing sounds natural, rigorous, context-specific, and carefully supervised rather than generic or mechanical.",
-            "Write at the academic depth expected of the selected level in selected_academic_level_and_depth.",
+            "Avoid very short sentences except where they are necessary for emphasis, transition, or clarity.",
+            "Do not write sentences that say the work, chapter, section, depth, or argument is designed to meet the selected level of the project, thesis, or dissertation.",
             "Use the reference_currency_requirements: aim for at least 70% of substantive references within the stated recent-reference window, but where current sources do not exist, use the strongest credible available sources instead.",
             "Use the citation_and_evidence_requirements: include relevant, accurate in-text citations across all substantive write-up sections, especially literature, methodology justification, discussion, and problem framing.",
             "For Chapter One, make the Background and Statement of the Problem factual and evidence-led. Use relevant accurate statistics, policy evidence, institutional evidence, or empirical findings to support the problem where supplied or confidently known.",
@@ -234,6 +247,8 @@ def build_drafting_prompt(
             "Use clear numbered headings matching the selected sections.",
             "Draft only the selected sections.",
             "Use analytical and connective prose: show why each point matters to the study rather than merely naming concepts, authors, variables, or methods.",
+            "Avoid weak or unscholarly problem-statement phrasing such as 'The research problem is that...'. Use an evidence-led academic formulation instead.",
+            "Write as a completed academic project, dissertation, or thesis. Avoid proposal-style future tense across the write-up, except where Chapter Five legitimately suggests future research using 'should', 'could', or 'may'.",
             "Prefer precise, discipline-appropriate wording over exaggerated claims or promotional language.",
             "Do not invent fabricated references, statistics, ethical approvals, sample sizes, or data results.",
             "Where evidence is missing, write a bracketed placeholder such as [insert recent empirical evidence].",
@@ -248,6 +263,57 @@ def build_drafting_prompt(
     }
     return json.dumps(prompt, ensure_ascii=False, indent=2)
 
+
+
+def _polish_generated_text(text: str) -> str:
+    """Lightly remove common proposal/meta phrases that weaken scholarly output."""
+    if not text:
+        return text
+
+    replacements = {
+        r"\bThe research problem is that\b": "The central concern is that",
+        r"\bthe research problem is that\b": "the central concern is that",
+        r"\bThis is done to meet the level of the project\b": "",
+        r"\bThis is done to meet the level of the thesis\b": "",
+        r"\bThis is done to meet the level of the dissertation\b": "",
+        r"\bto meet the selected academic level\b": "",
+        r"\bto satisfy the selected academic level\b": "",
+        r"\bfor the selected academic level\b": "",
+        r"\bwill be used\b": "was used",
+        r"\bwill be adopted\b": "was adopted",
+        r"\bwill be employed\b": "was employed",
+        r"\bwill be collected\b": "were collected",
+        r"\bwill be analysed\b": "were analysed",
+        r"\bwill be analyzed\b": "were analysed",
+        r"\bwill be conducted\b": "was conducted",
+        r"\bwill be administered\b": "was administered",
+        r"\bwill be obtained\b": "was obtained",
+        r"\bwill use\b": "used",
+        r"\bwill adopt\b": "adopted",
+        r"\bwill employ\b": "employed",
+        r"\bwill collect\b": "collected",
+        r"\bwill analyse\b": "analysed",
+        r"\bwill analyze\b": "analysed",
+        r"\bwill administer\b": "administered",
+        r"\bwill examine\b": "examined",
+        r"\bwill assess\b": "assessed",
+        r"\bwill investigate\b": "investigated",
+        r"\bwill determine\b": "determined",
+    }
+    polished = text
+    for pattern, replacement in replacements.items():
+        polished = re.sub(pattern, replacement, polished, flags=re.IGNORECASE)
+
+    # Remove full sentences that explicitly disclose internal level/template/checklist guidance.
+    polished = re.sub(
+        r"(?im)^.*(?:selected academic level|level of the project|level of the thesis|level of the dissertation|checklist requirement|template requirement|software requirement).*\n?",
+        "",
+        polished,
+    )
+
+    polished = re.sub(r"[ \t]{2,}", " ", polished)
+    polished = re.sub(r"\n{3,}", "\n\n", polished)
+    return polished.strip()
 
 def generate_chapter(
     profile: dict[str, Any],
@@ -264,15 +330,17 @@ def generate_chapter(
         instructions = (
             "You are ProjectReady AI, an academic project-work drafting and compliance assistant. "
             "You help students draft chapters from selected guidelines. You support learning and compliance. "
-            "Write in a natural, high-standard scholarly voice that sounds like a carefully supervised distinction-level student at the selected academic level. "
-            "Avoid generic AI-style phrasing, repetition, filler, overclaiming, and template-like prose. "
+            "Write in a natural, high-standard scholarly voice that sounds like a carefully supervised academic draft, not generic AI prose. "
+            "Use the selected academic level only to determine depth; never mention the selected level or say the chapter is written to meet a level, checklist, template, or software requirement. "
+            "Avoid generic AI-style phrasing, repetition, filler, overclaiming, template-like prose, and very short choppy sentences except where a short sentence is needed for clarity. "
             "Build coherent academic arguments with critical synthesis, contextual relevance, and defensible reasoning. "
+            "Do not begin the problem statement with phrases such as 'The research problem is that'; frame the problem through evidence, contradiction, gap, policy concern, or unresolved practical challenge. "
             "You do not fabricate sources, results, approvals, page numbers, or evidence. "
             "When the user has not provided facts, use clear placeholders rather than inventing content. "
-            "For Chapter Three methodology in final project mode, write in past tense and avoid proposal-style future tense. "
+            "Write as a completed final project, dissertation, or thesis. Avoid proposal-style future tense across chapters, especially Chapter Three methodology. "
             "For Chapter Two, format literature gap tables as clean markdown tables with clear columns. "
             "For Chapter Four, use uploaded results files where available and never invent analysis output. "
-            "Always write at the selected thesis, dissertation, or project-work level. "
+            "Let the selected thesis, dissertation, or project-work level guide depth silently without appearing in the chapter text. "
             "Make each section read like publishable or supervisor-ready academic prose, with a clear line of reasoning and strong paragraph development. "
             "Apply the reference currency rule: aim for most substantive citations to be from the last five years, but where recent literature does not exist, use credible available sources, including foundational theories and essential older studies. "
             "Include relevant and accurate in-text citations throughout the write-up. For the problem statement, use factual evidence and accurate statistics to show that the problem exists, where those facts are supplied or can be stated confidently. "
@@ -281,9 +349,9 @@ def generate_chapter(
         response = client.responses.create(model=model, instructions=instructions, input=prompt)
         text = getattr(response, "output_text", "").strip()
         if text:
-            return text, "openai_responses_api"
+            return _polish_generated_text(text), "openai_responses_api"
 
-    return generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers), "local_template_fallback"
+    return _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)), "local_template_fallback"
 
 
 def generate_fallback_chapter(
@@ -304,7 +372,6 @@ def generate_fallback_chapter(
         f"# {chapter.get('chapter_title', '').upper()}",
         "",
         f"Study title: {title}",
-        f"Academic level: {level_info['selected_level']}",
         "",
     ]
 
@@ -345,15 +412,15 @@ def _draft_from_answers(
     rules_text = " ".join(rules[:3])
     if chapter_number == 3:
         return (
-            f"This section was developed from the details supplied for the study. "
-            f"The key information was: {answer_text}. The methodological discussion was expected to address: {rules_text}. "
-            f"The final version should add supervisor-approved details, exact dates, instruments, approvals, and verified citations where required."
+            f"The methodological choices in this section were shaped by the following study details: {answer_text}. "
+            f"The section should be refined into a fully evidenced account of the procedures actually used, including dates, instruments, approvals, and verified methodological citations where required. "
+            f"The discussion should remain aligned with these expectations: {rules_text}."
         )
 
     return (
-        f"This section was developed from the details supplied for the study. "
-        f"The key information was: {answer_text}. The discussion should address the following guideline expectations: {rules_text}. "
-        f"The final version should add accurate in-text citations, verified recent evidence, relevant statistics where appropriate, and supervisor-approved details where required."
+        f"The section should be developed from the following study details: {answer_text}. "
+        f"The discussion should connect these details to the study problem, objectives, context, and evidence base, while addressing these expectations: {rules_text}. "
+        f"Where a claim requires support, insert accurate in-text citations, verified recent evidence, or relevant statistics rather than unsupported assertions."
     )
 
 
@@ -363,13 +430,15 @@ def _placeholder_paragraph(section_title: str, rules: list[str], profile: dict[s
 
     if chapter_number == 3:
         return (
-            f"This section was drafted for {title}. The student must insert the project-specific methodological details that were used in the study. "
-            f"Guideline focus: {requirements} [insert study-specific methods, approvals, evidence, and citations here]."
+            f"This section requires the project-specific methodological details that were actually used in {title}. "
+            f"The account should remain in past tense and should cover these methodological expectations: {requirements} "
+            f"[insert study-specific methods, approvals, evidence, and citations here]."
         )
 
     return (
         f"This section requires further project-specific detail for {title}. "
-        f"Guideline focus: {requirements} [provide study-specific details, accurate evidence, statistics where relevant, and verified in-text citations here]."
+        f"The discussion should be evidence-led and should address these expectations: {requirements} "
+        f"[provide study-specific details, accurate evidence, statistics where relevant, and verified in-text citations here]."
     )
 
 
