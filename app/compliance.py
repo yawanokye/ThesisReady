@@ -72,6 +72,18 @@ def check_chapter(chapter_number: int, selected_section_ids: list[str], draft: s
                 }
             )
 
+        density_result = _check_citation_density(section_paras or paragraphs)
+        items.append(
+            {
+                "section_id": section["section_id"],
+                "section_title": section_title,
+                "requirement": "Substantive claims in this section should be supported with accurate in-text citations or clear source placeholders.",
+                "status": density_result["status"],
+                "evidence": density_result["evidence"],
+                "suggested_action": density_result["suggested_action"],
+            }
+        )
+
     score = _score(items)
     return {"chapter_number": chapter_number, "score_percent": score, "items": items}
 
@@ -141,7 +153,7 @@ def _check_rule(rule: str, section_paras: list[tuple[int, str]]) -> dict[str, st
 
 def _check_citation_rule(rule: str, section_paras: list[tuple[int, str]]) -> dict[str, str]:
     for number, para in section_paras:
-        if _has_intext_citation(para) or "[insert verified source" in para.lower() or "[insert credible" in para.lower():
+        if _has_intext_citation(para) or _has_source_placeholder(para):
             status = "Passed" if _has_intext_citation(para) else "Weak"
             action = "None" if status == "Passed" else "Replace the placeholder with a verified source and accurate in-text citation."
             return {
@@ -151,7 +163,7 @@ def _check_citation_rule(rule: str, section_paras: list[tuple[int, str]]) -> dic
             }
     return {
         "status": "Missing",
-        "evidence": "No in-text citation or citation placeholder was found in this section.",
+        "evidence": "No in-text citation or source placeholder was found in this section.",
         "suggested_action": f"Add relevant accurate in-text citation evidence for this requirement: {rule}",
     }
 
