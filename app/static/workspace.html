@@ -77,6 +77,7 @@
       </label>
       <button id="createProjectBtn">Create project</button>
       <p id="projectStatus" class="status"></p>
+      <p id="planNotice" class="status plan-notice" hidden></p>
     </section>
 
     <section class="card">
@@ -98,6 +99,23 @@
         <h2>4. Generate and check</h2>
         <input type="checkbox" id="useAi" checked hidden />
       </div>
+      <div class="upload-box revision-box">
+        <h3>Revise an existing chapter</h3>
+        <p class="hint">For paid plans, upload the current chapter draft, add the revision instruction, and generate a revised version. New insertions will appear in red in the preview and exported DOCX.</p>
+        <label class="inline revision-toggle"><input type="checkbox" id="revisionMode" /> Revise uploaded version instead of drafting from scratch</label>
+        <label>Existing chapter file
+          <input id="revisionFile" type="file" accept=".docx,.pdf,.txt,.md" />
+        </label>
+        <label>Revision instruction
+          <textarea id="revisionInstructions" rows="3" placeholder="e.g. Strengthen the problem statement with evidence, improve the literature synthesis, correct methodology tense, and align the section with supervisor comments."></textarea>
+        </label>
+        <div class="actions compact-actions">
+          <button id="uploadRevisionBtn" type="button">Upload chapter for revision</button>
+        </div>
+        <p id="revisionStatus" class="status"></p>
+        <pre id="revisionPreview" class="preview-box"></pre>
+      </div>
+
       <div class="upload-box">
         <h3>Upload results output for Chapter Four</h3>
         <p class="hint">Upload SPSS/Excel/CSV/Word/PDF/text results so the app can use the actual output when drafting the results and discussion chapter.</p>
