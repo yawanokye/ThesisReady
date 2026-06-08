@@ -118,6 +118,7 @@ function collectProfile() {
     reference_currency_rule: "Aim for at least 70% of substantive references from the last five years. Where current references do not exist for a specific issue, use the most relevant credible available sources, including foundational theories, classic models, and essential older studies.",
     research_area: $("research_area").value.trim(),
     study_context: $("study_context").value.trim(),
+    citation_evidence_notes: $("citation_evidence_notes") ? $("citation_evidence_notes").value.trim() : "",
     research_approach: $("research_approach").value,
     data_type: "Primary data",
     expected_chapters: 5,
