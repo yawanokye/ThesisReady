@@ -14,6 +14,7 @@ class ProjectCreate(BaseModel):
     reference_currency_rule: str = ""
     research_area: str = ""
     study_context: str = ""
+    citation_evidence_notes: str = ""
     research_approach: str = "Quantitative"
     data_type: str = "Primary data"
     expected_chapters: int = 5
