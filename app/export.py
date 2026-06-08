@@ -9,19 +9,36 @@ from docx.shared import Pt, RGBColor
 
 
 PLACEHOLDER_PATTERN = re.compile(r"(\[[^\]\n]{3,}\])")
+CHANGE_TOKEN_PATTERN = re.compile(r"(\{\{ADD:.*?\}\}|\{\{DEL:.*?\}\}|\[[^\]\n]{3,}\])")
 PLACEHOLDER_RED = RGBColor(180, 35, 24)
+INSERTION_RED = RGBColor(190, 30, 25)
 
 
 def _add_runs_with_placeholder_colour(paragraph, text: str) -> None:
-    """Add text to a paragraph and colour bracketed placeholders red."""
-    for part in PLACEHOLDER_PATTERN.split(str(text or "")):
+    """Add text to a paragraph and colour placeholders and revision insertions red.
+
+    Revision mode asks the model to mark insertions as {{ADD: ...}} and proposed
+    deletions as {{DEL: ...}}. The exported DOCX renders insertions in red and
+    proposed deletions in red strikethrough as tracked-style changes.
+    """
+    for part in CHANGE_TOKEN_PATTERN.split(str(text or "")):
         if not part:
             continue
-        run = paragraph.add_run(part)
-        if PLACEHOLDER_PATTERN.fullmatch(part):
-            run.font.color.rgb = PLACEHOLDER_RED
+        add_match = re.fullmatch(r"\{\{ADD:(.*?)\}\}", part, flags=re.DOTALL)
+        del_match = re.fullmatch(r"\{\{DEL:(.*?)\}\}", part, flags=re.DOTALL)
+        if add_match:
+            run = paragraph.add_run(add_match.group(1).strip())
+            run.font.color.rgb = INSERTION_RED
             run.bold = True
-
+        elif del_match:
+            run = paragraph.add_run(del_match.group(1).strip())
+            run.font.color.rgb = INSERTION_RED
+            run.font.strike = True
+        else:
+            run = paragraph.add_run(part)
+            if PLACEHOLDER_PATTERN.fullmatch(part):
+                run.font.color.rgb = PLACEHOLDER_RED
+                run.bold = True
 
 def _set_cell_text_with_placeholder_colour(cell, text: str) -> None:
     """Set Word table cell text and colour bracketed placeholders red."""
