@@ -283,6 +283,7 @@ def build_drafting_prompt(
         "format_and_method_requirements": _format_and_method_requirements(profile),
         "reference_currency_requirements": _reference_currency_requirements(),
         "citation_and_evidence_requirements": _citation_and_evidence_requirements(chapter_number),
+        "citation_density_rules": _citation_density_rules(chapter_number),
         "human_scholarly_style_requirements": _human_scholarly_style_requirements(),
         "uploaded_results_for_this_chapter": _uploaded_results_for_chapter(profile, chapter_number),
         "revision_request": {
@@ -309,7 +310,9 @@ def build_drafting_prompt(
             "Avoid very short sentences except where they are necessary for emphasis, transition, or clarity.",
             "Do not write sentences that say the work, chapter, section, depth, or argument is designed to meet the selected level of the project, thesis, or dissertation.",
             "Use the reference_currency_requirements: aim for at least 70% of substantive references within the stated recent-reference window, but where current sources do not exist, use the strongest credible available sources instead.",
-            "Use the citation_and_evidence_requirements: include relevant, accurate in-text citations across all substantive write-up sections, especially literature, methodology justification, discussion, and problem framing.",
+            "Use the citation_and_evidence_requirements and citation_density_rules: include relevant, accurate in-text citations or clear source placeholders across all substantive paragraphs, especially literature, methodology justification, discussion, and problem framing.",
+            "Do not leave a claim-heavy paragraph without citation support. When a paragraph makes factual, theoretical, empirical, methodological, policy, contextual, or interpretive claims and no verified source is available, place [insert verified source for this claim] close to the unsupported claim.",
+            "Avoid citation scarcity by distributing citations throughout the chapter instead of placing only one or two citations in a long section.",
             "For Chapter One, make the Background and Statement of the Problem factual and evidence-led. Use relevant accurate statistics, policy evidence, institutional evidence, or empirical findings to support the problem where supplied or confidently known.",
             "Do not fabricate citations, statistics, or reference-list entries. Use verified/supplied citations and facts where available. Where a required source, statistic, or fact is not supplied or cannot be stated confidently, insert a bracketed placeholder rather than inventing it.",
             "Use clear numbered headings matching the selected sections.",
@@ -335,6 +338,109 @@ def build_drafting_prompt(
     return json.dumps(prompt, ensure_ascii=False, indent=2)
 
 
+
+
+
+def _citation_density_rules(chapter_number: int) -> list[str]:
+    """Return stronger paragraph-level citation rules without encouraging fabricated sources."""
+    rules = [
+        "Citation density requirement: every substantive paragraph that contains a claim, definition, theory, method justification, empirical statement, policy statement, statistic, trend, result comparison, or recommendation must contain either an accurate in-text citation or a bracketed source placeholder.",
+        "Do not leave claim-heavy paragraphs uncited. If the exact source is not supplied or cannot be stated confidently, add a placeholder immediately after the claim, for example [insert verified source for this claim].",
+        "Use citation-supported synthesis rather than placing one citation at the end of a long section. Citations should be close to the claims they support.",
+        "Avoid citation scarcity. Most developed academic paragraphs should contain at least one relevant citation or evidence placeholder unless the paragraph is purely transitional, introduces chapter structure, or summarises the student's own supplied results.",
+        "For factual or statistical claims, cite official reports, datasets, policy documents, institutional records, or peer-reviewed studies where supplied. Do not invent figures or sources.",
+    ]
+    if chapter_number == 1:
+        rules.extend([
+            "In Chapter One, the Background and Statement of the Problem require high evidence density. Each paragraph that establishes context, scale, trends, policy concern, empirical gap, or practical effect should include a citation, statistic, official source, or placeholder.",
+            "The Statement of the Problem should not contain broad claims such as 'there is limited evidence', 'students face challenges', 'performance has declined', or 'institutions struggle' unless those claims are supported by a citation, statistic, official record, or placeholder.",
+        ])
+    if chapter_number == 2:
+        rules.extend([
+            "In Chapter Two, nearly every paragraph should be citation-supported because it is reviewing concepts, theories, methods, and empirical studies.",
+            "When discussing prior empirical work, include author and year, context, method, finding, and limitation or relevance. Use placeholders for missing bibliographic details rather than inventing them.",
+        ])
+    if chapter_number == 3:
+        rules.extend([
+            "In Chapter Three, cite methodological authorities, measurement sources, model foundations, dataset documentation, validity/reliability thresholds, diagnostic test sources, or ethical standards where applicable.",
+            "Do not cite the student's own procedures as external facts, but cite the methodological principles and instruments that justify those procedures where sources are supplied or confidently known.",
+        ])
+    if chapter_number == 4:
+        rules.extend([
+            "In Chapter Four, citations are especially needed in the discussion of findings, where results are linked to theory and previous studies. The reporting of the student's own uploaded results does not require external citation, but comparisons and explanations do.",
+        ])
+    if chapter_number == 5:
+        rules.extend([
+            "In Chapter Five, recommendations should be traceable to findings. Where a recommendation invokes policy, practice standards, theory, or external evidence, include a citation or placeholder.",
+        ])
+    return rules
+
+
+def _has_intext_citation(text: str) -> bool:
+    patterns = [
+        r"\([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’\-]+(?:\s+(?:&|and)\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’\-]+|\s+et\s+al\.)?,\s*(?:19|20)\d{2}[a-z]?\)",
+        r"[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’\-]+(?:\s+(?:and|&)\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’\-]+|\s+et\s+al\.)?\s*\((?:19|20)\d{2}[a-z]?\)",
+        r"\[(?:insert|add)\s+(?:verified|credible|recent|current)?\s*(?:source|citation|evidence|statistic|reference)[^\]]*\]",
+        r"\[(?:source|citation|evidence)\s+needed[^\]]*\]",
+    ]
+    return any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in patterns)
+
+
+def _is_heading_or_structural_line(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return True
+    if stripped.startswith("#") or re.match(r"^\d+(\.\d+)*\s+", stripped):
+        return True
+    if stripped.startswith("|") or stripped.startswith("-") or stripped.startswith("*"):
+        return True
+    if stripped.startswith("{{ADD:") or stripped.startswith("{{DEL:"):
+        return False
+    return False
+
+
+def _is_substantive_paragraph(text: str, chapter_number: int) -> bool:
+    stripped = re.sub(r"\s+", " ", text).strip()
+    if _is_heading_or_structural_line(stripped):
+        return False
+    if len(stripped.split()) < 28:
+        return False
+    lower = stripped.lower()
+    transitional_phrases = [
+        "this chapter is organised", "the chapter is organised", "this section introduces", "the next section", "chapter summary",
+    ]
+    if any(phrase in lower for phrase in transitional_phrases) and len(stripped.split()) < 60:
+        return False
+    claim_words = [
+        "study", "research", "evidence", "literature", "theory", "model", "framework", "findings", "results", "method", "methodology", "sample", "population", "data", "policy", "institution", "students", "firms", "performance", "relationship", "effect", "impact", "influence", "associated", "significant", "gap", "challenge", "problem", "however", "although", "therefore", "suggests", "indicates", "shows", "reveals", "reported", "argued", "found", "established", "demonstrated", "according", "statistics", "percentage", "%",
+    ]
+    if chapter_number == 4 and any(term in lower for term in ["coefficient", "p-value", "mean", "standard deviation", "theme", "respondents", "table"]):
+        return False if "discussion" not in lower and "consistent" not in lower and "contradicts" not in lower else True
+    return any(word in lower for word in claim_words)
+
+
+def _enforce_citation_placeholders(text: str, chapter_number: int) -> str:
+    """Add source placeholders after claim-heavy paragraphs that have no citation.
+
+    This prevents unsupported claims while avoiding fabricated citations.
+    """
+    if not text:
+        return text
+    blocks = re.split(r"(\n\s*\n)", text)
+    output: list[str] = []
+    for block in blocks:
+        if re.match(r"\n\s*\n", block):
+            output.append(block)
+            continue
+        stripped = block.strip()
+        if _is_substantive_paragraph(stripped, chapter_number) and not _has_intext_citation(stripped):
+            # Keep revision markers intact by appending the placeholder outside them.
+            if stripped.endswith("."):
+                block = block.rstrip() + " [insert verified source for this claim]"
+            else:
+                block = block.rstrip() + ". [insert verified source for this claim]"
+        output.append(block)
+    return "".join(output)
 
 def _polish_generated_text(text: str) -> str:
     """Lightly remove common proposal/meta phrases that weaken scholarly output."""
@@ -424,7 +530,7 @@ def generate_chapter(
             "Let the selected thesis, dissertation, or project-work level guide depth silently without appearing in the chapter text. "
             "Make each section read like publishable or supervisor-ready academic prose, with a clear line of reasoning and strong paragraph development. "
             "Apply the reference currency rule: aim for most substantive citations to be from the last five years, but where recent literature does not exist, use credible available sources, including foundational theories and essential older studies. "
-            "Include relevant and accurate in-text citations throughout the write-up. For the problem statement, use factual evidence and accurate statistics to show that the problem exists, where those facts are supplied or can be stated confidently. "
+            "Include relevant and accurate in-text citations throughout the write-up. Every substantive paragraph that makes factual, theoretical, empirical, methodological, policy, contextual, or interpretive claims should contain an accurate citation or a bracketed source placeholder. For the problem statement, use factual evidence and accurate statistics to show that the problem exists, where those facts are supplied or can be stated confidently. "
             "Do not fabricate citations, references, statistics, or institutional evidence. Use clear bracketed placeholders only when a credible source, fact, or statistic is not available or has not been supplied. "
             "Support many institutional thesis formats by treating the selected sections and school-specific notes as the governing structure. "
             "For secondary data and econometric work, use appropriate dataset, model, estimator, diagnostic, robustness, and economic interpretation language instead of primary survey wording unless primary data were actually used. "
@@ -433,16 +539,16 @@ def generate_chapter(
         response = client.responses.create(model=model, instructions=instructions, input=prompt)
         text = getattr(response, "output_text", "").strip()
         if text:
-            return _polish_generated_text(text), "openai_responses_api"
+            return _enforce_citation_placeholders(_polish_generated_text(text), chapter_number), "openai_responses_api"
 
-    return _polish_generated_text(generate_fallback_chapter(
+    return _enforce_citation_placeholders(_polish_generated_text(generate_fallback_chapter(
         profile,
         chapter_number,
         selected_section_ids,
         answers,
         revision_mode=revision_mode,
         revision_instructions=revision_instructions,
-    )), "local_template_fallback"
+    )), chapter_number), "local_template_fallback"
 
 
 def generate_fallback_chapter(
