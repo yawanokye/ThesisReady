@@ -67,6 +67,43 @@ function getSections(chapter) {
   return chapter.section_groups.flatMap(group => group.sections);
 }
 
+function methodStream() {
+  return ($("data_type")?.value || "Primary survey data").toLowerCase();
+}
+
+function recommendedSectionIds(chapterNumber) {
+  const stream = methodStream();
+  const isSecondary = stream.includes("secondary") || stream.includes("econometric") || stream.includes("time-series") || stream.includes("time series") || stream.includes("panel");
+  const isQualitative = stream.includes("qualitative");
+
+  if (isSecondary) {
+    const recommendations = {
+      2: ["ch2_intro", "ch2_conceptual", "ch2_theoretical", "ch2_empirical_objectives", "ch2_secondary_stylised", "ch2_econometric_literature", "ch2_framework", "ch2_gap_table", "ch2_summary"],
+      3: ["ch3_intro", "ch3_philosophy", "ch3_design", "ch3_secondary_data_sources", "ch3_variable_construction", "ch3_model_specification", "ch3_estimation_technique", "ch3_econometric_diagnostics", "ch3_analysis", "ch3_reproducibility", "ch3_ethics", "ch3_summary"],
+      4: ["ch4_intro", "ch4_uploaded_results", "ch4_descriptive_trends", "ch4_diagnostic_results", "ch4_econometric_results", "ch4_policy_economic_interpretation", "ch4_discussion", "ch4_summary"],
+      5: ["ch5_intro", "ch5_summary_findings", "ch5_conclusions", "ch5_recommendations", "ch5_policy_implications", "ch5_limitations", "ch5_future"]
+    };
+    return recommendations[chapterNumber] ? new Set(recommendations[chapterNumber]) : null;
+  }
+
+  if (isQualitative) {
+    const recommendations = {
+      2: ["ch2_intro", "ch2_conceptual", "ch2_theoretical", "ch2_empirical_objectives", "ch2_variable_review", "ch2_framework", "ch2_summary"],
+      3: ["ch3_intro", "ch3_philosophy", "ch3_design", "ch3_setting_population", "ch3_sampling", "ch3_instrument", "ch3_collection", "ch3_analysis", "ch3_ethics", "ch3_summary"],
+      4: ["ch4_intro", "ch4_uploaded_results", "ch4_results_objectives", "ch4_discussion", "ch4_summary"]
+    };
+    return recommendations[chapterNumber] ? new Set(recommendations[chapterNumber]) : null;
+  }
+
+  return null;
+}
+
+function shouldCheckSection(section) {
+  const recommended = recommendedSectionIds(currentChapter);
+  if (recommended) return recommended.has(section.section_id);
+  return Boolean(section.default_selected);
+}
+
 function renderSections() {
   const chapter = getChapter($("chapterSelect").value);
   currentChapter = chapter.chapter_number;
@@ -78,7 +115,7 @@ function renderSections() {
     div.className = "section-item";
     div.innerHTML = `
       <label>
-        <input type="checkbox" name="section" value="${section.section_id}" ${section.default_selected ? "checked" : ""} />
+        <input type="checkbox" name="section" value="${section.section_id}" ${shouldCheckSection(section) ? "checked" : ""} />
         ${section.section_title}
       </label>
       <small>${section.rules[0] || ""}</small>
@@ -116,11 +153,14 @@ function collectProfile() {
     level: selectedLevel,
     academic_level_guidance: levelDepthGuidance[selectedLevel] || "",
     reference_currency_rule: "Aim for at least 70% of substantive references from the last five years. Where current references do not exist for a specific issue, use the most relevant credible available sources, including foundational theories, classic models, and essential older studies.",
+    thesis_format: $("thesis_format") ? $("thesis_format").value : "Standard five-chapter thesis/dissertation",
+    format_notes: $("format_notes") ? $("format_notes").value.trim() : "",
     research_area: $("research_area").value.trim(),
     study_context: $("study_context").value.trim(),
     citation_evidence_notes: $("citation_evidence_notes") ? $("citation_evidence_notes").value.trim() : "",
     research_approach: $("research_approach").value,
-    data_type: "Primary data",
+    data_type: $("data_type") ? $("data_type").value : "Primary survey data",
+    method_stream: $("data_type") ? $("data_type").value : "Primary survey data",
     expected_chapters: 5,
     objectives: lines($("objectives").value),
     research_questions: [],
@@ -264,6 +304,11 @@ $("downloadCheckBtn").addEventListener("click", () => download(`/api/projects/${
 if ($("level")) {
   $("level").addEventListener("change", updateLevelHint);
   updateLevelHint();
+}
+if ($("data_type")) {
+  $("data_type").addEventListener("change", () => {
+    if (template) renderSections();
+  });
 }
 
 loadTemplate().catch(err => {
