@@ -99,6 +99,13 @@ def _section_paragraphs(section_title: str, paragraphs: list[str]) -> list[tuple
 
 def _check_rule(rule: str, section_paras: list[tuple[int, str]]) -> dict[str, str]:
     rule_lower = rule.lower()
+
+    if "citation" in rule_lower or "cite" in rule_lower or "in-text" in rule_lower:
+        return _check_citation_rule(rule, section_paras)
+
+    if "statistics" in rule_lower or "statistic" in rule_lower or "factual" in rule_lower or "facts" in rule_lower:
+        return _check_factual_evidence_rule(rule, section_paras)
+
     hint_key = None
     for needle, bank_key in RULE_HINTS:
         if needle in rule_lower:
@@ -130,6 +137,60 @@ def _check_rule(rule: str, section_paras: list[tuple[int, str]]) -> dict[str, st
         "evidence": "No clear paragraph evidence found in the draft.",
         "suggested_action": f"Add content that satisfies this requirement: {rule}",
     }
+
+
+def _check_citation_rule(rule: str, section_paras: list[tuple[int, str]]) -> dict[str, str]:
+    for number, para in section_paras:
+        if _has_intext_citation(para) or "[insert verified source" in para.lower() or "[insert credible" in para.lower():
+            status = "Passed" if _has_intext_citation(para) else "Weak"
+            action = "None" if status == "Passed" else "Replace the placeholder with a verified source and accurate in-text citation."
+            return {
+                "status": status,
+                "evidence": f"Paragraph {number}: {_snippet(para)}",
+                "suggested_action": action,
+            }
+    return {
+        "status": "Missing",
+        "evidence": "No in-text citation or citation placeholder was found in this section.",
+        "suggested_action": f"Add relevant accurate in-text citation evidence for this requirement: {rule}",
+    }
+
+
+def _check_factual_evidence_rule(rule: str, section_paras: list[tuple[int, str]]) -> dict[str, str]:
+    for number, para in section_paras:
+        if _has_statistical_or_factual_evidence(para):
+            return {
+                "status": "Passed",
+                "evidence": f"Paragraph {number}: {_snippet(para)}",
+                "suggested_action": "None",
+            }
+        if "[insert current statistic" in para.lower() or "[insert statistic" in para.lower() or "[insert evidence" in para.lower():
+            return {
+                "status": "Weak",
+                "evidence": f"Paragraph {number}: {_snippet(para)}",
+                "suggested_action": "Replace the placeholder with verified facts, statistics, policy evidence, or empirical evidence.",
+            }
+    return {
+        "status": "Missing",
+        "evidence": "No clear statistic, factual evidence, or evidence placeholder was found in this section.",
+        "suggested_action": f"Add verified facts/statistics or a clear evidence placeholder for this requirement: {rule}",
+    }
+
+
+def _has_intext_citation(text: str) -> bool:
+    # Author-year examples: (Smith, 2024), Smith (2024), Smith and Mensah (2023), Smith et al. (2022)
+    patterns = [
+        r"\([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’\-]+(?:\s+(?:&|and)\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’\-]+|\s+et\s+al\.)?,\s*(?:19|20)\d{2}[a-z]?\)",
+        r"[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’\-]+(?:\s+(?:and|&)\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’\-]+|\s+et\s+al\.)?\s*\((?:19|20)\d{2}[a-z]?\)",
+    ]
+    return any(re.search(pattern, text) for pattern in patterns)
+
+
+def _has_statistical_or_factual_evidence(text: str) -> bool:
+    evidence_words = ["percent", "percentage", "rate", "ratio", "index", "report", "survey", "census", "dataset", "statistics", "statistical", "policy", "official", "ministry", "world bank", "ghana statistical service", "oecd", "unesco", "who"]
+    has_number = bool(re.search(r"(?:\d+(?:\.\d+)?\s?%|\b\d+(?:,\d{3})*(?:\.\d+)?\b)", text))
+    has_evidence_word = any(word in text.lower() for word in evidence_words)
+    return has_number or has_evidence_word
 
 
 def _score(items: list[dict[str, Any]]) -> float:
