@@ -43,6 +43,21 @@ def home() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
 
 
+@app.get("/register")
+def register() -> FileResponse:
+    return FileResponse(STATIC_DIR / "register.html")
+
+
+@app.get("/workspace")
+def workspace() -> FileResponse:
+    return FileResponse(STATIC_DIR / "workspace.html")
+
+
+@app.get("/app")
+def app_workspace() -> FileResponse:
+    return FileResponse(STATIC_DIR / "workspace.html")
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
