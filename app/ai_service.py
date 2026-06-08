@@ -164,6 +164,11 @@ def _uploaded_results_for_chapter(profile: dict[str, Any], chapter_number: int) 
         result = uploaded.get("4")
     return result or {}
 
+
+def _uploaded_chapter_for_revision(profile: dict[str, Any], chapter_number: int) -> dict[str, Any]:
+    uploaded = profile.get("uploaded_chapter_sources") or {}
+    return uploaded.get(str(chapter_number)) or {}
+
 def _human_scholarly_style_requirements() -> list[str]:
     """Return high-standard academic writing rules for natural, polished chapter drafting."""
     return [
@@ -248,6 +253,8 @@ def build_drafting_prompt(
     selected_section_ids: list[str],
     answers: dict[str, Any] | None = None,
     extra_instructions: str = "",
+    revision_mode: bool = False,
+    revision_instructions: str = "",
 ) -> str:
     chapter = get_chapter(chapter_number)
     sections = selected_sections(chapter_number, selected_section_ids)
@@ -278,6 +285,20 @@ def build_drafting_prompt(
         "citation_and_evidence_requirements": _citation_and_evidence_requirements(chapter_number),
         "human_scholarly_style_requirements": _human_scholarly_style_requirements(),
         "uploaded_results_for_this_chapter": _uploaded_results_for_chapter(profile, chapter_number),
+        "revision_request": {
+            "revision_mode": revision_mode,
+            "revision_instructions": revision_instructions,
+            "uploaded_chapter_source": _uploaded_chapter_for_revision(profile, chapter_number),
+            "revision_output_rules": [
+                "When revision_mode is true, revise the uploaded chapter rather than drafting from scratch.",
+                "Preserve accurate content from the uploaded chapter where it remains relevant and defensible.",
+                "Apply the student's revision instructions, selected sections, school format, scholarly style rules, citation rules, and compliance requirements.",
+                "Mark all new or substantially inserted wording exactly as {{ADD: inserted text}} so the interface and DOCX export can show it in red.",
+                "Mark proposed removals only when necessary as {{DEL: text to remove}}. Do not overuse deletion markers.",
+                "Do not use native Word tracked-change XML. Use the change markers exactly as specified for red inserted text and tracked-style export.",
+                "Do not include an editor's memo unless the student explicitly asks for one. Return the revised chapter text only."
+            ],
+        },
         "selected_sections": section_payload,
         "extra_instructions": extra_instructions,
         "chapter_specific_requirements": _chapter_specific_requirements(chapter_number),
@@ -308,6 +329,7 @@ def build_drafting_prompt(
             "For Chapter Four, first use any uploaded results or analysis output attached to the project profile, then use the student answers. Use placeholders only where actual output has not been supplied.",
             "For Chapter Four, report only results found in uploaded files or student answers. Do not fabricate numbers, tables, themes, or interpretation.",
             "For Chapter Five, base conclusions and recommendations only on findings supplied in the profile or answers.",
+            "When revising an uploaded chapter, edit the uploaded text according to the student's instructions and mark new insertions with {{ADD: ...}} so they appear red in preview and exported DOCX.",
         ],
     }
     return json.dumps(prompt, ensure_ascii=False, indent=2)
@@ -371,8 +393,18 @@ def generate_chapter(
     answers: dict[str, Any] | None = None,
     extra_instructions: str = "",
     use_ai: bool = True,
+    revision_mode: bool = False,
+    revision_instructions: str = "",
 ) -> tuple[str, str]:
-    prompt = build_drafting_prompt(profile, chapter_number, selected_section_ids, answers, extra_instructions)
+    prompt = build_drafting_prompt(
+        profile,
+        chapter_number,
+        selected_section_ids,
+        answers,
+        extra_instructions,
+        revision_mode=revision_mode,
+        revision_instructions=revision_instructions,
+    )
     client = _safe_get_openai_client()
     if use_ai and client:
         model = os.getenv("OPENAI_MODEL", "gpt-5.5")
@@ -395,14 +427,22 @@ def generate_chapter(
             "Include relevant and accurate in-text citations throughout the write-up. For the problem statement, use factual evidence and accurate statistics to show that the problem exists, where those facts are supplied or can be stated confidently. "
             "Do not fabricate citations, references, statistics, or institutional evidence. Use clear bracketed placeholders only when a credible source, fact, or statistic is not available or has not been supplied. "
             "Support many institutional thesis formats by treating the selected sections and school-specific notes as the governing structure. "
-            "For secondary data and econometric work, use appropriate dataset, model, estimator, diagnostic, robustness, and economic interpretation language instead of primary survey wording unless primary data were actually used."
+            "For secondary data and econometric work, use appropriate dataset, model, estimator, diagnostic, robustness, and economic interpretation language instead of primary survey wording unless primary data were actually used. "
+            "When revision mode is enabled, revise the uploaded chapter as the base text. Preserve sound content, apply the supplied instruction, and mark all new insertions exactly as {{ADD: inserted text}}. Mark proposed removals only when necessary as {{DEL: text}}."
         )
         response = client.responses.create(model=model, instructions=instructions, input=prompt)
         text = getattr(response, "output_text", "").strip()
         if text:
             return _polish_generated_text(text), "openai_responses_api"
 
-    return _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)), "local_template_fallback"
+    return _polish_generated_text(generate_fallback_chapter(
+        profile,
+        chapter_number,
+        selected_section_ids,
+        answers,
+        revision_mode=revision_mode,
+        revision_instructions=revision_instructions,
+    )), "local_template_fallback"
 
 
 def generate_fallback_chapter(
@@ -410,6 +450,8 @@ def generate_fallback_chapter(
     chapter_number: int,
     selected_section_ids: list[str],
     answers: dict[str, Any] | None = None,
+    revision_mode: bool = False,
+    revision_instructions: str = "",
 ) -> str:
     chapter = get_chapter(chapter_number)
     sections = selected_sections(chapter_number, selected_section_ids)
@@ -425,6 +467,27 @@ def generate_fallback_chapter(
         f"Study title: {title}",
         "",
     ]
+
+    if revision_mode:
+        uploaded_source = _uploaded_chapter_for_revision(profile, chapter_number)
+        source_preview = str(uploaded_source.get("preview") or uploaded_source.get("text") or "").strip()
+        lines.extend([
+            "## Revision Source Note",
+            "",
+            f"The revised version should be developed from the uploaded chapter file **{uploaded_source.get('filename', 'uploaded chapter')}** and the supplied revision instruction.",
+            f"Revision instruction: {revision_instructions or '[insert revision instruction]'}",
+            "New insertions should be marked as {{ADD: red inserted text}} and proposed removals as {{DEL: text to remove}}.",
+            "",
+        ])
+        if source_preview:
+            lines.extend([
+                "## Uploaded Chapter Extract",
+                "",
+                source_preview[:2500],
+                "",
+                "{{ADD: [insert revised and improved text based on the uploaded chapter and the student's instruction]}}",
+                "",
+            ])
 
     for index, section in enumerate(sections, 1):
         section_title = section["section_title"]
