@@ -12,6 +12,7 @@ class ProjectCreate(BaseModel):
     level: str = "Bachelors"
     academic_level_guidance: str = ""
     reference_currency_rule: str = ""
+    access_plan: str = "Free Starter"
     thesis_format: str = "Standard five-chapter thesis/dissertation"
     format_notes: str = ""
     research_area: str = ""
@@ -39,6 +40,8 @@ class DraftRequest(BaseModel):
     answers: dict[str, Any] = Field(default_factory=dict)
     extra_instructions: str = ""
     use_ai: bool = True
+    revision_mode: bool = False
+    revision_instructions: str = ""
 
 
 class DraftResponse(BaseModel):
