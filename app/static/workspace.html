@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ProjectReady AI</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="hero">
+    <div>
+      <p class="eyebrow">ProjectReady AI MVP</p>
+      <h1>Draft project chapters from custom guidelines</h1>
+      <p class="lead">Create a project profile, select chapter sections, generate a draft, then check compliance against the selected rules.</p>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="card">
+      <h2>1. Create project profile</h2>
+      <label>Project title
+        <input id="title" placeholder="e.g. Financial Literacy and Retirement Planning among Informal Workers" />
+      </label>
+      <label>Level of thesis/dissertation/project work
+        <select id="level">
+          <option value="Bachelors">Bachelors</option>
+          <option value="Non-Research Masters">Non-Research Masters</option>
+          <option value="Research Masters (e.g. MPhil)">Research Masters (e.g. MPhil)</option>
+          <option value="Professional Doctorate (e.g. DBA, DEd)">Professional Doctorate (e.g. DBA, DEd)</option>
+          <option value="PhD">PhD</option>
+        </select>
+      </label>
+      <p id="levelDepthHint" class="hint level-hint" hidden></p>
+      <label>Thesis/dissertation/project format
+        <select id="thesis_format">
+          <option value="Standard five-chapter thesis/dissertation">Standard five-chapter thesis/dissertation</option>
+          <option value="Three-chapter project report">Three-chapter project report</option>
+          <option value="Article/manuscript-based dissertation">Article/manuscript-based dissertation</option>
+          <option value="Applied professional project">Applied professional project</option>
+          <option value="Secondary data/econometrics dissertation">Secondary data/econometrics dissertation</option>
+          <option value="Qualitative case-study dissertation">Qualitative case-study dissertation</option>
+          <option value="Custom school format">Custom school format</option>
+        </select>
+      </label>
+      <label>Data source and analytical orientation
+        <select id="data_type">
+          <option value="Primary survey data">Primary survey data</option>
+          <option value="Secondary data">Secondary data</option>
+          <option value="Econometrics">Econometrics</option>
+          <option value="Time-series econometrics">Time-series econometrics</option>
+          <option value="Panel data econometrics">Panel data econometrics</option>
+          <option value="Qualitative data">Qualitative data</option>
+          <option value="Mixed methods">Mixed methods</option>
+        </select>
+      </label>
+      <label>School-specific format notes
+        <textarea id="format_notes" rows="3" placeholder="Paste or describe your school format, required headings, word limits, citation style, or supervisor instructions. Leave blank if the default structure is suitable."></textarea>
+      </label>
+      <label>Research area
+        <input id="research_area" placeholder="e.g. Financial literacy" />
+      </label>
+      <label>Study context
+        <textarea id="study_context" rows="3" placeholder="Describe the setting, population, and why the topic matters"></textarea>
+      </label>
+      <label>Verified references, facts and statistics for the study
+        <textarea id="citation_evidence_notes" rows="4" placeholder="Paste verified sources, statistics, report details, DOI links, policy evidence, institutional records, or key citation notes. The app will use these to support claims and the problem statement."></textarea>
+      </label>
+      <label>Research approach
+        <select id="research_approach">
+          <option>Quantitative</option>
+          <option>Qualitative</option>
+          <option>Mixed methods</option>
+        </select>
+      </label>
+      <label>Objectives, one per line
+        <textarea id="objectives" rows="4" placeholder="Examine the effect of X on Y&#10;Assess the role of Z"></textarea>
+      </label>
+      <button id="createProjectBtn">Create project</button>
+      <p id="projectStatus" class="status"></p>
+    </section>
+
+    <section class="card">
+      <h2>2. Select chapter and sections</h2>
+      <label>Chapter
+        <select id="chapterSelect"></select>
+      </label>
+      <div id="sectionsBox" class="sections"></div>
+    </section>
+
+    <section class="card wide">
+      <h2>3. Guided details</h2>
+      <p class="hint">Add details for the selected sections. The app will use these details in the draft. Leave unknown facts blank rather than inventing them.</p>
+      <div id="answersBox"></div>
+    </section>
+
+    <section class="card wide">
+      <div class="row-between">
+        <h2>4. Generate and check</h2>
+        <input type="checkbox" id="useAi" checked hidden />
+      </div>
+      <div class="upload-box">
+        <h3>Upload results output for Chapter Four</h3>
+        <p class="hint">Upload SPSS/Excel/CSV/Word/PDF/text results so the app can use the actual output when drafting the results and discussion chapter.</p>
+        <label>Results file
+          <input id="resultsFile" type="file" accept=".csv,.tsv,.txt,.md,.docx,.xlsx,.xlsm,.pdf" />
+        </label>
+        <div class="actions compact-actions">
+          <button id="uploadResultsBtn" type="button">Upload results for current chapter</button>
+        </div>
+        <p id="uploadStatus" class="status"></p>
+        <pre id="uploadPreview" class="preview-box"></pre>
+      </div>
+      <label>Extra instructions
+        <textarea id="extraInstructions" rows="2" placeholder="e.g. Use a quantitative explanatory design and British English"></textarea>
+      </label>
+      <div class="actions">
+        <button id="draftBtn">Generate chapter draft</button>
+        <button id="checkBtn">Run compliance check</button>
+        <button id="downloadDraftBtn" disabled>Download draft DOCX</button>
+        <button id="downloadCheckBtn" disabled>Download checklist DOCX</button>
+      </div>
+      <p id="draftStatus" class="status"></p>
+      <textarea id="draftOutput" rows="18" placeholder="Draft will appear here"></textarea>
+      <div class="preview-heading">Formatted draft preview</div>
+      <pre id="draftPreview" class="draft-preview"></pre>
+    </section>
+
+    <section class="card wide">
+      <h2>5. Compliance report</h2>
+      <div id="scoreBox" class="score"></div>
+      <div class="table-wrap">
+        <table id="checkTable">
+          <thead>
+            <tr>
+              <th>Section</th>
+              <th>Requirement</th>
+              <th>Status</th>
+              <th>Evidence</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
