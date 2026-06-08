@@ -12,11 +12,14 @@ class ProjectCreate(BaseModel):
     level: str = "Bachelors"
     academic_level_guidance: str = ""
     reference_currency_rule: str = ""
+    thesis_format: str = "Standard five-chapter thesis/dissertation"
+    format_notes: str = ""
     research_area: str = ""
     study_context: str = ""
     citation_evidence_notes: str = ""
     research_approach: str = "Quantitative"
-    data_type: str = "Primary data"
+    data_type: str = "Primary survey data"
+    method_stream: str = "Primary survey data"
     expected_chapters: int = 5
     variables: dict[str, Any] = Field(default_factory=dict)
     objectives: list[str] = Field(default_factory=list)
