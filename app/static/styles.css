@@ -167,3 +167,35 @@ th { background: #f2f4f7; }
   color: var(--bad);
   font-weight: 700;
 }
+
+.plan-notice {
+  border-left: 4px solid var(--primary);
+  padding: 8px 10px;
+  background: #eef4ff;
+  border-radius: 10px;
+}
+.locked-label {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #fff4e5;
+  color: #8a4b00;
+  font-size: 11px;
+  font-weight: 700;
+}
+.revision-box {
+  border-style: solid;
+}
+.revision-toggle {
+  margin: 8px 0 12px;
+}
+.inserted-text {
+  color: var(--bad);
+  font-weight: 700;
+}
+.deleted-text {
+  color: var(--bad);
+  text-decoration: line-through;
+  font-weight: 600;
+}
