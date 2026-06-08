@@ -19,14 +19,18 @@
                 "What local context makes the issue important?",
                 "What key concepts and variables must the reader understand?",
                 "What empirical or policy evidence supports the context?",
-                "What gap should the background gradually lead to?"
+                "What gap should the background gradually lead to?",
+                "What recent and credible in-text citations should support the background?",
+                "What verified facts, statistics, official reports, policy documents, or empirical evidence should be used?"
               ],
               "rules": [
                 "Move clearly from broad context to local or study-specific context.",
                 "Introduce key concepts, variables, and relevant theoretical ideas.",
                 "Use recent empirical or policy evidence where available.",
                 "Signal knowledge gaps without fully stating the problem too early.",
-                "End with a smooth transition to the statement of the problem."
+                "End with a smooth transition to the statement of the problem.",
+                "Include relevant and accurate in-text citations for substantive claims.",
+                "Use verified facts and statistics to establish the context where available. If figures are not supplied, insert a placeholder rather than inventing them."
               ]
             },
             {
@@ -38,14 +42,19 @@
                 "What evidence shows that the problem exists?",
                 "What weaknesses exist in previous studies, policies, or practice?",
                 "Where is the problem situated?",
-                "What precise focus will the study address?"
+                "What precise focus will the study address?",
+                "What exact statistics or factual evidence prove that the problem exists?",
+                "Which verified sources should be cited in the problem statement?"
               ],
               "rules": [
                 "State a clear, specific, researchable problem rather than a broad description.",
                 "Support the problem with empirical, practical, or policy evidence.",
                 "Explain weaknesses or gaps in existing studies or approaches.",
                 "Situate the problem in the study context.",
-                "End with a precise research focus."
+                "End with a precise research focus.",
+                "Support the problem statement with relevant accurate statistics, facts, policy evidence, or empirical evidence.",
+                "Include accurate in-text citations for every major factual claim.",
+                "Do not invent figures or citations; use bracketed placeholders where verified evidence is needed."
               ]
             },
             {
@@ -217,7 +226,9 @@
               ],
               "rules": [
                 "Explain each major concept and its relevance to the study objectives.",
-                "Maintain consistency with Chapter One variables."
+                "Maintain consistency with Chapter One variables.",
+                "Use relevant and accurate in-text citations for all theory, concept, empirical, and gap claims.",
+                "Do not fabricate studies, authors, years, or findings; use placeholders where verified source details are not supplied."
               ]
             },
             {
@@ -231,7 +242,9 @@
               "rules": [
                 "Review only directly relevant theories.",
                 "Link each theory to specific objectives or hypotheses.",
-                "Acknowledge key limitations or boundaries of the theories."
+                "Acknowledge key limitations or boundaries of the theories.",
+                "Use relevant and accurate in-text citations for all theory, concept, empirical, and gap claims.",
+                "Do not fabricate studies, authors, years, or findings; use placeholders where verified source details are not supplied."
               ]
             },
             {
@@ -241,14 +254,17 @@
               "guiding_questions": [
                 "What prior studies relate to each objective?",
                 "What were their contexts, methods, and findings?",
-                "What gaps remain?"
+                "What gaps remain?",
+                "Which verified studies, including authors, years, contexts, methods, and findings, should be cited for each objective?"
               ],
               "rules": [
                 "Organise the empirical review by research objectives.",
                 "Give each objective a dedicated subsection.",
                 "Discuss prior studies' contexts, methods, and findings.",
                 "Highlight contradictions and weaknesses in prior studies.",
-                "End each subsection with a study-specific gap."
+                "End each subsection with a study-specific gap.",
+                "Use relevant and accurate in-text citations for all theory, concept, empirical, and gap claims.",
+                "Do not fabricate studies, authors, years, or findings; use placeholders where verified source details are not supplied."
               ]
             },
             {
@@ -272,7 +288,9 @@
               ],
               "rules": [
                 "Develop hypotheses from theory and prior empirical evidence.",
-                "Match each hypothesis to the relevant objective."
+                "Match each hypothesis to the relevant objective.",
+                "Use relevant and accurate in-text citations for all theory, concept, empirical, and gap claims.",
+                "Do not fabricate studies, authors, years, or findings; use placeholders where verified source details are not supplied."
               ]
             },
             {
@@ -294,7 +312,9 @@
                 "Create at least one row for each research objective.",
                 "Keep each cell concise and focused on one idea.",
                 "Do not fabricate authors, years, contexts, methods, or findings. Use placeholders such as [insert author and year] where the student has not supplied details.",
-                "Ensure the gap in each row is specific to the current study."
+                "Ensure the gap in each row is specific to the current study.",
+                "Use relevant and accurate in-text citations for all theory, concept, empirical, and gap claims.",
+                "Do not fabricate studies, authors, years, or findings; use placeholders where verified source details are not supplied."
               ],
               "table_columns": [
                 "Research Objective",
@@ -686,7 +706,9 @@
               "rules": [
                 "Link findings to theory.",
                 "Compare findings with previous studies.",
-                "Explain what the results mean in the study context."
+                "Explain what the results mean in the study context.",
+                "Use relevant in-text citations when comparing findings with theories and previous studies.",
+                "Do not invent prior studies; use verified supplied sources or placeholders."
               ]
             },
             {
