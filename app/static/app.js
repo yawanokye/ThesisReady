@@ -13,6 +13,33 @@ const levelDepthGuidance = {
   "PhD": "Use doctoral depth: original contribution, deep theoretical engagement, advanced critical synthesis, rigorous methodological defence, and publication-quality academic argument."
 };
 
+const freeAllowedSectionIds = new Set([
+  "ch1_background",
+  "ch1_problem",
+  "ch1_purpose",
+  "ch1_objectives",
+  "ch1_questions"
+]);
+
+function accessPlan() {
+  return localStorage.getItem("projectready_access_plan") || "Free Starter";
+}
+
+function isFreePlan() {
+  return accessPlan().toLowerCase().includes("free");
+}
+
+function updateFreePlanNotice() {
+  const notice = $("planNotice");
+  if (!notice) return;
+  if (isFreePlan()) {
+    notice.textContent = "Free Starter allows drafting only the first five Chapter One sections. Paid plans unlock full chapters, revisions, compliance checks, and exports.";
+    notice.hidden = false;
+  } else {
+    notice.textContent = `Active plan: ${accessPlan()}`;
+    notice.hidden = false;
+  }
+}
 
 function applyRegistrationProfile() {
   let profile = null;
@@ -140,6 +167,9 @@ function recommendedSectionIds(chapterNumber) {
 }
 
 function shouldCheckSection(section) {
+  if (isFreePlan()) {
+    return currentChapter === 1 && freeAllowedSectionIds.has(section.section_id);
+  }
   const recommended = recommendedSectionIds(currentChapter);
   if (recommended) return recommended.has(section.section_id);
   return Boolean(section.default_selected);
@@ -154,10 +184,11 @@ function renderSections() {
   for (const section of currentSections) {
     const div = document.createElement("div");
     div.className = "section-item";
+    const freeLocked = isFreePlan() && !(currentChapter === 1 && freeAllowedSectionIds.has(section.section_id));
     div.innerHTML = `
       <label>
-        <input type="checkbox" name="section" value="${section.section_id}" ${shouldCheckSection(section) ? "checked" : ""} />
-        ${section.section_title}
+        <input type="checkbox" name="section" value="${section.section_id}" ${shouldCheckSection(section) ? "checked" : ""} ${freeLocked ? "disabled" : ""} />
+        ${section.section_title} ${freeLocked ? '<span class="locked-label">Upgrade</span>' : ''}
       </label>
       <small>${section.rules[0] || ""}</small>
     `;
@@ -194,6 +225,7 @@ function collectProfile() {
     level: selectedLevel,
     academic_level_guidance: levelDepthGuidance[selectedLevel] || "",
     reference_currency_rule: "Aim for at least 70% of substantive references from the last five years. Where current references do not exist for a specific issue, use the most relevant credible available sources, including foundational theories, classic models, and essential older studies.",
+    access_plan: accessPlan(),
     thesis_format: $("thesis_format") ? $("thesis_format").value : "Standard five-chapter thesis/dissertation",
     format_notes: $("format_notes") ? $("format_notes").value.trim() : "",
     research_area: $("research_area").value.trim(),
@@ -236,12 +268,22 @@ async function createProject() {
 
 async function generateDraft() {
   if (!currentProjectId) await createProject();
+  if (isFreePlan() && (currentChapter !== 1 || selectedSectionIds().some(id => !freeAllowedSectionIds.has(id)))) {
+    $("draftStatus").textContent = "Free Starter allows drafting only the first five sections of Chapter One.";
+    return;
+  }
+  if (isFreePlan() && $("revisionMode")?.checked) {
+    $("draftStatus").textContent = "Revised-version upload is available on paid plans.";
+    return;
+  }
   const payload = {
     chapter_number: currentChapter,
     selected_section_ids: selectedSectionIds(),
     answers: collectAnswers(),
     extra_instructions: $("extraInstructions").value.trim(),
-    use_ai: $("useAi") ? $("useAi").checked : true
+    use_ai: $("useAi") ? $("useAi").checked : true,
+    revision_mode: $("revisionMode") ? $("revisionMode").checked : false,
+    revision_instructions: $("revisionInstructions") ? $("revisionInstructions").value.trim() : ""
   };
   $("draftStatus").textContent = "Generating draft...";
   const result = await api(`/api/projects/${currentProjectId}/draft`, { method: "POST", body: JSON.stringify(payload) });
@@ -249,6 +291,37 @@ async function generateDraft() {
   renderDraftPreview(result.draft);
   $("draftStatus").textContent = "Draft generated based on the information provided.";
   $("downloadDraftBtn").disabled = false;
+}
+
+async function uploadChapterForRevision() {
+  if (!currentProjectId) await createProject();
+  if (isFreePlan()) {
+    $("revisionStatus").textContent = "Revised-version upload is available on paid plans.";
+    return;
+  }
+  const input = $("revisionFile");
+  if (!input || !input.files || input.files.length === 0) {
+    $("revisionStatus").textContent = "Please select the existing chapter file first.";
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("file", input.files[0]);
+  formData.append("chapter_number", String(currentChapter));
+
+  $("revisionStatus").textContent = "Uploading and extracting the existing chapter...";
+  const response = await fetch(`/api/projects/${currentProjectId}/upload-chapter`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || response.statusText);
+  }
+  const result = await response.json();
+  $("revisionStatus").textContent = `Uploaded ${result.filename}. Extracted ${result.characters_extracted} characters for Chapter ${result.chapter_number}.`;
+  $("revisionPreview").textContent = result.preview || "No preview available.";
+  if ($("revisionMode")) $("revisionMode").checked = true;
 }
 
 async function uploadResults() {
@@ -338,6 +411,9 @@ if ($("draftOutput")) {
 
 $("createProjectBtn").addEventListener("click", () => createProject().catch(err => $("projectStatus").textContent = err.message));
 $("draftBtn").addEventListener("click", () => generateDraft().catch(err => $("draftStatus").textContent = err.message));
+if ($("uploadRevisionBtn")) {
+  $("uploadRevisionBtn").addEventListener("click", () => uploadChapterForRevision().catch(err => $("revisionStatus").textContent = err.message));
+}
 $("uploadResultsBtn").addEventListener("click", () => uploadResults().catch(err => $("uploadStatus").textContent = err.message));
 $("checkBtn").addEventListener("click", () => runCheck().catch(err => $("draftStatus").textContent = err.message));
 $("downloadDraftBtn").addEventListener("click", () => download(`/api/projects/${currentProjectId}/export/chapter/${currentChapter}`));
@@ -346,6 +422,7 @@ if ($("level")) {
   $("level").addEventListener("change", updateLevelHint);
   updateLevelHint();
 }
+updateFreePlanNotice();
 if ($("data_type")) {
   $("data_type").addEventListener("change", () => {
     if (template) renderSections();
