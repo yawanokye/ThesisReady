@@ -13,74 +13,6 @@ const levelDepthGuidance = {
   "PhD": "Use doctoral depth: original contribution, deep theoretical engagement, advanced critical synthesis, rigorous methodological defence, and publication-quality academic argument."
 };
 
-const freeAllowedSectionIds = new Set([
-  "ch1_background",
-  "ch1_problem",
-  "ch1_purpose",
-  "ch1_objectives",
-  "ch1_questions"
-]);
-
-function accessPlan() {
-  return localStorage.getItem("projectready_access_plan") || "Free Starter";
-}
-
-function isFreePlan() {
-  return accessPlan().toLowerCase().includes("free");
-}
-
-function updateFreePlanNotice() {
-  const notice = $("planNotice");
-  if (!notice) return;
-  if (isFreePlan()) {
-    notice.textContent = "Free Starter allows drafting only the first five Chapter One sections. Paid plans unlock full chapters, revisions, compliance checks, and exports.";
-    notice.hidden = false;
-  } else {
-    notice.textContent = `Active plan: ${accessPlan()}`;
-    notice.hidden = false;
-  }
-}
-
-function applyRegistrationProfile() {
-  let profile = null;
-  try {
-    profile = JSON.parse(localStorage.getItem("projectready_registration_profile") || "null");
-  } catch (error) {
-    profile = null;
-  }
-  if (!profile) return;
-
-  const mapping = {
-    title: "title",
-    level: "level",
-    thesis_format: "thesis_format",
-    data_type: "data_type",
-    research_area: "research_area",
-    study_context: "study_context",
-    objectives: "objectives",
-    format_notes: "format_notes",
-    citation_evidence_notes: "citation_evidence_notes"
-  };
-
-  for (const [key, elementId] of Object.entries(mapping)) {
-    const element = $(elementId);
-    if (element && profile[key]) {
-      element.value = profile[key];
-    }
-  }
-
-  const notes = [];
-  if (profile.institution) notes.push(`Institution: ${profile.institution}`);
-  if (profile.department) notes.push(`Department: ${profile.department}`);
-  if (profile.programme) notes.push(`Programme: ${profile.programme}`);
-  if (profile.citation_style) notes.push(`Preferred citation style: ${profile.citation_style}`);
-  const formatNotes = $("format_notes");
-  if (formatNotes && notes.length) {
-    const existing = formatNotes.value.trim();
-    formatNotes.value = existing ? `${existing}\n${notes.join("\n")}` : notes.join("\n");
-  }
-}
-
 function updateLevelHint() {
   // Keep the level-depth guidance internal. The selected level still guides the AI prompt,
   // but the explanatory text is not displayed to users.
@@ -135,46 +67,6 @@ function getSections(chapter) {
   return chapter.section_groups.flatMap(group => group.sections);
 }
 
-function methodStream() {
-  return ($("data_type")?.value || "Primary survey data").toLowerCase();
-}
-
-function recommendedSectionIds(chapterNumber) {
-  const stream = methodStream();
-  const isSecondary = stream.includes("secondary") || stream.includes("econometric") || stream.includes("time-series") || stream.includes("time series") || stream.includes("panel");
-  const isQualitative = stream.includes("qualitative");
-
-  if (isSecondary) {
-    const recommendations = {
-      2: ["ch2_intro", "ch2_conceptual", "ch2_theoretical", "ch2_empirical_objectives", "ch2_secondary_stylised", "ch2_econometric_literature", "ch2_framework", "ch2_gap_table", "ch2_summary"],
-      3: ["ch3_intro", "ch3_philosophy", "ch3_design", "ch3_secondary_data_sources", "ch3_variable_construction", "ch3_model_specification", "ch3_estimation_technique", "ch3_econometric_diagnostics", "ch3_analysis", "ch3_reproducibility", "ch3_ethics", "ch3_summary"],
-      4: ["ch4_intro", "ch4_uploaded_results", "ch4_descriptive_trends", "ch4_diagnostic_results", "ch4_econometric_results", "ch4_policy_economic_interpretation", "ch4_discussion", "ch4_summary"],
-      5: ["ch5_intro", "ch5_summary_findings", "ch5_conclusions", "ch5_recommendations", "ch5_policy_implications", "ch5_limitations", "ch5_future"]
-    };
-    return recommendations[chapterNumber] ? new Set(recommendations[chapterNumber]) : null;
-  }
-
-  if (isQualitative) {
-    const recommendations = {
-      2: ["ch2_intro", "ch2_conceptual", "ch2_theoretical", "ch2_empirical_objectives", "ch2_variable_review", "ch2_framework", "ch2_summary"],
-      3: ["ch3_intro", "ch3_philosophy", "ch3_design", "ch3_setting_population", "ch3_sampling", "ch3_instrument", "ch3_collection", "ch3_analysis", "ch3_ethics", "ch3_summary"],
-      4: ["ch4_intro", "ch4_uploaded_results", "ch4_results_objectives", "ch4_discussion", "ch4_summary"]
-    };
-    return recommendations[chapterNumber] ? new Set(recommendations[chapterNumber]) : null;
-  }
-
-  return null;
-}
-
-function shouldCheckSection(section) {
-  if (isFreePlan()) {
-    return currentChapter === 1 && freeAllowedSectionIds.has(section.section_id);
-  }
-  const recommended = recommendedSectionIds(currentChapter);
-  if (recommended) return recommended.has(section.section_id);
-  return Boolean(section.default_selected);
-}
-
 function renderSections() {
   const chapter = getChapter($("chapterSelect").value);
   currentChapter = chapter.chapter_number;
@@ -184,11 +76,10 @@ function renderSections() {
   for (const section of currentSections) {
     const div = document.createElement("div");
     div.className = "section-item";
-    const freeLocked = isFreePlan() && !(currentChapter === 1 && freeAllowedSectionIds.has(section.section_id));
     div.innerHTML = `
       <label>
-        <input type="checkbox" name="section" value="${section.section_id}" ${shouldCheckSection(section) ? "checked" : ""} ${freeLocked ? "disabled" : ""} />
-        ${section.section_title} ${freeLocked ? '<span class="locked-label">Upgrade</span>' : ''}
+        <input type="checkbox" name="section" value="${section.section_id}" ${section.default_selected ? "checked" : ""} />
+        ${section.section_title}
       </label>
       <small>${section.rules[0] || ""}</small>
     `;
@@ -225,15 +116,11 @@ function collectProfile() {
     level: selectedLevel,
     academic_level_guidance: levelDepthGuidance[selectedLevel] || "",
     reference_currency_rule: "Aim for at least 70% of substantive references from the last five years. Where current references do not exist for a specific issue, use the most relevant credible available sources, including foundational theories, classic models, and essential older studies.",
-    access_plan: accessPlan(),
-    thesis_format: $("thesis_format") ? $("thesis_format").value : "Standard five-chapter thesis/dissertation",
-    format_notes: $("format_notes") ? $("format_notes").value.trim() : "",
     research_area: $("research_area").value.trim(),
     study_context: $("study_context").value.trim(),
     citation_evidence_notes: $("citation_evidence_notes") ? $("citation_evidence_notes").value.trim() : "",
     research_approach: $("research_approach").value,
-    data_type: $("data_type") ? $("data_type").value : "Primary survey data",
-    method_stream: $("data_type") ? $("data_type").value : "Primary survey data",
+    data_type: "Primary data",
     expected_chapters: 5,
     objectives: lines($("objectives").value),
     research_questions: [],
@@ -268,22 +155,12 @@ async function createProject() {
 
 async function generateDraft() {
   if (!currentProjectId) await createProject();
-  if (isFreePlan() && (currentChapter !== 1 || selectedSectionIds().some(id => !freeAllowedSectionIds.has(id)))) {
-    $("draftStatus").textContent = "Free Starter allows drafting only the first five sections of Chapter One.";
-    return;
-  }
-  if (isFreePlan() && $("revisionMode")?.checked) {
-    $("draftStatus").textContent = "Revised-version upload is available on paid plans.";
-    return;
-  }
   const payload = {
     chapter_number: currentChapter,
     selected_section_ids: selectedSectionIds(),
     answers: collectAnswers(),
     extra_instructions: $("extraInstructions").value.trim(),
-    use_ai: $("useAi") ? $("useAi").checked : true,
-    revision_mode: $("revisionMode") ? $("revisionMode").checked : false,
-    revision_instructions: $("revisionInstructions") ? $("revisionInstructions").value.trim() : ""
+    use_ai: $("useAi") ? $("useAi").checked : true
   };
   $("draftStatus").textContent = "Generating draft...";
   const result = await api(`/api/projects/${currentProjectId}/draft`, { method: "POST", body: JSON.stringify(payload) });
@@ -291,37 +168,6 @@ async function generateDraft() {
   renderDraftPreview(result.draft);
   $("draftStatus").textContent = "Draft generated based on the information provided.";
   $("downloadDraftBtn").disabled = false;
-}
-
-async function uploadChapterForRevision() {
-  if (!currentProjectId) await createProject();
-  if (isFreePlan()) {
-    $("revisionStatus").textContent = "Revised-version upload is available on paid plans.";
-    return;
-  }
-  const input = $("revisionFile");
-  if (!input || !input.files || input.files.length === 0) {
-    $("revisionStatus").textContent = "Please select the existing chapter file first.";
-    return;
-  }
-
-  const formData = new FormData();
-  formData.append("file", input.files[0]);
-  formData.append("chapter_number", String(currentChapter));
-
-  $("revisionStatus").textContent = "Uploading and extracting the existing chapter...";
-  const response = await fetch(`/api/projects/${currentProjectId}/upload-chapter`, {
-    method: "POST",
-    body: formData,
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || response.statusText);
-  }
-  const result = await response.json();
-  $("revisionStatus").textContent = `Uploaded ${result.filename}. Extracted ${result.characters_extracted} characters for Chapter ${result.chapter_number}.`;
-  $("revisionPreview").textContent = result.preview || "No preview available.";
-  if ($("revisionMode")) $("revisionMode").checked = true;
 }
 
 async function uploadResults() {
@@ -348,6 +194,53 @@ async function uploadResults() {
   const result = await response.json();
   $("uploadStatus").textContent = `Uploaded ${result.filename}. Extracted ${result.characters_extracted} characters for Chapter ${result.chapter_number}.`;
   $("uploadPreview").textContent = result.preview || "No preview available.";
+}
+
+
+async function findSources() {
+  if (!currentProjectId) await createProject();
+  const payload = {
+    query: $("sourceSearchQuery") ? $("sourceSearchQuery").value.trim() : "",
+    max_results: $("sourceMaxResults") ? Number($("sourceMaxResults").value) : 12,
+    include_older_foundational: $("includeOlderFoundational") ? $("includeOlderFoundational").checked : true
+  };
+  $("sourceStatus").textContent = "Searching scholarly sources and attaching them to the project...";
+  const result = await api(`/api/projects/${currentProjectId}/find-sources`, { method: "POST", body: JSON.stringify(payload) });
+  renderSources(result);
+  const errors = (result.provider_errors || []).length;
+  $("sourceStatus").textContent = `Attached ${result.count || 0} sources to the project. ${errors ? errors + " provider(s) could not be reached." : ""}`;
+}
+
+function renderSources(result) {
+  const box = $("sourceResults");
+  if (!box) return;
+  const sources = result.sources || [];
+  if (!sources.length) {
+    box.innerHTML = `<p class="hint">No source records were found. Refine the search terms and try again.</p>`;
+    return;
+  }
+  const meta = `
+    <div class="source-meta">
+      <strong>Search query:</strong> ${escapeHtml(result.query || "")}<br />
+      <strong>Recent-reference window:</strong> ${escapeHtml(result.recent_reference_window || "")}<br />
+      <strong>Databases searched:</strong> ${escapeHtml((result.databases || []).join(", "))}
+    </div>`;
+  const cards = sources.map((src, idx) => {
+    const authors = Array.isArray(src.authors) ? src.authors.join(", ") : (src.authors || "");
+    const doi = src.doi ? ` DOI: ${escapeHtml(src.doi)}` : "";
+    const url = src.url ? `<a href="${escapeHtml(src.url)}" target="_blank" rel="noopener">Open source record</a>` : "";
+    const abstract = src.abstract ? `<p>${escapeHtml(src.abstract)}</p>` : `<p class="hint">No abstract was returned by the metadata provider.</p>`;
+    return `
+      <div class="source-card">
+        <div class="source-title">${idx + 1}. ${escapeHtml(src.title || "Untitled source")}</div>
+        <div class="source-sub">${escapeHtml(authors)} ${src.year ? "(" + escapeHtml(src.year) + ")" : ""}</div>
+        <div class="source-sub">${escapeHtml(src.source || src.database || "")} ${doi}</div>
+        ${abstract}
+        <div class="source-hint"><strong>Citation hint:</strong> ${escapeHtml(src.apa_hint || "")}</div>
+        <div class="source-link">${url}</div>
+      </div>`;
+  }).join("");
+  box.innerHTML = meta + cards;
 }
 
 async function runCheck() {
@@ -411,10 +304,10 @@ if ($("draftOutput")) {
 
 $("createProjectBtn").addEventListener("click", () => createProject().catch(err => $("projectStatus").textContent = err.message));
 $("draftBtn").addEventListener("click", () => generateDraft().catch(err => $("draftStatus").textContent = err.message));
-if ($("uploadRevisionBtn")) {
-  $("uploadRevisionBtn").addEventListener("click", () => uploadChapterForRevision().catch(err => $("revisionStatus").textContent = err.message));
-}
 $("uploadResultsBtn").addEventListener("click", () => uploadResults().catch(err => $("uploadStatus").textContent = err.message));
+if ($("findSourcesBtn")) {
+  $("findSourcesBtn").addEventListener("click", () => findSources().catch(err => $("sourceStatus").textContent = err.message));
+}
 $("checkBtn").addEventListener("click", () => runCheck().catch(err => $("draftStatus").textContent = err.message));
 $("downloadDraftBtn").addEventListener("click", () => download(`/api/projects/${currentProjectId}/export/chapter/${currentChapter}`));
 $("downloadCheckBtn").addEventListener("click", () => download(`/api/projects/${currentProjectId}/export/check/${currentChapter}`));
@@ -422,14 +315,6 @@ if ($("level")) {
   $("level").addEventListener("change", updateLevelHint);
   updateLevelHint();
 }
-updateFreePlanNotice();
-if ($("data_type")) {
-  $("data_type").addEventListener("change", () => {
-    if (template) renderSections();
-  });
-}
-
-applyRegistrationProfile();
 
 loadTemplate().catch(err => {
   document.body.innerHTML = `<pre>Failed to load app: ${escapeHtml(err.message)}</pre>`;
