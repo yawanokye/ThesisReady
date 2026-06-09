@@ -2,6 +2,8 @@ let template = null;
 let currentProjectId = null;
 let currentChapter = 1;
 let currentSections = [];
+let latestSourceSearchResult = null;
+let accumulatedSourceBank = [];
 
 const $ = (id) => document.getElementById(id);
 
@@ -116,17 +118,19 @@ function collectProfile() {
     level: selectedLevel,
     academic_level_guidance: levelDepthGuidance[selectedLevel] || "",
     reference_currency_rule: "Aim for at least 70% of substantive references from the last five years. Where current references do not exist for a specific issue, use the most relevant credible available sources, including foundational theories, classic models, and essential older studies.",
+    thesis_format: $("thesis_format") ? $("thesis_format").value : "Standard five-chapter thesis/dissertation",
+    format_notes: $("format_notes") ? $("format_notes").value.trim() : "",
     research_area: $("research_area").value.trim(),
     study_context: $("study_context").value.trim(),
     citation_evidence_notes: $("citation_evidence_notes") ? $("citation_evidence_notes").value.trim() : "",
     research_approach: $("research_approach").value,
-    data_type: "Primary data",
+    data_type: $("data_type") ? $("data_type").value : "Primary data",
     expected_chapters: 5,
     objectives: lines($("objectives").value),
     research_questions: [],
     hypotheses: [],
     variables: {},
-    notes: ""
+    notes: $("format_notes") ? $("format_notes").value.trim() : ""
   };
 }
 
@@ -139,6 +143,42 @@ function collectAnswers() {
     if (area.value.trim()) answers[section][question] = area.value.trim();
   });
   return answers;
+}
+
+
+function sourceKey(src) {
+  const doi = String(src?.doi || "").trim().toLowerCase();
+  if (doi) return `doi:${doi}`;
+  return `title:${String(src?.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 100)}`;
+}
+
+function mergeSourceBank(existing, incoming, limit = 60) {
+  const merged = [];
+  const seen = new Set();
+  for (const src of [...(existing || []), ...(incoming || [])]) {
+    if (!src || typeof src !== "object") continue;
+    const key = sourceKey(src);
+    if (!key || key === "title:" || seen.has(key)) continue;
+    seen.add(key);
+    merged.push(src);
+    if (merged.length >= limit) break;
+  }
+  return merged;
+}
+
+function currentSourcePayload() {
+  const sources = mergeSourceBank(accumulatedSourceBank, latestSourceSearchResult?.sources || []);
+  if (!sources.length) return {};
+  return {
+    source_bank: sources,
+    retrieved_sources: {
+      ...(latestSourceSearchResult || {}),
+      sources: latestSourceSearchResult?.sources || sources,
+      source_bank_count: sources.length,
+      frontend_attached: true
+    },
+    source_search_terms: latestSourceSearchResult?.query || ($("sourceSearchQuery") ? $("sourceSearchQuery").value.trim() : "")
+  };
 }
 
 async function createProject() {
@@ -160,7 +200,8 @@ async function generateDraft() {
     selected_section_ids: selectedSectionIds(),
     answers: collectAnswers(),
     extra_instructions: $("extraInstructions").value.trim(),
-    use_ai: $("useAi") ? $("useAi").checked : true
+    use_ai: $("useAi") ? $("useAi").checked : true,
+    ...currentSourcePayload()
   };
   $("draftStatus").textContent = "Generating draft...";
   const result = await api(`/api/projects/${currentProjectId}/draft`, { method: "POST", body: JSON.stringify(payload) });
@@ -206,9 +247,11 @@ async function findSources() {
   };
   $("sourceStatus").textContent = "Searching scholarly sources and attaching them to the project...";
   const result = await api(`/api/projects/${currentProjectId}/find-sources`, { method: "POST", body: JSON.stringify(payload) });
+  latestSourceSearchResult = result;
+  accumulatedSourceBank = mergeSourceBank(accumulatedSourceBank, result.source_bank || result.sources || []);
   renderSources(result);
   const errors = (result.provider_errors || []).length;
-  $("sourceStatus").textContent = `Attached ${result.count || 0} sources to the project. ${errors ? errors + " provider(s) could not be reached." : ""}`;
+  $("sourceStatus").textContent = `Attached ${(result.source_bank_count || result.count || 0)} sources to the project. ${errors ? errors + " provider(s) could not be reached." : ""}`;
 }
 
 function renderSources(result) {
