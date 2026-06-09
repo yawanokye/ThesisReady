@@ -12,15 +12,11 @@ class ProjectCreate(BaseModel):
     level: str = "Bachelors"
     academic_level_guidance: str = ""
     reference_currency_rule: str = ""
-    access_plan: str = "Free Starter"
-    thesis_format: str = "Standard five-chapter thesis/dissertation"
-    format_notes: str = ""
     research_area: str = ""
     study_context: str = ""
     citation_evidence_notes: str = ""
     research_approach: str = "Quantitative"
-    data_type: str = "Primary survey data"
-    method_stream: str = "Primary survey data"
+    data_type: str = "Primary data"
     expected_chapters: int = 5
     variables: dict[str, Any] = Field(default_factory=dict)
     objectives: list[str] = Field(default_factory=list)
@@ -40,8 +36,6 @@ class DraftRequest(BaseModel):
     answers: dict[str, Any] = Field(default_factory=dict)
     extra_instructions: str = ""
     use_ai: bool = True
-    revision_mode: bool = False
-    revision_instructions: str = ""
 
 
 class DraftResponse(BaseModel):
@@ -70,3 +64,9 @@ class ComplianceResponse(BaseModel):
     chapter_number: int
     score_percent: float
     items: list[ComplianceItem]
+
+class SourceSearchRequest(BaseModel):
+    query: str = ""
+    max_results: int = 12
+    include_older_foundational: bool = True
+
