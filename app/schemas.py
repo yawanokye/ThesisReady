@@ -51,6 +51,9 @@ class DraftRequest(BaseModel):
     existing_chapter_text: str = ""
     uploaded_revision_text: str = ""
     revision_filename: str = ""
+    retrieved_sources: dict[str, Any] = Field(default_factory=dict)
+    source_bank: list[dict[str, Any]] = Field(default_factory=list)
+    source_search_terms: str = ""
 
 
 class DraftResponse(BaseModel):
