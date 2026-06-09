@@ -4,7 +4,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from app.database import init_db
@@ -40,8 +40,30 @@ def on_startup() -> None:
 
 
 @app.get("/")
+@app.get("/index.html")
 def home() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/workspace")
+@app.get("/workspace/")
+@app.get("/workspace.html")
+def workspace() -> FileResponse:
+    return FileResponse(STATIC_DIR / "workspace.html")
+
+
+@app.get("/register")
+def register_redirect() -> FileResponse:
+    # Registration is not yet implemented in the MVP. Send users to the workspace for now.
+    return FileResponse(STATIC_DIR / "workspace.html")
+
+
+@app.get("/favicon.ico")
+def favicon() -> Response:
+    favicon_path = STATIC_DIR / "favicon.ico"
+    if favicon_path.exists():
+        return FileResponse(favicon_path)
+    return Response(status_code=204)
 
 
 @app.get("/health")
