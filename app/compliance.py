@@ -84,6 +84,19 @@ def check_chapter(chapter_number: int, selected_section_ids: list[str], draft: s
             }
         )
 
+
+    reference_result = _check_references_section(paragraphs)
+    items.append(
+        {
+            "section_id": "chapter_references",
+            "section_title": "Chapter References",
+            "requirement": "Chapter should include a References section containing sources actually cited in the chapter.",
+            "status": reference_result["status"],
+            "evidence": reference_result["evidence"],
+            "suggested_action": reference_result["suggested_action"],
+        }
+    )
+
     score = _score(items)
     return {"chapter_number": chapter_number, "score_percent": score, "items": items}
 
@@ -222,3 +235,26 @@ def _snippet(text: str, max_len: int = 180) -> str:
 
 def _normalise(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+
+
+def _check_references_section(paragraphs: list[str]) -> dict[str, str]:
+    text = "\n\n".join(paragraphs or [])
+    match = re.search(r"(?im)^#{0,3}\s*(references|reference list)\b", text)
+    if not match:
+        return {
+            "status": "Missing",
+            "evidence": "No References section was found at the end of the chapter.",
+            "suggested_action": "Add a References section containing only sources cited in the chapter body.",
+        }
+    refs_text = text[match.end():].strip()
+    if _has_intext_citation(refs_text) or re.search(r"\b(19|20)\d{2}\b", refs_text):
+        return {
+            "status": "Passed",
+            "evidence": "References section found with apparent author-year entries.",
+            "suggested_action": "None",
+        }
+    return {
+        "status": "Weak",
+        "evidence": "References heading was found, but the entries appear incomplete or missing.",
+        "suggested_action": "Add complete reference entries for sources actually cited in the chapter.",
+    }
