@@ -119,13 +119,99 @@ def _uploaded_results_for_chapter(profile: dict[str, Any], chapter_number: int) 
     return result or {}
 
 
-def _retrieved_sources_for_prompt(profile: dict[str, Any]) -> dict[str, Any]:
+
+def _normalise_author_for_citation(author: str) -> str:
+    author = str(author or "").strip()
+    if not author:
+        return "[Author]"
+    parts = author.replace(",", " ").split()
+    return parts[-1] if parts else author
+
+
+def _citation_label_for_source(src: dict[str, Any]) -> str:
+    authors = src.get("authors") or []
+    if isinstance(authors, str):
+        authors = [authors]
+    year = str(src.get("year") or "n.d.").strip() or "n.d."
+    cleaned = [_normalise_author_for_citation(a) for a in authors if str(a).strip()]
+    if not cleaned:
+        return f"([Author], {year})"
+    if len(cleaned) == 1:
+        return f"({cleaned[0]}, {year})"
+    if len(cleaned) == 2:
+        return f"({cleaned[0]} & {cleaned[1]}, {year})"
+    return f"({cleaned[0]} et al., {year})"
+
+
+def _source_key(src: dict[str, Any]) -> str:
+    doi = str(src.get("doi") or "").strip().lower()
+    if doi:
+        return "doi:" + doi
+    title = re.sub(r"[^a-z0-9]+", "", str(src.get("title") or "").lower())[:100]
+    return "title:" + title
+
+
+def _merged_source_bank(profile: dict[str, Any], limit: int = 24) -> list[dict[str, Any]]:
+    """Merge latest retrieved sources and accumulated source bank without replacing user evidence."""
+    collected: list[dict[str, Any]] = []
+    for container_key in ["source_bank", "attached_sources"]:
+        value = profile.get(container_key) or []
+        if isinstance(value, list):
+            collected.extend([v for v in value if isinstance(v, dict)])
+
+    retrieved = profile.get("retrieved_sources") or {}
+    value = retrieved.get("sources") or []
+    if isinstance(value, list):
+        collected.extend([v for v in value if isinstance(v, dict)])
+
+    seen: set[str] = set()
+    merged: list[dict[str, Any]] = []
+    for idx, src in enumerate(collected, start=1):
+        key = _source_key(src)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        item = dict(src)
+        item["citation_key"] = f"SRC{len(merged) + 1}"
+        item["in_text_citation"] = _citation_label_for_source(item)
+        if not item.get("apa_hint"):
+            title = item.get("title", "[Title]")
+            authors = item.get("authors") or ["[Author]"]
+            if isinstance(authors, str):
+                authors = [authors]
+            year = item.get("year") or "n.d."
+            source = item.get("source") or ""
+            doi = item.get("doi") or ""
+            doi_text = f" https://doi.org/{doi}" if doi else ""
+            item["apa_hint"] = f"{', '.join(map(str, authors))} ({year}). {title}. {source}.{doi_text}".strip()
+        merged.append(item)
+        if len(merged) >= limit:
+            break
+    return merged
+
+
+def _source_attention_target(chapter_number: int, source_count: int) -> int:
+    if source_count <= 0:
+        return 0
+    if chapter_number == 2:
+        return min(source_count, 10)
+    if chapter_number == 1:
+        return min(source_count, 6)
+    if chapter_number == 3:
+        return min(source_count, 4)
+    if chapter_number == 4:
+        return min(source_count, 5)
+    return min(source_count, 3)
+
+
+def _retrieved_sources_for_prompt(profile: dict[str, Any], chapter_number: int | None = None) -> dict[str, Any]:
     """Return source-search results in a compact prompt-friendly form."""
     retrieved = profile.get("retrieved_sources") or {}
-    sources = retrieved.get("sources") or []
+    source_bank = _merged_source_bank(profile)
     compact_sources = []
-    for src in sources[:18]:
+    for src in source_bank:
         compact_sources.append({
+            "citation_key": src.get("citation_key", ""),
             "title": src.get("title", ""),
             "authors": src.get("authors", []),
             "year": src.get("year", ""),
@@ -134,25 +220,32 @@ def _retrieved_sources_for_prompt(profile: dict[str, Any]) -> dict[str, Any]:
             "url": src.get("url", ""),
             "abstract": src.get("abstract", ""),
             "database": src.get("database", ""),
-            "apa_hint": src.get("apa_hint", ""),
+            "in_text_citation": src.get("in_text_citation", ""),
+            "reference_entry_hint": src.get("apa_hint", ""),
         })
+    target = _source_attention_target(int(chapter_number or 0), len(compact_sources))
     return {
         "query": retrieved.get("query", ""),
         "searched_at": retrieved.get("searched_at", ""),
         "recent_reference_window": retrieved.get("recent_reference_window", ""),
         "databases": retrieved.get("databases", []),
         "usage_note": retrieved.get("usage_note", ""),
+        "source_count": len(compact_sources),
+        "recommended_relevant_sources_to_consider": target,
         "sources": compact_sources,
         "source_use_rules": [
-            "Use retrieved_sources as the preferred source pool for in-text citations and literature-based claims.",
-            "Cite only sources that are directly relevant to the claim being made.",
-            "Do not cite a retrieved source merely because it appears in the list; the source must support the specific sentence or paragraph.",
-            "Where retrieved sources are insufficient for a claim, use a bracketed placeholder rather than inventing a citation.",
-            "When citing a retrieved source, use author-year in-text citation format based on its author and year metadata.",
+            "Use retrieved_sources as an additional evidence bank alongside the student's project profile, pasted verified evidence, uploaded files, and placeholders.",
+            "Do not replace student-supplied evidence with search results; enrich the existing argument only where a retrieved source is directly relevant.",
+            f"Use the recommended_relevant_sources_to_consider value ({target}) as a soft guide for reviewing the source bank, not as a compulsory citation quota.",
+            "Apply a relevance gate before every citation: cite a retrieved source only when its title, abstract, method, context, theory, or finding directly supports the sentence or paragraph being written.",
+            "Do not cite irrelevant, weakly related, or merely keyword-matching sources. It is better to use a placeholder than to cite an unsuitable source.",
+            "Do not list retrieved sources in the References section unless they were actually cited in the chapter body.",
+            "Use the supplied in_text_citation value for author-year citations where possible.",
+            "Use the supplied reference_entry_hint when building the References section for sources actually cited.",
+            "Where retrieved sources are insufficient for a claim, use a bracketed placeholder rather than inventing or forcing a citation.",
             "Do not invent page numbers, quotations, findings, or reference-list details not present in the metadata or supplied by the student.",
         ],
     }
-
 
 def _human_scholarly_style_requirements() -> list[str]:
     """Return high-standard academic writing rules for natural, polished chapter drafting."""
@@ -267,7 +360,7 @@ def build_drafting_prompt(
         "citation_and_evidence_requirements": _citation_and_evidence_requirements(chapter_number),
         "human_scholarly_style_requirements": _human_scholarly_style_requirements(),
         "uploaded_results_for_this_chapter": _uploaded_results_for_chapter(profile, chapter_number),
-        "retrieved_sources": _retrieved_sources_for_prompt(profile),
+        "retrieved_sources": _retrieved_sources_for_prompt(profile, chapter_number),
         "selected_sections": section_payload,
         "extra_instructions": extra_instructions,
         "chapter_specific_requirements": _chapter_specific_requirements(chapter_number),
@@ -279,7 +372,10 @@ def build_drafting_prompt(
             "Do not write sentences that say the work, chapter, section, depth, or argument is designed to meet the selected level of the project, thesis, or dissertation.",
             "Use the reference_currency_requirements: aim for at least 70% of substantive references within the stated recent-reference window, but where current sources do not exist, use the strongest credible available sources instead.",
             "Use the citation_and_evidence_requirements: include relevant, accurate in-text citations across all substantive write-up sections, especially literature, methodology justification, discussion, and problem framing.",
-            "Use retrieved_sources as the preferred evidence base where the user has run the source finder. Cite only sources that are relevant to the claim, and do not cite a source just because it was retrieved.",
+            "Use retrieved_sources as an additional evidence bank where the user has run the source finder. Do not replace the project profile, user-provided evidence, uploaded files, or placeholders; enrich the draft with relevant retrieved sources.",
+            "When retrieved_sources contains relevant records, cite several of them directly in the body of the chapter using author-year in-text citations. Do not leave all retrieved sources unused.",
+            "Every chapter must end with a References section that includes complete reference entries for every source cited in the chapter, using available reference_entry_hint/apa_hint details from the source bank and user-supplied evidence notes.",
+            "Increase in-text citation density: Chapter Two should be citation-rich; Chapter One should cite evidence for context, problem and gaps; Chapter Three should cite methodological authorities where appropriate; Chapter Four discussion should cite theory and prior studies.",
             "If retrieved_sources do not provide enough support for a required claim, insert a bracketed placeholder such as [insert verified source for this claim] rather than guessing.",
             "For Chapter One, make the Background and Statement of the Problem factual and evidence-led. Use relevant accurate statistics, policy evidence, institutional evidence, or empirical findings to support the problem where supplied or confidently known.",
             "Do not fabricate citations, statistics, or reference-list entries. Use verified/supplied citations and facts where available. Where a required source, statistic, or fact is not supplied or cannot be stated confidently, insert a bracketed placeholder rather than inventing it.",
@@ -354,6 +450,103 @@ def _polish_generated_text(text: str) -> str:
     polished = re.sub(r"\n{3,}", "\n\n", polished)
     return polished.strip()
 
+
+
+def _source_usage_count(text: str, sources: list[dict[str, Any]]) -> int:
+    """Count how many retrieved source-bank records appear to be cited in the chapter body."""
+    if not text or not sources:
+        return 0
+    body = text
+    refs_match = re.search(r"(?im)^#{0,3}\s*references\b", text)
+    if refs_match:
+        body = text[: refs_match.start()]
+    used = 0
+    lower_body = body.lower()
+    for src in sources:
+        year = str(src.get("year") or "").strip()
+        authors = src.get("authors") or []
+        if isinstance(authors, str):
+            authors = [authors]
+        family_names = [_normalise_author_for_citation(a).lower() for a in authors if str(a).strip()]
+        family_names = [f for f in family_names if f and f != "[author]"]
+        if not family_names:
+            continue
+        first = re.escape(family_names[0])
+        year_ok = bool(year and year != "n.d." and re.search(re.escape(str(year)), body))
+        author_ok = bool(re.search(first, lower_body))
+        if author_ok and (year_ok or len(family_names) == 1):
+            used += 1
+    return used
+
+
+def _source_reference_hints(sources: list[dict[str, Any]]) -> str:
+    lines = []
+    for src in sources:
+        hint = src.get("apa_hint") or src.get("reference_entry_hint") or ""
+        citation = _citation_label_for_source(src)
+        title = src.get("title", "")
+        if hint:
+            lines.append(f"- {src.get('citation_key', '')} {citation}: {hint}")
+        elif title:
+            lines.append(f"- {src.get('citation_key', '')} {citation}: {title}")
+    return "\n".join(lines)
+
+
+def _review_source_integration(
+    client: Any,
+    model: str,
+    instructions: str,
+    original_prompt: str,
+    draft: str,
+    profile: dict[str, Any],
+    chapter_number: int,
+) -> str:
+    """Ask the model once to revise the draft if retrieved sources were attached but not used."""
+    source_bank = _merged_source_bank(profile)
+    if not source_bank:
+        return draft
+    target = _source_attention_target(chapter_number, len(source_bank))
+    if target <= 0:
+        return draft
+    used = _source_usage_count(draft, source_bank)
+    # Allow a small margin because some sources may not be relevant to the exact chapter.
+    required_now = max(1, min(target, len(source_bank)))
+    if used >= required_now:
+        return draft
+
+    repair_payload = {
+        "task": "Revise the chapter draft to integrate the attached literature sources that are relevant to the topic.",
+        "chapter_number": chapter_number,
+        "reason_for_revision": (
+            f"The attached source search returned {len(source_bank)} source records, but only about {used} appear to be cited in the body. "
+            f"Consider integrating {required_now} relevant source-bank records as in-text citations where they genuinely support the argument."
+        ),
+        "important_rules": [
+            "Keep the student's project profile, uploaded results, supplied references, and placeholders; do not replace them.",
+            "Add relevant retrieved sources into the body of the chapter using author-year in-text citations.",
+            "Do not cite a source unless it supports the specific point being made.",
+            "Increase citation density without making the writing mechanical or over-cited.",
+            "Retain red bracketed placeholders where verified evidence is still missing.",
+            "End the chapter with a References section that contains every source cited in the chapter, using the reference hints supplied below.",
+            "Do not invent new sources, statistics, page numbers, quotations, or findings.",
+        ],
+        "source_bank_reference_hints": _source_reference_hints(source_bank),
+        "original_generation_prompt": original_prompt,
+        "draft_to_revise": draft,
+    }
+    try:
+        response = client.responses.create(
+            model=model,
+            instructions=instructions + " Revise rather than restart. Preserve the student's context and integrate relevant attached sources.",
+            input=json.dumps(repair_payload, ensure_ascii=False, indent=2),
+        )
+        revised = getattr(response, "output_text", "").strip()
+        if revised:
+            return _polish_generated_text(revised)
+    except Exception:
+        return draft
+    return draft
+
 def generate_chapter(
     profile: dict[str, Any],
     chapter_number: int,
@@ -383,13 +576,23 @@ def generate_chapter(
             "Make each section read like publishable or supervisor-ready academic prose, with a clear line of reasoning and strong paragraph development. "
             "Apply the reference currency rule: aim for most substantive citations to be from the last five years, but where recent literature does not exist, use credible available sources, including foundational theories and essential older studies. "
             "Include relevant and accurate in-text citations throughout the write-up. For the problem statement, use factual evidence and accurate statistics to show that the problem exists, where those facts are supplied or can be stated confidently. "
-            "When source-finder results are available in the prompt, treat them as the preferred citation pool, but only use records that genuinely support the argument being made. "
+            "When source-finder results are available in the prompt, review them as an additional evidence bank and integrate only records that directly support the chapter argument; do not ignore relevant literature, but do not force irrelevant search results into the write-up. "
             "Do not fabricate citations, references, statistics, or institutional evidence. Use clear bracketed placeholders only when a credible source, fact, or statistic is not available or has not been supplied."
         )
         response = client.responses.create(model=model, instructions=instructions, input=prompt)
         text = getattr(response, "output_text", "").strip()
         if text:
-            return _polish_generated_text(text), "openai_responses_api"
+            polished = _polish_generated_text(text)
+            polished = _review_source_integration(
+                client=client,
+                model=model,
+                instructions=instructions,
+                original_prompt=prompt,
+                draft=polished,
+                profile=profile,
+                chapter_number=chapter_number,
+            )
+            return polished, "openai_responses_api"
 
     return _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)), "local_template_fallback"
 

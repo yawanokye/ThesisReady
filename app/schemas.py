@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from typing import Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class ProjectCreate(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     title: str = Field(..., min_length=3)
     programme: str = ""
     department: str = ""
@@ -12,6 +14,8 @@ class ProjectCreate(BaseModel):
     level: str = "Bachelors"
     academic_level_guidance: str = ""
     reference_currency_rule: str = ""
+    thesis_format: str = "Standard five-chapter thesis/dissertation"
+    format_notes: str = ""
     research_area: str = ""
     study_context: str = ""
     citation_evidence_notes: str = ""
@@ -23,6 +27,9 @@ class ProjectCreate(BaseModel):
     research_questions: list[str] = Field(default_factory=list)
     hypotheses: list[str] = Field(default_factory=list)
     notes: str = ""
+    retrieved_sources: dict[str, Any] = Field(default_factory=dict)
+    source_bank: list[dict[str, Any]] = Field(default_factory=list)
+    source_search_terms: str = ""
 
 
 class SectionSelection(BaseModel):
@@ -31,11 +38,19 @@ class SectionSelection(BaseModel):
 
 
 class DraftRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     chapter_number: int
     selected_section_ids: list[str]
     answers: dict[str, Any] = Field(default_factory=dict)
     extra_instructions: str = ""
     use_ai: bool = True
+    revision_mode: bool = False
+    revision_instructions: str = ""
+    revision_text: str = ""
+    existing_chapter_text: str = ""
+    uploaded_revision_text: str = ""
+    revision_filename: str = ""
 
 
 class DraftResponse(BaseModel):
@@ -65,8 +80,8 @@ class ComplianceResponse(BaseModel):
     score_percent: float
     items: list[ComplianceItem]
 
+
 class SourceSearchRequest(BaseModel):
     query: str = ""
     max_results: int = 12
     include_older_foundational: bool = True
-
