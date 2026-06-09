@@ -3,13 +3,24 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ProjectReady AI</title>
+  <title>ProjectReady AI Workspace</title>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
+  <header class="workspace-topbar">
+    <a class="workspace-brand" href="/" aria-label="ProjectReady AI home">
+      <span class="brand-mark-small">PR</span>
+      <span>ProjectReady AI</span>
+    </a>
+    <nav class="workspace-nav" aria-label="Workspace navigation">
+      <a href="/">Landing page</a>
+      <a href="/workspace" aria-current="page">Workspace</a>
+    </nav>
+  </header>
+
   <header class="hero">
     <div>
-      <p class="eyebrow">ProjectReady AI MVP</p>
+      <p class="eyebrow">ProjectReady AI Workspace</p>
       <h1>Draft project chapters from custom guidelines</h1>
       <p class="lead">Create a project profile, select chapter sections, generate a draft, then check compliance against the selected rules.</p>
     </div>
@@ -65,6 +76,31 @@
       <label>Verified references, facts and statistics for the study
         <textarea id="citation_evidence_notes" rows="4" placeholder="Paste verified sources, statistics, report details, DOI links, policy evidence, institutional records, or key citation notes. The app will use these to support claims and the problem statement."></textarea>
       </label>
+
+      <div class="source-box">
+        <h3>Find literature sources for this study</h3>
+        <p class="hint">Search open scholarly metadata sources and attach relevant papers to the project before drafting. Verify all sources before final submission.</p>
+        <label>Optional source search terms
+          <textarea id="sourceSearchQuery" rows="2" placeholder="e.g. procurement literacy ethical behaviour undergraduate students Ghana"></textarea>
+        </label>
+        <div class="source-controls">
+          <label class="compact-label">Maximum results
+            <select id="sourceMaxResults">
+              <option value="8">8</option>
+              <option value="12" selected>12</option>
+              <option value="20">20</option>
+              <option value="30">30</option>
+            </select>
+          </label>
+          <label class="inline source-inline"><input type="checkbox" id="includeOlderFoundational" checked /> Include older foundational sources where relevant</label>
+        </div>
+        <div class="actions compact-actions">
+          <button id="findSourcesBtn" type="button">Find and attach sources</button>
+        </div>
+        <p id="sourceStatus" class="status"></p>
+        <div id="sourceResults" class="source-results"></div>
+      </div>
+
       <label>Research approach
         <select id="research_approach">
           <option>Quantitative</option>
@@ -99,23 +135,6 @@
         <h2>4. Generate and check</h2>
         <input type="checkbox" id="useAi" checked hidden />
       </div>
-      <div class="upload-box revision-box">
-        <h3>Revise an existing chapter</h3>
-        <p class="hint">For paid plans, upload the current chapter draft, add the revision instruction, and generate a revised version. New insertions will appear in red in the preview and exported DOCX.</p>
-        <label class="inline revision-toggle"><input type="checkbox" id="revisionMode" /> Revise uploaded version instead of drafting from scratch</label>
-        <label>Existing chapter file
-          <input id="revisionFile" type="file" accept=".docx,.pdf,.txt,.md" />
-        </label>
-        <label>Revision instruction
-          <textarea id="revisionInstructions" rows="3" placeholder="e.g. Strengthen the problem statement with evidence, improve the literature synthesis, correct methodology tense, and align the section with supervisor comments."></textarea>
-        </label>
-        <div class="actions compact-actions">
-          <button id="uploadRevisionBtn" type="button">Upload chapter for revision</button>
-        </div>
-        <p id="revisionStatus" class="status"></p>
-        <pre id="revisionPreview" class="preview-box"></pre>
-      </div>
-
       <div class="upload-box">
         <h3>Upload results output for Chapter Four</h3>
         <p class="hint">Upload SPSS/Excel/CSV/Word/PDF/text results so the app can use the actual output when drafting the results and discussion chapter.</p>
