@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 
 class ProjectCreate(BaseModel):
@@ -12,8 +12,6 @@ class ProjectCreate(BaseModel):
     level: str = "Bachelors"
     academic_level_guidance: str = ""
     reference_currency_rule: str = ""
-    thesis_format: str = "Standard five-chapter thesis/dissertation"
-    format_notes: str = ""
     research_area: str = ""
     study_context: str = ""
     citation_evidence_notes: str = ""
@@ -33,23 +31,11 @@ class SectionSelection(BaseModel):
 
 
 class DraftRequest(BaseModel):
-    # Allow harmless extra fields from older/newer frontend versions so mixed deployments do not crash.
-    model_config = ConfigDict(extra="allow")
-
     chapter_number: int
     selected_section_ids: list[str]
     answers: dict[str, Any] = Field(default_factory=dict)
     extra_instructions: str = ""
     use_ai: bool = True
-
-    # Optional revision fields. These keep the draft endpoint compatible when the workspace
-    # sends revision-mode data, or when the deployed route checks payload.revision_mode.
-    revision_mode: bool = False
-    revision_instructions: str = ""
-    revision_text: str = ""
-    existing_chapter_text: str = ""
-    uploaded_revision_text: str = ""
-    revision_filename: str = ""
 
 
 class DraftResponse(BaseModel):
