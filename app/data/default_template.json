@@ -1,7 +1,7 @@
 {
   "template_id": "default_thesis_project_template",
   "template_name": "Default Project Work and Thesis Template",
-  "description": "A customisable project work template adapted from the thesis self-evaluation checklist. Users may select only the sections required by their institution, supervisor, programme, or research design. The project profile also lets users choose the level of thesis, dissertation, or project work so the drafting depth can match Bachelors, Non-Research Masters, Research Masters, Professional Doctorate, or PhD expectations. It also includes optional variants for different institutional thesis formats, secondary-data studies, and econometric dissertations.",
+  "description": "A customisable project work template adapted from the thesis self-evaluation checklist. Users may select only the sections required by their institution, supervisor, programme, or research design. The project profile also lets users choose the level of thesis, dissertation, or project work so the drafting depth can match Bachelors, Non-Research Masters, Research Masters, Professional Doctorate, or PhD expectations.",
   "chapters": [
     {
       "chapter_number": 1,
@@ -183,49 +183,6 @@
               ]
             },
             {
-              "section_id": "ch1_rationale",
-              "section_title": "Study Rationale / Justification",
-              "default_selected": false,
-              "guiding_questions": [
-                "Why is this study necessary at this time?",
-                "What theoretical, empirical, policy, professional, institutional, or contextual reasons justify the study?",
-                "How does the selected school format require the rationale to be separated from the background or problem statement?"
-              ],
-              "rules": [
-                "Explain the intellectual and practical justification for the study without repeating the whole background.",
-                "Use evidence, citations, policy concerns, institutional needs, or empirical gaps to justify the study.",
-                "Keep the rationale consistent with the problem, objectives, context, and selected thesis format."
-              ]
-            },
-            {
-              "section_id": "ch1_assumptions",
-              "section_title": "Assumptions of the Study",
-              "default_selected": false,
-              "guiding_questions": [
-                "What assumptions underlie the design, data, respondents, variables, model, or documents used in the study?",
-                "Which assumptions are methodological rather than findings?"
-              ],
-              "rules": [
-                "State only reasonable assumptions that affect the study design, data, measurement, or interpretation.",
-                "Avoid presenting assumptions as findings.",
-                "For secondary data or econometric work, state assumptions about data reliability, measurement, model specification, and comparability where relevant."
-              ]
-            },
-            {
-              "section_id": "ch1_contribution",
-              "section_title": "Expected Contribution of the Study",
-              "default_selected": false,
-              "guiding_questions": [
-                "What does the study contribute to theory, method, evidence, policy, professional practice, or context?",
-                "How should the contribution be framed for the selected level and school format?"
-              ],
-              "rules": [
-                "Frame contributions modestly and defensibly.",
-                "For research master's, professional doctorate, and PhD work, link contribution to gaps, context, theory, method, evidence, or practice.",
-                "Avoid exaggerated claims that go beyond the study design and evidence."
-              ]
-            },
-            {
               "section_id": "ch1_organisation",
               "section_title": "Organisation of the Study",
               "default_selected": true,
@@ -319,7 +276,9 @@
               ],
               "rules": [
                 "Show the main variables and expected relationships.",
-                "Ensure the framework matches the objectives and hypotheses."
+                "Ensure the framework matches the objectives and hypotheses.",
+                "Do not generate messy ASCII diagrams. Present the conceptual framework as a clean relationship table and, where a diagram is needed, use a simple Mermaid flowchart code block or a concise text-renderable layout.",
+                "Include a brief narrative explaining the direction of each relationship, mediator, moderator or control variable."
               ]
             },
             {
@@ -334,62 +293,6 @@
                 "Match each hypothesis to the relevant objective.",
                 "Use relevant and accurate in-text citations for all theory, concept, empirical, and gap claims.",
                 "Do not fabricate studies, authors, years, or findings; use placeholders where verified source details are not supplied."
-              ]
-            },
-            {
-              "section_id": "ch2_review_strategy",
-              "section_title": "Literature Search and Review Strategy",
-              "default_selected": false,
-              "guiding_questions": [
-                "Which databases, journals, institutional sources, search terms, date range, and inclusion criteria guided the literature review?",
-                "Does the school require a narrative, systematic, scoping, or integrative review approach?"
-              ],
-              "rules": [
-                "Describe how the literature was identified, screened, selected, and organised where the institution requires this section.",
-                "State databases, search terms, inclusion or exclusion criteria, and date ranges only where they were actually used or supplied.",
-                "Do not claim a systematic review unless the procedure was genuinely systematic and documented."
-              ]
-            },
-            {
-              "section_id": "ch2_variable_review",
-              "section_title": "Review by Variables, Constructs, or Themes",
-              "default_selected": false,
-              "guiding_questions": [
-                "Which variables, constructs, concepts, or themes should be reviewed separately?",
-                "How do they relate to the objectives and conceptual framework?"
-              ],
-              "rules": [
-                "Organise this section around the variables, constructs, or themes specified by the student or school format.",
-                "Define each concept, explain its relevance, and link it to the objectives.",
-                "Maintain consistency with the variables introduced in Chapter One."
-              ]
-            },
-            {
-              "section_id": "ch2_secondary_stylised",
-              "section_title": "Stylised Facts and Secondary Data Context",
-              "default_selected": false,
-              "guiding_questions": [
-                "What trends, policy developments, market conditions, macroeconomic facts, institutional patterns, or sectoral statistics motivate the secondary data study?",
-                "Which datasets, countries, firms, sectors, or periods are relevant to the literature context?"
-              ],
-              "rules": [
-                "Use credible secondary sources, official statistics, policy reports, or dataset documentation to describe stylised facts.",
-                "Connect the stylised facts to the research problem, objectives, variables, and later econometric model.",
-                "Do not invent figures or trends; use placeholders where verified statistics are not supplied."
-              ]
-            },
-            {
-              "section_id": "ch2_econometric_literature",
-              "section_title": "Econometric and Methodological Literature Review",
-              "default_selected": false,
-              "guiding_questions": [
-                "Which empirical models, estimators, diagnostic approaches, or identification strategies have prior studies used?",
-                "What methodological weaknesses or estimation gaps justify the current approach?"
-              ],
-              "rules": [
-                "Review prior econometric approaches relevant to the study, such as OLS, ARDL, VAR, VECM, GMM, fixed effects, random effects, PLS-SEM, logit/probit, or other supplied methods.",
-                "Compare contexts, variables, estimators, diagnostics, and findings rather than merely listing studies.",
-                "End by explaining the methodological gap or justification for the model used in the study."
               ]
             },
             {
@@ -447,7 +350,7 @@
     },
     {
       "chapter_number": 3,
-      "chapter_title": "Research Methods",
+      "chapter_title": "Research Methods/Methodology",
       "section_groups": [
         {
           "group_title": "Methodology Sections",
@@ -457,15 +360,15 @@
               "section_title": "Introduction",
               "default_selected": true,
               "guiding_questions": [
-                "What is the purpose of Chapter Three?",
-                "What main methodological areas does the chapter cover?",
-                "How does the chapter connect the research objectives to the methods used?"
+                "What is the purpose of the study as stated in Chapter One?",
+                "What methodological issues will this chapter cover?",
+                "How does the chapter link the research objectives to the chosen methods?"
               ],
               "rules": [
-                "Introduce the chapter and state that it presents the methods used for the study.",
-                "Briefly mention the research design, population, sampling, data collection, analysis, and ethical procedures covered in the chapter.",
-                "Do not introduce new variables, objectives, or theories.",
-                "Write in past tense for a completed project, for example: this chapter presents the methods that were used in the study."
+                "Provide an introduction and overview of the methodology chapter.",
+                "Recall the purpose of the study without repeating Chapter One excessively.",
+                "Outline the methodological areas covered in the chapter, including philosophy, approach, design, population, sampling, data source, instrument, validity, reliability, ethics, and analysis.",
+                "Use completed-study wording rather than proposal future tense."
               ]
             },
             {
@@ -473,17 +376,20 @@
               "section_title": "Research Philosophy, Paradigm, and Approach",
               "default_selected": true,
               "guiding_questions": [
-                "What philosophy guided the study?",
-                "What ontology and epistemology underpinned the study?",
-                "Was the approach deductive, inductive, or abductive?",
-                "How were philosophy, approach, design, methods, and analysis kept consistent?"
+                "What philosophical paradigm guided the study?",
+                "What ontological assumption about reality underpinned the study?",
+                "What epistemological assumption about knowledge guided the inquiry?",
+                "Which alternative paradigms were considered and why was the selected paradigm appropriate?",
+                "How did the paradigm align with the study objectives and method?"
               ],
               "rules": [
                 "State and justify the research philosophy.",
                 "Explain ontology and epistemology where required.",
                 "State and justify the research approach.",
                 "Show consistency among philosophy, approach, design, methods, and analysis.",
-                "Write this section in past tense for a completed study."
+                "Write this section in past tense for a completed study.",
+                "Contrast relevant philosophical positions before justifying the adopted stance.",
+                "Link the selected paradigm directly to the study rather than defining paradigms in isolation."
               ]
             },
             {
@@ -491,17 +397,20 @@
               "section_title": "Research Design and Time Horizon",
               "default_selected": true,
               "guiding_questions": [
-                "Was the study quantitative, qualitative, or mixed methods?",
-                "Was the study descriptive, explanatory, exploratory, correlational, or causal?",
-                "Was the time horizon cross-sectional or longitudinal?",
-                "What was the unit of analysis?"
+                "What research approach was used: quantitative, qualitative, mixed methods, secondary data, econometrics, or another approach?",
+                "What specific design was used: descriptive, correlational, explanatory, quasi-experimental, case study, cross-sectional, longitudinal, predictive, model-testing, pre-post, interrupted time series, or another design?",
+                "Why did this design fit the study better than the alternatives?",
+                "How did the design align with the philosophical stance and objectives?"
               ],
               "rules": [
                 "Clearly state the research design.",
                 "State the study type and time horizon with justification.",
                 "State the unit of analysis.",
                 "Ensure the design fits the framework and analysis requirements.",
-                "Use completed-study wording, not proposal wording."
+                "Use completed-study wording, not proposal wording.",
+                "Justify the selected approach against plausible alternatives.",
+                "State the specific type of design and explain why it was appropriate.",
+                "Ensure the selected design agrees with the research approach, objectives, and analytical strategy."
               ]
             },
             {
@@ -509,18 +418,21 @@
               "section_title": "Study Setting, Population, and Sampling Frame",
               "default_selected": true,
               "guiding_questions": [
-                "Where was the study conducted?",
-                "Who or what was the target population?",
-                "What inclusion and exclusion criteria were used?",
-                "What was the sampling frame?",
-                "How was non-response handled where applicable?"
+                "Where was the study conducted and why was this setting appropriate?",
+                "What constituted the target population?",
+                "What was the size and composition of the target population?",
+                "What was the accessible population?",
+                "What was the unit of analysis and why was it appropriate?",
+                "What inclusion and exclusion criteria applied?"
               ],
               "rules": [
                 "Describe and justify the study setting.",
                 "Define the target population clearly.",
                 "Describe the sampling frame.",
                 "Address relevant strata or groups.",
-                "Explain how non-response was handled where applicable."
+                "Explain how non-response was handled where applicable.",
+                "Describe the target population, accessible population, population size, composition, and unit of analysis.",
+                "Justify why the selected population and unit of analysis fit the research objectives."
               ]
             },
             {
@@ -528,18 +440,22 @@
               "section_title": "Sample Size Determination and Sampling Technique",
               "default_selected": true,
               "guiding_questions": [
-                "What sample size method was used?",
-                "What sampling technique was used?",
-                "How did the sample size fit the intended analysis?",
+                "What sample size was used or proposed?",
+                "How was the sample size determined?",
+                "What assumptions supported the sample size, including population size, proportion or variance, margin of error, confidence level, statistical analysis, power, and non-response allowance?",
+                "What sampling technique was used and why?",
                 "What sampling steps were followed?",
-                "What sampling bias was anticipated or observed, and how was it mitigated?"
+                "Was any section of the population deliberately restricted, and why?"
               ],
               "rules": [
                 "State and justify the sampling technique that was used.",
                 "State and justify the sample size method that was used.",
                 "Link sample size adequacy to the intended analysis.",
                 "Describe sampling steps clearly enough to replicate.",
-                "Acknowledge potential sampling bias and mitigation steps."
+                "Acknowledge potential sampling bias and mitigation steps.",
+                "Explain why the sample size and sampling technique were critical for the study.",
+                "State assumptions used in determining the sample size, including confidence level, margin of error, population proportion or variance, power, and non-response rate where applicable.",
+                "Explain the sample composition and the sampling steps clearly enough for replication."
               ]
             },
             {
@@ -547,18 +463,22 @@
               "section_title": "Data Type, Sources, and Data Collection Instrument",
               "default_selected": true,
               "guiding_questions": [
-                "Did the study use primary, secondary, or both types of data?",
-                "What instrument was used to collect data?",
+                "Was the study based on primary data, secondary data, or both?",
+                "What data collection instrument was used?",
+                "Why was the instrument appropriate for the study?",
                 "What sections did the instrument contain?",
-                "What sources supported the items?",
-                "How was the instrument administered?"
+                "What weaknesses of the method were addressed, including common method variance and social desirability where survey data were used?",
+                "What procedural remedies and statistical remedies were used for common method variance?"
               ],
               "rules": [
                 "State data type and justify it.",
                 "Describe the instrument clearly.",
                 "Describe the structure of the instrument.",
                 "State item sources with citations where appropriate.",
-                "State and justify the administration mode used."
+                "State and justify the administration mode used.",
+                "For primary survey studies, describe the questionnaire, interview guide, or observation guide clearly and link it to the study variables or concepts.",
+                "Include a variable or construct measurement table with columns: Variable/Concept, Indicator/Dimension, Operational Indicator, Item Scale, Level of Measurement, and Origin/Source.",
+                "For self-report survey data, discuss common method variance, social desirability, and relevant ex-ante and ex-post remedies."
               ]
             },
             {
@@ -566,10 +486,12 @@
               "section_title": "Operationalisation and Measurement of Variables",
               "default_selected": true,
               "guiding_questions": [
-                "What were the independent, dependent, mediating, moderating, and control variables?",
-                "What dimensions and indicators measured each construct?",
-                "What scales or coding were used?",
-                "How were composite scores formed?"
+                "What were the key variables, constructs or concepts?",
+                "What operational definitions or proxies existed in the literature?",
+                "Which definitions, proxies or indicators were adopted or adapted and why?",
+                "How were the variables or constructs measured?",
+                "Were existing items or validated indicators available?",
+                "How were new or adapted items validated?"
               ],
               "rules": [
                 "Operationalise all variables clearly.",
@@ -577,7 +499,10 @@
                 "Specify measurement scales.",
                 "Justify control variables.",
                 "Describe coding, scoring, and composite score procedures.",
-                "Describe coding, scoring, and composite score procedures in past tense."
+                "Describe coding, scoring, and composite score procedures in past tense.",
+                "Explain operational definitions and proxies from the literature before stating what was adopted or adapted.",
+                "Justify why the selected indicators or measures were superior or more appropriate than alternatives where relevant.",
+                "State whether items were adopted, adapted or developed, and justify the decision."
               ]
             },
             {
@@ -603,11 +528,10 @@
               "section_title": "Validity and Reliability",
               "default_selected": true,
               "guiding_questions": [
-                "How was content validity established?",
-                "How was construct validity tested?",
-                "What convergent and discriminant validity criteria were applied?",
-                "What reliability tests and thresholds were applied?",
-                "What corrective actions were taken where thresholds were not met?"
+                "How were reliability and validity addressed?",
+                "What tools or criteria were used to test reliability?",
+                "What tools or criteria were used to test validity?",
+                "What thresholds or decision rules were used?"
               ],
               "rules": [
                 "Describe content validity procedures.",
@@ -615,7 +539,9 @@
                 "State convergent and discriminant validity criteria where applicable.",
                 "State reliability tests and thresholds.",
                 "Document corrective actions where thresholds were not met.",
-                "Use past tense when reporting tests conducted and decisions made."
+                "Use past tense when reporting tests conducted and decisions made.",
+                "State the specific tools used for reliability and validity assessment and justify their use.",
+                "Report thresholds or decision rules for reliability and validity tests where applicable."
               ]
             },
             {
@@ -661,10 +587,13 @@
               "section_title": "Data Analysis Plan",
               "default_selected": true,
               "guiding_questions": [
-                "What analysis answered each objective?",
-                "How were hypotheses tested?",
-                "What models, equations, or path models were used?",
-                "What software was used?"
+                "How was each research objective, research question or hypothesis analysed?",
+                "What analytical technique was used for each objective or hypothesis?",
+                "What assumptions applied to each technique before estimation or analysis?",
+                "How were assumptions assessed after estimation or analysis?",
+                "What theoretical or empirical model was specified?",
+                "What decision rule was used?",
+                "How was robustness or validation assessed?"
               ],
               "rules": [
                 "Map analyses to objectives.",
@@ -673,7 +602,11 @@
                 "Explain moderation or mediation testing where applicable.",
                 "State model specification with controls.",
                 "State software used.",
-                "Use past tense when describing analyses conducted."
+                "Use past tense when describing analyses conducted.",
+                "Provide an objective-by-objective data analysis plan.",
+                "Include a table with columns: Research Objective, Research Question/Hypothesis, Analytical Technique, Ex-Ante Assumptions, Post-Estimation/Analysis Checks, and Decision Rule.",
+                "State model equations using display equation format and define all variables after each equation.",
+                "Explain robustness, validation or diagnostic checks appropriate to the technique used."
               ]
             },
             {
@@ -694,98 +627,6 @@
                 "Describe data protection and storage.",
                 "Address risks and mitigation measures.",
                 "Use past tense for completed ethical procedures."
-              ]
-            },
-            {
-              "section_id": "ch3_secondary_data_sources",
-              "section_title": "Secondary Data Sources, Coverage, and Period of Study",
-              "default_selected": false,
-              "guiding_questions": [
-                "What secondary datasets, databases, reports, institutional records, or archival sources were used?",
-                "What countries, firms, sectors, institutions, or units were covered?",
-                "What was the period, frequency, and sample structure of the data?"
-              ],
-              "rules": [
-                "State each data source, unit of analysis, period, frequency, and coverage clearly.",
-                "Explain inclusion and exclusion criteria for countries, firms, sectors, observations, or time periods.",
-                "Address data reliability, comparability, missing observations, and source limitations where relevant.",
-                "Do not use respondent, questionnaire, pilot testing, or response-rate language unless the study also collected primary data."
-              ]
-            },
-            {
-              "section_id": "ch3_variable_construction",
-              "section_title": "Variable Definition, Transformation, and Construction",
-              "default_selected": false,
-              "guiding_questions": [
-                "How was each variable measured, transformed, coded, logged, differenced, indexed, deflated, normalised, or winsorised?",
-                "What sources and theoretical or empirical justification support the variables?"
-              ],
-              "rules": [
-                "Define dependent, independent, control, mediating, moderating, and instrumental variables where applicable.",
-                "State measurement units, data sources, transformations, expected signs, and justification.",
-                "For econometric work, include a variable measurement table where appropriate.",
-                "Keep all variable definitions consistent with the model specification and results chapter."
-              ]
-            },
-            {
-              "section_id": "ch3_model_specification",
-              "section_title": "Model Specification and Econometric Framework",
-              "default_selected": false,
-              "guiding_questions": [
-                "What model equation or analytical framework was estimated?",
-                "What dependent, explanatory, control, interaction, lagged, or dummy variables were included?",
-                "What theoretical or empirical logic supports the specification?"
-              ],
-              "rules": [
-                "Present clear model equations using defined variables and error terms.",
-                "Explain why the model specification answers the objectives or hypotheses.",
-                "Where applicable, describe panel, time-series, cross-sectional, count, binary, fractional, or limited dependent-variable structure.",
-                "Avoid unsupported causal claims unless the identification strategy justifies causality."
-              ]
-            },
-            {
-              "section_id": "ch3_estimation_technique",
-              "section_title": "Estimation Technique and Justification",
-              "default_selected": false,
-              "guiding_questions": [
-                "Which estimator or analytical technique was used and why was it appropriate?",
-                "How did the technique address the data structure and research objectives?"
-              ],
-              "rules": [
-                "State and justify the estimator or analytical technique used.",
-                "Explain suitability for the data structure, measurement level, distributional assumptions, and objectives.",
-                "For econometrics, discuss alternatives and justify why the selected estimator was preferred.",
-                "Use past tense and completed-study wording."
-              ]
-            },
-            {
-              "section_id": "ch3_econometric_diagnostics",
-              "section_title": "Econometric Diagnostics and Robustness Checks",
-              "default_selected": false,
-              "guiding_questions": [
-                "What diagnostic tests were conducted?",
-                "How were stationarity, cointegration, multicollinearity, heteroskedasticity, autocorrelation, cross-sectional dependence, normality, model stability, endogeneity, or robustness addressed?"
-              ],
-              "rules": [
-                "Select diagnostics that fit the data type and estimator rather than listing unrelated tests.",
-                "Explain the purpose of each diagnostic and the decision rule where appropriate.",
-                "For time-series work, consider unit-root, cointegration, lag selection, serial correlation, stability, and forecasting diagnostics where relevant.",
-                "For panel work, consider fixed/random effects choice, Hausman test, cross-sectional dependence, heteroskedasticity, serial correlation, endogeneity, and robust standard errors where relevant.",
-                "For cross-sectional econometrics, consider multicollinearity, heteroskedasticity, influential observations, specification error, and robustness where relevant."
-              ]
-            },
-            {
-              "section_id": "ch3_reproducibility",
-              "section_title": "Software, Data Cleaning, and Reproducibility",
-              "default_selected": false,
-              "guiding_questions": [
-                "Which software, packages, commands, scripts, or version details were used?",
-                "How were data cleaning, merging, coding, and reproducibility handled?"
-              ],
-              "rules": [
-                "State the software and major packages used for data preparation and analysis.",
-                "Describe data cleaning, merging, coding, transformation, and storage procedures.",
-                "Where appropriate, mention reproducible scripts, audit trail, version control, or documentation of analysis steps."
               ]
             },
             {
@@ -812,7 +653,7 @@
     },
     {
       "chapter_number": 4,
-      "chapter_title": "Results and Discussion",
+      "chapter_title": "Results/Data Analysis and Discussion",
       "section_groups": [
         {
           "group_title": "Results and Discussion Sections",
@@ -887,63 +728,6 @@
               ]
             },
             {
-              "section_id": "ch4_descriptive_trends",
-              "section_title": "Descriptive Statistics, Trends, and Preliminary Analysis",
-              "default_selected": false,
-              "guiding_questions": [
-                "What descriptive statistics, graphs, trends, correlations, or preliminary patterns appear in the uploaded results?",
-                "How do these patterns relate to the research objectives?"
-              ],
-              "rules": [
-                "Present descriptive statistics, trends, correlations, or preliminary analysis from supplied results only.",
-                "For secondary data, describe time trends, cross-sectional variation, sectoral patterns, or country/firm differences where relevant.",
-                "Interpret patterns carefully without implying causal effects at the descriptive stage."
-              ]
-            },
-            {
-              "section_id": "ch4_diagnostic_results",
-              "section_title": "Diagnostic and Robustness Test Results",
-              "default_selected": false,
-              "guiding_questions": [
-                "What diagnostic or robustness test results are available in the uploaded output?",
-                "What do the results imply for the model or interpretation?"
-              ],
-              "rules": [
-                "Report only diagnostic and robustness tests actually supplied in the uploaded output or student answers.",
-                "Explain the purpose, result, decision, and implication of each diagnostic test.",
-                "Do not claim that assumptions were met unless the uploaded results support that conclusion."
-              ]
-            },
-            {
-              "section_id": "ch4_econometric_results",
-              "section_title": "Econometric Model Results",
-              "default_selected": false,
-              "guiding_questions": [
-                "Which model estimates, coefficients, marginal effects, elasticities, odds ratios, fit statistics, or test statistics are available?",
-                "How does each estimate answer the research objectives or hypotheses?"
-              ],
-              "rules": [
-                "Report model results from uploaded output or supplied tables only.",
-                "Interpret coefficient signs, magnitudes, statistical significance, economic significance, and confidence intervals where available.",
-                "Distinguish statistical significance from practical, economic, policy, or managerial significance.",
-                "Avoid causal wording unless the research design supports causal interpretation."
-              ]
-            },
-            {
-              "section_id": "ch4_policy_economic_interpretation",
-              "section_title": "Economic, Policy, or Managerial Interpretation",
-              "default_selected": false,
-              "guiding_questions": [
-                "What do the results mean for policy, economic behaviour, institutional practice, management, or professional decision-making?",
-                "How do the results relate to the context and prior evidence?"
-              ],
-              "rules": [
-                "Interpret results in relation to the study context and relevant literature.",
-                "Keep implications proportional to the evidence, model, and data limitations.",
-                "Avoid recommendations in Chapter Four unless the institution explicitly requires them there."
-              ]
-            },
-            {
               "section_id": "ch4_discussion",
               "section_title": "Discussion of Findings",
               "default_selected": true,
@@ -981,7 +765,7 @@
     },
     {
       "chapter_number": 5,
-      "chapter_title": "Summary, Conclusions and Recommendations",
+      "chapter_title": "Summary, Conclusion and Recommendation",
       "section_groups": [
         {
           "group_title": "Conclusion Sections",
@@ -1047,34 +831,6 @@
               ]
             },
             {
-              "section_id": "ch5_policy_implications",
-              "section_title": "Policy, Practice, or Managerial Implications",
-              "default_selected": false,
-              "guiding_questions": [
-                "What implications follow directly from the findings for policymakers, institutions, managers, professional bodies, communities, or practitioners?",
-                "Which implication corresponds to each major finding?"
-              ],
-              "rules": [
-                "Link every implication directly to a finding.",
-                "Keep implications context-specific, feasible, and evidence-based.",
-                "Do not introduce new results or unsupported claims."
-              ]
-            },
-            {
-              "section_id": "ch5_limitations",
-              "section_title": "Limitations of the Study",
-              "default_selected": false,
-              "guiding_questions": [
-                "What limitations affected data, design, measurement, model, sampling, period, context, or interpretation?",
-                "How do these limitations shape the interpretation of the findings?"
-              ],
-              "rules": [
-                "State limitations honestly without undermining the value of the study.",
-                "For secondary data and econometric studies, address data coverage, measurement error, omitted variables, model assumptions, period limitations, and causal identification where relevant.",
-                "Link limitations to suggestions for future research."
-              ]
-            },
-            {
               "section_id": "ch5_future",
               "section_title": "Suggestions for Future Research",
               "default_selected": true,
@@ -1083,6 +839,48 @@
               ],
               "rules": [
                 "Link future research suggestions to study limitations."
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "chapter_number": 6,
+      "chapter_title": "Others",
+      "section_groups": [
+        {
+          "group_title": "Custom Chapter Sections",
+          "sections": [
+            {
+              "section_id": "ch6_custom_scope",
+              "section_title": "Custom Chapter Scope and Purpose",
+              "default_selected": true,
+              "guiding_questions": [
+                "What should this additional chapter cover?",
+                "Why is this chapter needed in the thesis, dissertation or project work?",
+                "What specific sections, models, evidence, tables or outputs should be included?"
+              ],
+              "rules": [
+                "Draft only the content requested by the user or institution for this additional chapter.",
+                "Make the chapter coherent with the project title, objectives, theory, methodology, results and recommendations.",
+                "Use relevant in-text citations, evidence and an APA reference list where applicable.",
+                "Use placeholders where project-specific evidence or details are missing."
+              ]
+            },
+            {
+              "section_id": "ch6_user_sections",
+              "section_title": "User-Specified Sections",
+              "default_selected": true,
+              "guiding_questions": [
+                "List the headings or sections you want the app to include in this chapter.",
+                "What should each section achieve?",
+                "Are there special formatting, evidence, table, equation or diagram requirements?"
+              ],
+              "rules": [
+                "Use the headings supplied by the user as the organising structure.",
+                "Keep the content aligned with the rest of the project.",
+                "Do not invent data, results, sources, ethical approvals, sample sizes or institutional details."
               ]
             }
           ]
