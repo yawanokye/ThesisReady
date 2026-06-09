@@ -4,6 +4,8 @@ let currentChapter = 1;
 let currentSections = [];
 let latestSourceSearchResult = null;
 let accumulatedSourceBank = [];
+let uploadedRevisionText = "";
+let uploadedRevisionFilename = "";
 
 const $ = (id) => document.getElementById(id);
 
@@ -40,6 +42,36 @@ function lines(value) {
   return (value || "").split("\n").map(v => v.trim()).filter(Boolean);
 }
 
+function chapterDisplayName(ch) {
+  const title = ch.chapter_title || "Chapter";
+  return title;
+}
+
+function isResultsChapter() {
+  const ch = template ? getChapter(currentChapter) : null;
+  return currentChapter === 4 || /result|analysis|discussion/i.test(ch?.chapter_title || "");
+}
+
+function isMethodsChapter() {
+  const ch = template ? getChapter(currentChapter) : null;
+  return currentChapter === 3 || /method/i.test(ch?.chapter_title || "");
+}
+
+function isPrimaryOrQualitative() {
+  const data = ($("data_type")?.value || "").toLowerCase();
+  const approach = ($("research_approach")?.value || "").toLowerCase();
+  return /primary|survey|qualitative|mixed/.test(data) || /quantitative|qualitative|mixed/.test(approach);
+}
+
+function updateChapterSpecificUi() {
+  const resultsBox = $("resultsUploadBox");
+  if (resultsBox) resultsBox.hidden = !isResultsChapter();
+  const instrumentBtn = $("downloadInstrumentBtn");
+  if (instrumentBtn) instrumentBtn.hidden = !(isMethodsChapter() && isPrimaryOrQualitative());
+  const otherBox = $("otherChapterBox");
+  if (otherBox) otherBox.hidden = currentChapter !== 6;
+}
+
 function selectedSectionIds() {
   return Array.from(document.querySelectorAll("input[name='section']:checked")).map(x => x.value);
 }
@@ -51,12 +83,13 @@ async function loadTemplate() {
   for (const ch of template.chapters) {
     const opt = document.createElement("option");
     opt.value = ch.chapter_number;
-    opt.textContent = `Chapter ${ch.chapter_number}: ${ch.chapter_title}`;
+    opt.textContent = chapterDisplayName(ch);
     chapterSelect.appendChild(opt);
   }
   chapterSelect.addEventListener("change", () => {
     currentChapter = Number(chapterSelect.value);
     renderSections();
+    updateChapterSpecificUi();
   });
   renderSections();
 }
@@ -89,6 +122,7 @@ function renderSections() {
   }
   box.querySelectorAll("input[name='section']").forEach(cb => cb.addEventListener("change", renderAnswers));
   renderAnswers();
+  updateChapterSpecificUi();
 }
 
 function renderAnswers() {
@@ -125,7 +159,9 @@ function collectProfile() {
     citation_evidence_notes: $("citation_evidence_notes") ? $("citation_evidence_notes").value.trim() : "",
     research_approach: $("research_approach").value,
     data_type: $("data_type") ? $("data_type").value : "Primary data",
-    expected_chapters: 5,
+    expected_chapters: 6,
+    other_chapter_title: $("otherChapterTitle") ? $("otherChapterTitle").value.trim() : "",
+    other_chapter_instructions: $("otherChapterInstructions") ? $("otherChapterInstructions").value.trim() : "",
     objectives: lines($("objectives").value),
     research_questions: [],
     hypotheses: [],
@@ -201,6 +237,12 @@ async function generateDraft() {
     answers: collectAnswers(),
     extra_instructions: $("extraInstructions").value.trim(),
     use_ai: $("useAi") ? $("useAi").checked : true,
+    revision_mode: $("revisionMode") ? $("revisionMode").checked : false,
+    revision_instructions: $("revisionInstructions") ? $("revisionInstructions").value.trim() : "",
+    revision_text: uploadedRevisionText,
+    revision_filename: uploadedRevisionFilename,
+    other_chapter_title: $("otherChapterTitle") ? $("otherChapterTitle").value.trim() : "",
+    other_chapter_instructions: $("otherChapterInstructions") ? $("otherChapterInstructions").value.trim() : "",
     ...currentSourcePayload()
   };
   $("draftStatus").textContent = "Generating draft...";
@@ -235,6 +277,36 @@ async function uploadResults() {
   const result = await response.json();
   $("uploadStatus").textContent = `Uploaded ${result.filename}. Extracted ${result.characters_extracted} characters for Chapter ${result.chapter_number}.`;
   $("uploadPreview").textContent = result.preview || "No preview available.";
+}
+
+
+async function uploadRevision() {
+  if (!currentProjectId) await createProject();
+  const input = $("revisionFile");
+  if (!input || !input.files || input.files.length === 0) {
+    $("revisionStatus").textContent = "Please select a chapter file first.";
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("file", input.files[0]);
+  formData.append("chapter_number", String(currentChapter || 1));
+
+  $("revisionStatus").textContent = "Uploading and extracting the chapter for revision...";
+  const response = await fetch(`/api/projects/${currentProjectId}/upload-revision`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || response.statusText);
+  }
+  const result = await response.json();
+  uploadedRevisionText = result.extracted_text || result.preview || "";
+  uploadedRevisionFilename = result.filename || "";
+  if ($("revisionMode")) $("revisionMode").checked = true;
+  $("revisionStatus").textContent = `Uploaded ${result.filename}. Extracted ${result.characters_extracted} characters for revision.`;
+  $("revisionPreview").textContent = result.preview || "No preview available.";
 }
 
 
@@ -328,7 +400,10 @@ function escapeHtml(value) {
 
 function highlightPlaceholders(value) {
   const safe = escapeHtml(value);
-  return safe.replace(/(\[[^\]\n]{3,}\])/g, '<span class="placeholder-text">$1</span>');
+  const withAdditions = safe
+    .replace(/\[\[ADD\]\]/g, '<span class="addition-text">')
+    .replace(/\[\[\/ADD\]\]/g, '</span>');
+  return withAdditions.replace(/(\[[^\]\n]{3,}\])/g, '<span class="placeholder-text">$1</span>');
 }
 
 function renderDraftPreview(value) {
@@ -347,7 +422,11 @@ if ($("draftOutput")) {
 
 $("createProjectBtn").addEventListener("click", () => createProject().catch(err => $("projectStatus").textContent = err.message));
 $("draftBtn").addEventListener("click", () => generateDraft().catch(err => $("draftStatus").textContent = err.message));
-$("uploadResultsBtn").addEventListener("click", () => uploadResults().catch(err => $("uploadStatus").textContent = err.message));
+if ($("uploadResultsBtn")) $("uploadResultsBtn").addEventListener("click", () => uploadResults().catch(err => $("uploadStatus").textContent = err.message));
+if ($("uploadRevisionBtn")) $("uploadRevisionBtn").addEventListener("click", () => uploadRevision().catch(err => $("revisionStatus").textContent = err.message));
+if ($("downloadInstrumentBtn")) $("downloadInstrumentBtn").addEventListener("click", () => download(`/api/projects/${currentProjectId}/export/instrument/${currentChapter}`));
+if ($("data_type")) $("data_type").addEventListener("change", updateChapterSpecificUi);
+if ($("research_approach")) $("research_approach").addEventListener("change", updateChapterSpecificUi);
 if ($("findSourcesBtn")) {
   $("findSourcesBtn").addEventListener("click", () => findSources().catch(err => $("sourceStatus").textContent = err.message));
 }
@@ -358,6 +437,8 @@ if ($("level")) {
   $("level").addEventListener("change", updateLevelHint);
   updateLevelHint();
 }
+
+updateChapterSpecificUi();
 
 loadTemplate().catch(err => {
   document.body.innerHTML = `<pre>Failed to load app: ${escapeHtml(err.message)}</pre>`;

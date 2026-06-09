@@ -121,6 +121,14 @@
       <label>Chapter
         <select id="chapterSelect"></select>
       </label>
+      <div id="otherChapterBox" class="other-chapter-box" hidden>
+        <label>Other chapter title
+          <input id="otherChapterTitle" placeholder="e.g. Policy Implications, Intervention Design, Case Study Analysis, Technical Appendix" />
+        </label>
+        <label>What should go into this chapter?
+          <textarea id="otherChapterInstructions" rows="4" placeholder="Describe the headings, content, evidence, tables, equations, diagrams or special instructions for this additional chapter."></textarea>
+        </label>
+      </div>
       <div id="sectionsBox" class="sections"></div>
     </section>
 
@@ -135,9 +143,25 @@
         <h2>4. Generate and check</h2>
         <input type="checkbox" id="useAi" checked hidden />
       </div>
-      <div class="upload-box">
-        <h3>Upload results output for Chapter Four</h3>
-        <p class="hint">Upload SPSS/Excel/CSV/Word/PDF/text results so the app can use the actual output when drafting the results and discussion chapter.</p>
+      <div class="upload-box revision-box">
+        <h3>Revise the selected chapter</h3>
+        <p class="hint">Use this when you already have a chapter draft. Upload the existing chapter, add revision instructions, and the app will revise it. Substantive new insertions are marked in red in the preview and DOCX export.</p>
+        <label class="inline revision-toggle"><input type="checkbox" id="revisionMode" /> Revise uploaded version instead of drafting from scratch</label>
+        <label>Existing chapter file
+          <input id="revisionFile" type="file" accept=".docx,.pdf,.txt,.md" />
+        </label>
+        <label>Revision instruction
+          <textarea id="revisionInstructions" rows="3" placeholder="e.g. Preserve the structure, strengthen the methodology justification, add missing citations, correct tense, and respond to supervisor comments."></textarea>
+        </label>
+        <div class="actions compact-actions">
+          <button id="uploadRevisionBtn" type="button">Upload chapter for revision</button>
+        </div>
+        <p id="revisionStatus" class="status"></p>
+        <pre id="revisionPreview" class="preview-box"></pre>
+      </div>
+      <div class="upload-box" id="resultsUploadBox" hidden>
+        <h3>Upload results output</h3>
+        <p class="hint">This option appears only for the Results/Data Analysis and Discussion chapter. Upload SPSS/Excel/CSV/Word/PDF/text output so the app can use the actual results in the write-up.</p>
         <label>Results file
           <input id="resultsFile" type="file" accept=".csv,.tsv,.txt,.md,.docx,.xlsx,.xlsm,.pdf" />
         </label>
@@ -155,6 +179,7 @@
         <button id="checkBtn">Run compliance check</button>
         <button id="downloadDraftBtn" disabled>Download draft DOCX</button>
         <button id="downloadCheckBtn" disabled>Download checklist DOCX</button>
+        <button id="downloadInstrumentBtn" type="button" hidden>Download draft instrument DOCX</button>
       </div>
       <p id="draftStatus" class="status"></p>
       <textarea id="draftOutput" rows="18" placeholder="Draft will appear here"></textarea>
