@@ -227,3 +227,59 @@ th { background: #f2f4f7; }
   color: var(--primary);
   font-weight: 700;
 }
+
+.workspace-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 6vw;
+  background: rgba(255, 255, 255, 0.96);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(10px);
+}
+.workspace-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  color: var(--text);
+  text-decoration: none;
+}
+.brand-mark-small {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: var(--primary);
+  color: white;
+  font-weight: 900;
+}
+.workspace-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.workspace-nav a {
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 700;
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: white;
+}
+.workspace-nav a:hover,
+.workspace-nav a[aria-current="page"] {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+@media (max-width: 650px) {
+  .workspace-topbar { align-items: flex-start; flex-direction: column; }
+}
