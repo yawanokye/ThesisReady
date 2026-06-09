@@ -43,8 +43,15 @@ function lines(value) {
 }
 
 function chapterDisplayName(ch) {
-  const title = ch.chapter_title || "Chapter";
-  return title;
+  const exactNames = {
+    1: "Introduction",
+    2: "Literature Review",
+    3: "Research Methods/Methodology",
+    4: "Results/Data Analysis and Discussion",
+    5: "Summary, Conclusion and Recommendation",
+    6: "Others"
+  };
+  return exactNames[Number(ch.chapter_number)] || ch.chapter_title || "Others";
 }
 
 function isResultsChapter() {
@@ -76,8 +83,57 @@ function selectedSectionIds() {
   return Array.from(document.querySelectorAll("input[name='section']:checked")).map(x => x.value);
 }
 
+
+function ensureOtherChapterTemplate() {
+  if (!template || !Array.isArray(template.chapters)) return;
+  const hasOther = template.chapters.some(ch => Number(ch.chapter_number) === 6);
+  if (!hasOther) {
+    template.chapters.push({
+      chapter_number: 6,
+      chapter_title: "Others",
+      section_groups: [{
+        group_title: "Custom Chapter Sections",
+        sections: [
+          {
+            section_id: "ch6_custom_scope",
+            section_title: "Custom Chapter Scope and Purpose",
+            default_selected: true,
+            guiding_questions: [
+              "What should this additional chapter cover?",
+              "Why is this chapter needed in the thesis, dissertation or project work?",
+              "What specific sections, models, evidence, tables or outputs should be included?"
+            ],
+            rules: [
+              "Draft only the content requested by the user or institution for this additional chapter.",
+              "Make the chapter coherent with the project title, objectives, theory, methodology, results and recommendations.",
+              "Use relevant in-text citations, evidence and an APA reference list where applicable."
+            ]
+          },
+          {
+            section_id: "ch6_user_sections",
+            section_title: "User-Specified Sections",
+            default_selected: true,
+            guiding_questions: [
+              "List the headings or sections you want the app to include in this chapter.",
+              "What should each section achieve?",
+              "Are there special formatting, evidence, table, equation or diagram requirements?"
+            ],
+            rules: [
+              "Use the headings supplied by the user as the organising structure.",
+              "Keep the content aligned with the rest of the project.",
+              "Do not invent data, results, sources, ethical approvals, sample sizes or institutional details."
+            ]
+          }
+        ]
+      }]
+    });
+  }
+  template.chapters.sort((a, b) => Number(a.chapter_number) - Number(b.chapter_number));
+}
+
 async function loadTemplate() {
   template = await api("/api/templates/default");
+  ensureOtherChapterTemplate();
   const chapterSelect = $("chapterSelect");
   chapterSelect.innerHTML = "";
   for (const ch of template.chapters) {
