@@ -12,6 +12,8 @@ class ProjectCreate(BaseModel):
     level: str = "Bachelors"
     academic_level_guidance: str = ""
     reference_currency_rule: str = ""
+    thesis_format: str = "Standard five-chapter thesis/dissertation"
+    format_notes: str = ""
     research_area: str = ""
     study_context: str = ""
     citation_evidence_notes: str = ""
