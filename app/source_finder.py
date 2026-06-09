@@ -78,19 +78,9 @@ def search_literature_sources(
     deduped = _dedupe_and_rank(records, query=final_query, recent_start_year=recent_start_year)
 
     # Prefer recent sources but keep strong older/foundational sources where needed.
-    # Some metadata providers return None, empty strings, ranges, or non-numeric years.
-    # Normalise years before comparison so the source search never fails on undated records.
-    recent: list[dict[str, Any]] = []
-    older: list[dict[str, Any]] = []
-    undated: list[dict[str, Any]] = []
-    for src in deduped:
-        year = _safe_int(src.get("year"))
-        if year is None:
-            undated.append(src)
-        elif year >= recent_start_year:
-            recent.append(src)
-        else:
-            older.append(src)
+    recent = [src for src in deduped if _safe_int(src.get("year")) >= recent_start_year]
+    older = [src for src in deduped if _safe_int(src.get("year")) and _safe_int(src.get("year")) < recent_start_year]
+    undated = [src for src in deduped if not _safe_int(src.get("year"))]
 
     if include_older_foundational:
         selected = recent[: max_results]
@@ -359,31 +349,8 @@ def _normalise_doi(value: Any) -> str:
 
 
 def _safe_int(value: Any) -> int | None:
-    """Return a safe integer year/count from messy provider metadata.
-
-    Open scholarly APIs sometimes return None, empty strings, floats, date strings,
-    year ranges, or values such as "2021-01-01". This helper prevents comparison
-    errors during ranking and recent/older filtering.
-    """
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float):
-        return int(value) if value == value else None
-    text = str(value).strip()
-    if not text:
-        return None
-    match = re.search(r"\d{4,}", text)
-    if match:
-        try:
-            return int(match.group(0))
-        except Exception:
-            return None
     try:
-        return int(text)
+        return int(value)
     except Exception:
         return None
 
