@@ -1,0 +1,924 @@
+{
+  "template_id": "default_thesis_project_template",
+  "template_name": "Default Project Work and Thesis Template",
+  "description": "A customisable project work template adapted from the thesis self-evaluation checklist. Users may select only the sections required by their institution, supervisor, programme, or research design. The project profile also lets users choose the level of thesis, dissertation, or project work so the drafting depth can match Bachelors, Non-Research Masters, Research Masters, Professional Doctorate, or PhD expectations.",
+  "chapters": [
+    {
+      "chapter_number": 1,
+      "chapter_title": "Introduction Chapter",
+      "section_groups": [
+        {
+          "group_title": "Core Introduction Sections",
+          "sections": [
+            {
+              "section_id": "ch1_background",
+              "section_title": "Background to the Study",
+              "default_selected": true,
+              "guiding_questions": [
+                "What broad global, regional, or national issue does the study relate to?",
+                "What local context makes the issue important?",
+                "What key concepts and variables must the reader understand?",
+                "What empirical or policy evidence supports the context?",
+                "What gap should the background gradually lead to?",
+                "What recent and credible in-text citations should support the background?",
+                "What verified facts, statistics, official reports, policy documents, or empirical evidence should be used?"
+              ],
+              "rules": [
+                "Move clearly from broad context to local or study-specific context.",
+                "Introduce key concepts, variables, and relevant theoretical ideas.",
+                "Use recent empirical or policy evidence where available.",
+                "Signal knowledge gaps without fully stating the problem too early.",
+                "End with a smooth transition to the statement of the problem.",
+                "Include relevant and accurate in-text citations for substantive claims.",
+                "Use verified facts and statistics to establish the context where available. If figures are not supplied, insert a placeholder rather than inventing them."
+              ]
+            },
+            {
+              "section_id": "ch1_problem",
+              "section_title": "Statement of the Problem",
+              "default_selected": true,
+              "guiding_questions": [
+                "What exactly is the research problem?",
+                "What evidence shows that the problem exists?",
+                "What weaknesses exist in previous studies, policies, or practice?",
+                "Where is the problem situated?",
+                "What precise focus did the study address?",
+                "What exact statistics or factual evidence prove that the problem exists?",
+                "Which verified sources should be cited in the problem statement?"
+              ],
+              "rules": [
+                "State a clear, specific, researchable problem rather than a broad description.",
+                "Support the problem with empirical, practical, or policy evidence.",
+                "Explain weaknesses or gaps in existing studies or approaches.",
+                "Situate the problem in the study context.",
+                "End with a precise research focus.",
+                "Support the problem statement with relevant accurate statistics, facts, policy evidence, or empirical evidence.",
+                "Include accurate in-text citations for every major factual claim.",
+                "Do not invent figures or citations; use bracketed placeholders where verified evidence is needed."
+              ]
+            },
+            {
+              "section_id": "ch1_purpose",
+              "section_title": "Purpose of the Study",
+              "default_selected": true,
+              "guiding_questions": [
+                "What is the overall purpose of the study?",
+                "How does the purpose flow from the problem statement?"
+              ],
+              "rules": [
+                "State the overall intent of the study in one clear paragraph.",
+                "Ensure the purpose flows directly from the problem statement.",
+                "Do not introduce variables not already in the study profile."
+              ]
+            },
+            {
+              "section_id": "ch1_objectives",
+              "section_title": "Research Objectives",
+              "default_selected": true,
+              "guiding_questions": [
+                "What is the general objective?",
+                "What are the specific objectives?",
+                "Which variables or concepts does each objective address?"
+              ],
+              "rules": [
+                "Use measurable action verbs such as examine, analyse, assess, determine, evaluate, explore, or investigate.",
+                "Sequence objectives logically from general to specific.",
+                "Make each objective traceable to the problem or gap.",
+                "Avoid objectives that cannot be addressed by the proposed data and analysis."
+              ]
+            },
+            {
+              "section_id": "ch1_questions",
+              "section_title": "Research Questions",
+              "default_selected": true,
+              "guiding_questions": [
+                "What research question corresponds to each objective?",
+                "Should the questions be descriptive, explanatory, comparative, or predictive?"
+              ],
+              "rules": [
+                "Create one research question for each specific objective unless the institution requires otherwise.",
+                "Ensure each question can be answered by the proposed method and data.",
+                "Keep the wording aligned with the variables and context."
+              ]
+            },
+            {
+              "section_id": "ch1_hypotheses",
+              "section_title": "Research Hypotheses",
+              "default_selected": false,
+              "guiding_questions": [
+                "Does the study require hypotheses?",
+                "What relationship is expected between the variables?",
+                "Should each hypothesis be null, alternative, directional, or non-directional?"
+              ],
+              "rules": [
+                "Use hypotheses only where the research design supports hypothesis testing.",
+                "Match each hypothesis to a research objective or research question.",
+                "Use testable relationships between clearly defined variables."
+              ]
+            },
+            {
+              "section_id": "ch1_significance",
+              "section_title": "Significance of the Study",
+              "default_selected": true,
+              "guiding_questions": [
+                "Who benefits from the study?",
+                "What is the theoretical contribution?",
+                "What is the practical contribution?",
+                "What is the policy or institutional contribution?"
+              ],
+              "rules": [
+                "Address theory, practice, and policy where applicable.",
+                "Avoid exaggerated claims.",
+                "Link significance to the study problem, context, and expected findings."
+              ]
+            },
+            {
+              "section_id": "ch1_scope",
+              "section_title": "Scope of the Study",
+              "default_selected": false,
+              "guiding_questions": [
+                "What subject, geographical, population, and methodological scope does the study cover?"
+              ],
+              "rules": [
+                "Define the boundaries of the study clearly.",
+                "Mention the population, location, variables, and method covered."
+              ]
+            },
+            {
+              "section_id": "ch1_limitations",
+              "section_title": "Limitations of the Study",
+              "default_selected": true,
+              "guiding_questions": [
+                "What genuine constraints may affect the study?",
+                "How were these constraints managed, or how were they controlled in the study?"
+              ],
+              "rules": [
+                "Acknowledge genuine constraints without weakening the study unnecessarily.",
+                "Explain mitigation steps where possible."
+              ]
+            },
+            {
+              "section_id": "ch1_delimitations",
+              "section_title": "Delimitation of the Study",
+              "default_selected": true,
+              "guiding_questions": [
+                "What choices deliberately narrow the study?",
+                "Why are these boundaries reasonable?"
+              ],
+              "rules": [
+                "Clearly define what the study includes and excludes.",
+                "Justify the scope in relation to the objectives."
+              ]
+            },
+            {
+              "section_id": "ch1_definitions",
+              "section_title": "Definition of Terms",
+              "default_selected": false,
+              "guiding_questions": [
+                "Which technical terms, constructs, or variables need definition?"
+              ],
+              "rules": [
+                "Define only terms that are central to the study.",
+                "Use concise academic definitions and keep them consistent with later chapters."
+              ]
+            },
+            {
+              "section_id": "ch1_organisation",
+              "section_title": "Organisation of the Study",
+              "default_selected": true,
+              "guiding_questions": [
+                "How many chapters does the project have?",
+                "What does each chapter cover?"
+              ],
+              "rules": [
+                "Make the stated chapter structure match the actual project structure.",
+                "Describe each chapter briefly and accurately."
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "chapter_number": 2,
+      "chapter_title": "Literature Review Chapter",
+      "section_groups": [
+        {
+          "group_title": "Literature Review Sections",
+          "sections": [
+            {
+              "section_id": "ch2_intro",
+              "section_title": "Introduction",
+              "default_selected": true,
+              "guiding_questions": [
+                "What does Chapter Two review, and how is it organised?"
+              ],
+              "rules": [
+                "Introduce the chapter and explain the organisation of the literature review."
+              ]
+            },
+            {
+              "section_id": "ch2_conceptual",
+              "section_title": "Conceptual Review",
+              "default_selected": true,
+              "guiding_questions": [
+                "What key concepts and variables require explanation?"
+              ],
+              "rules": [
+                "Explain each major concept and its relevance to the study objectives.",
+                "Maintain consistency with Chapter One variables.",
+                "Use relevant and accurate in-text citations for all theory, concept, empirical, and gap claims.",
+                "Do not fabricate studies, authors, years, or findings; use placeholders where verified source details are not supplied."
+              ]
+            },
+            {
+              "section_id": "ch2_theoretical",
+              "section_title": "Theoretical Review",
+              "default_selected": true,
+              "guiding_questions": [
+                "Which theories underpin the study?",
+                "How does each theory link to objectives or hypotheses?"
+              ],
+              "rules": [
+                "Review only directly relevant theories.",
+                "Link each theory to specific objectives or hypotheses.",
+                "Acknowledge key limitations or boundaries of the theories.",
+                "Use relevant and accurate in-text citations for all theory, concept, empirical, and gap claims.",
+                "Do not fabricate studies, authors, years, or findings; use placeholders where verified source details are not supplied."
+              ]
+            },
+            {
+              "section_id": "ch2_empirical_objectives",
+              "section_title": "Empirical Review by Objectives",
+              "default_selected": true,
+              "guiding_questions": [
+                "What prior studies relate to each objective?",
+                "What were their contexts, methods, and findings?",
+                "What gaps remain?",
+                "Which verified studies, including authors, years, contexts, methods, and findings, should be cited for each objective?"
+              ],
+              "rules": [
+                "Organise the empirical review by research objectives.",
+                "Give each objective a dedicated subsection.",
+                "Discuss prior studies' contexts, methods, and findings.",
+                "Highlight contradictions and weaknesses in prior studies.",
+                "End each subsection with a study-specific gap.",
+                "Use relevant and accurate in-text citations for all theory, concept, empirical, and gap claims.",
+                "Do not fabricate studies, authors, years, or findings; use placeholders where verified source details are not supplied."
+              ]
+            },
+            {
+              "section_id": "ch2_framework",
+              "section_title": "Conceptual Framework",
+              "default_selected": true,
+              "guiding_questions": [
+                "What relationships among variables should the framework show?"
+              ],
+              "rules": [
+                "Show the main variables and expected relationships.",
+                "Ensure the framework matches the objectives and hypotheses.",
+                "Do not generate messy ASCII diagrams. Present the conceptual framework as a clean relationship table and, where a diagram is needed, use a simple Mermaid flowchart code block or a concise text-renderable layout.",
+                "Include a brief narrative explaining the direction of each relationship, mediator, moderator or control variable."
+              ]
+            },
+            {
+              "section_id": "ch2_hyp_dev",
+              "section_title": "Hypotheses Development",
+              "default_selected": false,
+              "guiding_questions": [
+                "What theoretical and empirical basis supports each hypothesis?"
+              ],
+              "rules": [
+                "Develop hypotheses from theory and prior empirical evidence.",
+                "Match each hypothesis to the relevant objective.",
+                "Use relevant and accurate in-text citations for all theory, concept, empirical, and gap claims.",
+                "Do not fabricate studies, authors, years, or findings; use placeholders where verified source details are not supplied."
+              ]
+            },
+            {
+              "section_id": "ch2_gap_table",
+              "section_title": "Literature Gap Table",
+              "default_selected": false,
+              "guiding_questions": [
+                "What objective does each row of the table address?",
+                "Which prior authors and years are relevant to each objective?",
+                "What was the context of each prior study?",
+                "What method was used in each prior study?",
+                "What key finding was reported?",
+                "What specific gap remains for the present study?",
+                "How is each gap relevant to the current study?"
+              ],
+              "rules": [
+                "Generate a well-structured markdown table, not a paragraph.",
+                "Use the following columns exactly: Research Objective, Key Authors and Year, Context of Study, Method Used, Key Findings, Identified Gap, Relevance to Current Study.",
+                "Create at least one row for each research objective.",
+                "Keep each cell concise and focused on one idea.",
+                "Do not fabricate authors, years, contexts, methods, or findings. Use placeholders such as [insert author and year] where the student has not supplied details.",
+                "Ensure the gap in each row is specific to the current study.",
+                "Use relevant and accurate in-text citations for all theory, concept, empirical, and gap claims.",
+                "Do not fabricate studies, authors, years, or findings; use placeholders where verified source details are not supplied."
+              ],
+              "table_columns": [
+                "Research Objective",
+                "Key Authors and Year",
+                "Context of Study",
+                "Method Used",
+                "Key Findings",
+                "Identified Gap",
+                "Relevance to Current Study"
+              ]
+            },
+            {
+              "section_id": "ch2_summary",
+              "section_title": "Chapter Summary",
+              "default_selected": true,
+              "guiding_questions": [
+                "What are the key conclusions from the review?"
+              ],
+              "rules": [
+                "Summarise the key concepts, theories, empirical findings, and gaps without introducing new issues."
+              ]
+            }
+          ]
+        }
+      ],
+      "drafting_guidance": [
+        "Organise the chapter according to selected sections and the research objectives.",
+        "Use structured tables where requested, especially for the literature gap table.",
+        "Do not fabricate authors, publication years, findings, or citations. Use placeholders where details are missing."
+      ]
+    },
+    {
+      "chapter_number": 3,
+      "chapter_title": "Research Methods/Methodology Chapter",
+      "section_groups": [
+        {
+          "group_title": "Methodology Sections",
+          "sections": [
+            {
+              "section_id": "ch3_intro",
+              "section_title": "Introduction",
+              "default_selected": true,
+              "guiding_questions": [
+                "What is the purpose of the study as stated in Chapter One?",
+                "What methodological issues will this chapter cover?",
+                "How does the chapter link the research objectives to the chosen methods?"
+              ],
+              "rules": [
+                "Provide an introduction and overview of the methodology chapter.",
+                "Recall the purpose of the study without repeating Chapter One excessively.",
+                "Outline the methodological areas covered in the chapter, including philosophy, approach, design, population, sampling, data source, instrument, validity, reliability, ethics, and analysis.",
+                "Use completed-study wording rather than proposal future tense."
+              ]
+            },
+            {
+              "section_id": "ch3_philosophy",
+              "section_title": "Research Philosophy, Paradigm, and Approach",
+              "default_selected": true,
+              "guiding_questions": [
+                "What philosophical paradigm guided the study?",
+                "What ontological assumption about reality underpinned the study?",
+                "What epistemological assumption about knowledge guided the inquiry?",
+                "Which alternative paradigms were considered and why was the selected paradigm appropriate?",
+                "How did the paradigm align with the study objectives and method?"
+              ],
+              "rules": [
+                "State and justify the research philosophy.",
+                "Explain ontology and epistemology where required.",
+                "State and justify the research approach.",
+                "Show consistency among philosophy, approach, design, methods, and analysis.",
+                "Write this section in past tense for a completed study.",
+                "Contrast relevant philosophical positions before justifying the adopted stance.",
+                "Link the selected paradigm directly to the study rather than defining paradigms in isolation."
+              ]
+            },
+            {
+              "section_id": "ch3_design",
+              "section_title": "Research Design and Time Horizon",
+              "default_selected": true,
+              "guiding_questions": [
+                "What research approach was used: quantitative, qualitative, mixed methods, secondary data, econometrics, or another approach?",
+                "What specific design was used: descriptive, correlational, explanatory, quasi-experimental, case study, cross-sectional, longitudinal, predictive, model-testing, pre-post, interrupted time series, or another design?",
+                "Why did this design fit the study better than the alternatives?",
+                "How did the design align with the philosophical stance and objectives?"
+              ],
+              "rules": [
+                "Clearly state the research design.",
+                "State the study type and time horizon with justification.",
+                "State the unit of analysis.",
+                "Ensure the design fits the framework and analysis requirements.",
+                "Use completed-study wording, not proposal wording.",
+                "Justify the selected approach against plausible alternatives.",
+                "State the specific type of design and explain why it was appropriate.",
+                "Ensure the selected design agrees with the research approach, objectives, and analytical strategy."
+              ]
+            },
+            {
+              "section_id": "ch3_setting_population",
+              "section_title": "Study Setting, Population, and Sampling Frame",
+              "default_selected": true,
+              "guiding_questions": [
+                "Where was the study conducted and why was this setting appropriate?",
+                "What constituted the target population?",
+                "What was the size and composition of the target population?",
+                "What was the accessible population?",
+                "What was the unit of analysis and why was it appropriate?",
+                "What inclusion and exclusion criteria applied?"
+              ],
+              "rules": [
+                "Describe and justify the study setting.",
+                "Define the target population clearly.",
+                "Describe the sampling frame.",
+                "Address relevant strata or groups.",
+                "Explain how non-response was handled where applicable.",
+                "Describe the target population, accessible population, population size, composition, and unit of analysis.",
+                "Justify why the selected population and unit of analysis fit the research objectives."
+              ]
+            },
+            {
+              "section_id": "ch3_sampling",
+              "section_title": "Sample Size Determination and Sampling Technique",
+              "default_selected": true,
+              "guiding_questions": [
+                "What sample size was used or proposed?",
+                "How was the sample size determined?",
+                "What assumptions supported the sample size, including population size, proportion or variance, margin of error, confidence level, statistical analysis, power, and non-response allowance?",
+                "What sampling technique was used and why?",
+                "What sampling steps were followed?",
+                "Was any section of the population deliberately restricted, and why?"
+              ],
+              "rules": [
+                "State and justify the sampling technique that was used.",
+                "State and justify the sample size method that was used.",
+                "Link sample size adequacy to the intended analysis.",
+                "Describe sampling steps clearly enough to replicate.",
+                "Acknowledge potential sampling bias and mitigation steps.",
+                "Explain why the sample size and sampling technique were critical for the study.",
+                "State assumptions used in determining the sample size, including confidence level, margin of error, population proportion or variance, power, and non-response rate where applicable.",
+                "Explain the sample composition and the sampling steps clearly enough for replication."
+              ]
+            },
+            {
+              "section_id": "ch3_instrument",
+              "section_title": "Data Type, Sources, and Data Collection Instrument",
+              "default_selected": true,
+              "guiding_questions": [
+                "Was the study based on primary data, secondary data, or both?",
+                "What data collection instrument was used?",
+                "Why was the instrument appropriate for the study?",
+                "What sections did the instrument contain?",
+                "What weaknesses of the method were addressed, including common method variance and social desirability where survey data were used?",
+                "What procedural remedies and statistical remedies were used for common method variance?"
+              ],
+              "rules": [
+                "State data type and justify it.",
+                "Describe the instrument clearly.",
+                "Describe the structure of the instrument.",
+                "State item sources with citations where appropriate.",
+                "State and justify the administration mode used.",
+                "For primary survey studies, describe the questionnaire, interview guide, or observation guide clearly and link it to the study variables or concepts.",
+                "Include a variable or construct measurement table with columns: Variable/Concept, Indicator/Dimension, Operational Indicator, Item Scale, Level of Measurement, and Origin/Source.",
+                "For self-report survey data, discuss common method variance, social desirability, and relevant ex-ante and ex-post remedies."
+              ]
+            },
+            {
+              "section_id": "ch3_measurement",
+              "section_title": "Operationalisation and Measurement of Variables",
+              "default_selected": true,
+              "guiding_questions": [
+                "What were the key variables, constructs or concepts?",
+                "What operational definitions or proxies existed in the literature?",
+                "Which definitions, proxies or indicators were adopted or adapted and why?",
+                "How were the variables or constructs measured?",
+                "Were existing items or validated indicators available?",
+                "How were new or adapted items validated?"
+              ],
+              "rules": [
+                "Operationalise all variables clearly.",
+                "State dimensions and indicators for each construct.",
+                "Specify measurement scales.",
+                "Justify control variables.",
+                "Describe coding, scoring, and composite score procedures.",
+                "Describe coding, scoring, and composite score procedures in past tense.",
+                "Explain operational definitions and proxies from the literature before stating what was adopted or adapted.",
+                "Justify why the selected indicators or measures were superior or more appropriate than alternatives where relevant.",
+                "State whether items were adopted, adapted or developed, and justify the decision."
+              ]
+            },
+            {
+              "section_id": "ch3_pilot",
+              "section_title": "Pilot Testing and Instrument Refinement",
+              "default_selected": true,
+              "guiding_questions": [
+                "Was the instrument piloted?",
+                "Who participated in the pilot?",
+                "Where was the pilot conducted?",
+                "What changes were made after the pilot?",
+                "How did the pilot support clarity and feasibility?"
+              ],
+              "rules": [
+                "Report pilot sample, setting, and purpose.",
+                "Describe changes made after pilot testing.",
+                "Use pilot evidence to support clarity and feasibility.",
+                "Use past tense because this section reports what was done."
+              ]
+            },
+            {
+              "section_id": "ch3_validity_reliability",
+              "section_title": "Validity and Reliability",
+              "default_selected": true,
+              "guiding_questions": [
+                "How were reliability and validity addressed?",
+                "What tools or criteria were used to test reliability?",
+                "What tools or criteria were used to test validity?",
+                "What thresholds or decision rules were used?"
+              ],
+              "rules": [
+                "Describe content validity procedures.",
+                "State construct validity approach where applicable.",
+                "State convergent and discriminant validity criteria where applicable.",
+                "State reliability tests and thresholds.",
+                "Document corrective actions where thresholds were not met.",
+                "Use past tense when reporting tests conducted and decisions made.",
+                "State the specific tools used for reliability and validity assessment and justify their use.",
+                "Report thresholds or decision rules for reliability and validity tests where applicable."
+              ]
+            },
+            {
+              "section_id": "ch3_collection",
+              "section_title": "Data Collection Procedure",
+              "default_selected": true,
+              "guiding_questions": [
+                "What permissions were obtained?",
+                "What steps were followed in data collection?",
+                "What time period did data collection cover?",
+                "How was the response rate managed?",
+                "How were data handled, stored, anonymised, and tracked?"
+              ],
+              "rules": [
+                "Describe access and permissions obtained.",
+                "Give a step-by-step data collection process.",
+                "State the time period of data collection.",
+                "Describe response rate management.",
+                "Describe data storage, anonymisation, and tracking.",
+                "Use past tense throughout this section."
+              ]
+            },
+            {
+              "section_id": "ch3_preparation",
+              "section_title": "Data Preparation and Assumption Checks",
+              "default_selected": true,
+              "guiding_questions": [
+                "How were missing data treated?",
+                "How were outliers checked and treated?",
+                "What assumptions were tested?",
+                "How was common method bias addressed?"
+              ],
+              "rules": [
+                "State missing data treatment.",
+                "Describe outlier detection and treatment.",
+                "Check normality, multicollinearity, and other relevant assumptions.",
+                "Address common method bias for survey data where applicable.",
+                "Use past tense when reporting procedures and tests conducted."
+              ]
+            },
+            {
+              "section_id": "ch3_analysis",
+              "section_title": "Data Analysis Plan",
+              "default_selected": true,
+              "guiding_questions": [
+                "How was each research objective, research question or hypothesis analysed?",
+                "What analytical technique was used for each objective or hypothesis?",
+                "What assumptions applied to each technique before estimation or analysis?",
+                "How were assumptions assessed after estimation or analysis?",
+                "What theoretical or empirical model was specified?",
+                "What decision rule was used?",
+                "How was robustness or validation assessed?"
+              ],
+              "rules": [
+                "Map analyses to objectives.",
+                "State descriptive and inferential analyses clearly.",
+                "Explain hypothesis testing and significance criteria.",
+                "Explain moderation or mediation testing where applicable.",
+                "State model specification with controls.",
+                "State software used.",
+                "Use past tense when describing analyses conducted.",
+                "Provide an objective-by-objective data analysis plan.",
+                "Include a table with columns: Research Objective, Research Question/Hypothesis, Analytical Technique, Ex-Ante Assumptions, Post-Estimation/Analysis Checks, and Decision Rule.",
+                "State model equations using display equation format and define all variables after each equation.",
+                "Explain robustness, validation or diagnostic checks appropriate to the technique used."
+              ]
+            },
+            {
+              "section_id": "ch3_ethics",
+              "section_title": "Ethical Considerations",
+              "default_selected": true,
+              "guiding_questions": [
+                "What ethical clearance or approval was obtained or required?",
+                "How was informed consent obtained?",
+                "How were confidentiality and anonymity maintained?",
+                "How were data protected and stored?",
+                "What risks to participants were addressed and how were they mitigated?"
+              ],
+              "rules": [
+                "State ethical clearance source.",
+                "Describe informed consent.",
+                "State confidentiality and anonymity measures.",
+                "Describe data protection and storage.",
+                "Address risks and mitigation measures.",
+                "Use past tense for completed ethical procedures."
+              ]
+            },
+            {
+              "section_id": "ch3_summary",
+              "section_title": "Chapter Summary",
+              "default_selected": true,
+              "guiding_questions": [
+                "What key methodological choices were made in the study?"
+              ],
+              "rules": [
+                "Restate key methodological choices without new content.",
+                "Make a clear transition to Chapter Four.",
+                "Summarise the completed methodological choices in past tense."
+              ]
+            }
+          ]
+        }
+      ],
+      "drafting_guidance": [
+        "Write the methodology as a completed final project, dissertation, or thesis chapter.",
+        "Use past tense throughout, for example: the study adopted, data were collected, respondents were selected, and data were analysed.",
+        "Avoid proposal wording such as will use, will collect, will be analysed, and will be conducted. The generated chapter should read as a completed academic project, not a proposal."
+      ]
+    },
+    {
+      "chapter_number": 4,
+      "chapter_title": "Results/Data Analysis and Discussion Chapter",
+      "section_groups": [
+        {
+          "group_title": "Results and Discussion Sections",
+          "sections": [
+            {
+              "section_id": "ch4_intro",
+              "section_title": "Introduction",
+              "default_selected": true,
+              "guiding_questions": [
+                "What results does the chapter present?"
+              ],
+              "rules": [
+                "Introduce the chapter and remind the reader of the objectives."
+              ]
+            },
+            {
+              "section_id": "ch4_uploaded_results",
+              "section_title": "Uploaded Results and Analytical Output",
+              "default_selected": true,
+              "guiding_questions": [
+                "What result file or analysis output has been uploaded for this chapter?",
+                "Which tables, models, themes, coefficients, test statistics, or figures should be prioritised?",
+                "Which research objectives or hypotheses does the uploaded output address?",
+                "Are there supervisor instructions on how the results should be presented?"
+              ],
+              "rules": [
+                "Use the uploaded results or analysis output to support the Chapter Four write-up.",
+                "Report only results that appear in the uploaded output or student-supplied answers.",
+                "Map each uploaded result to the relevant research objective or hypothesis.",
+                "Convert software output into clear academic tables and narrative where possible.",
+                "Do not invent sample sizes, coefficients, p-values, themes, quotations, reliability values, or model fit statistics."
+              ]
+            },
+            {
+              "section_id": "ch4_profile",
+              "section_title": "Response Rate and Respondent Profile",
+              "default_selected": true,
+              "guiding_questions": [
+                "What is the response rate?",
+                "What demographic or institutional characteristics describe the respondents?"
+              ],
+              "rules": [
+                "Present response rate and profile clearly before inferential results."
+              ]
+            },
+            {
+              "section_id": "ch4_results_objectives",
+              "section_title": "Results by Objectives",
+              "default_selected": true,
+              "guiding_questions": [
+                "What result addresses each objective?",
+                "What tables or statistics support each result?"
+              ],
+              "rules": [
+                "Present results objective by objective.",
+                "Ensure each objective from Chapter One is addressed.",
+                "Interpret results beyond description."
+              ]
+            },
+            {
+              "section_id": "ch4_hypotheses",
+              "section_title": "Hypothesis Testing",
+              "default_selected": false,
+              "guiding_questions": [
+                "What hypothesis is tested?",
+                "What decision rule applies?",
+                "Is the hypothesis accepted, rejected, or not supported?"
+              ],
+              "rules": [
+                "Clearly state the decision for each hypothesis.",
+                "Use the selected significance criteria consistently."
+              ]
+            },
+            {
+              "section_id": "ch4_discussion",
+              "section_title": "Discussion of Findings",
+              "default_selected": true,
+              "guiding_questions": [
+                "How do findings compare with theory and previous studies?",
+                "What explanations are plausible?"
+              ],
+              "rules": [
+                "Link findings to theory.",
+                "Compare findings with previous studies.",
+                "Explain what the results mean in the study context.",
+                "Use relevant in-text citations when comparing findings with theories and previous studies.",
+                "Do not invent prior studies; use verified supplied sources or placeholders."
+              ]
+            },
+            {
+              "section_id": "ch4_summary",
+              "section_title": "Chapter Summary",
+              "default_selected": true,
+              "guiding_questions": [
+                "What are the main results from the chapter?"
+              ],
+              "rules": [
+                "Summarise key findings by objectives without adding new evidence."
+              ]
+            }
+          ]
+        }
+      ],
+      "drafting_guidance": [
+        "Use uploaded results or analysis output for Chapter Four where available.",
+        "Present findings objective by objective and avoid inventing statistics not contained in the upload or answers.",
+        "Where the upload is unclear, ask for clarification or use placeholders rather than making unsupported claims."
+      ]
+    },
+    {
+      "chapter_number": 5,
+      "chapter_title": "Summary, Conclusion and Recommendation Chapter",
+      "section_groups": [
+        {
+          "group_title": "Conclusion Sections",
+          "sections": [
+            {
+              "section_id": "ch5_intro",
+              "section_title": "Introduction",
+              "default_selected": true,
+              "guiding_questions": [
+                "What does the final chapter cover?"
+              ],
+              "rules": [
+                "Introduce the purpose of the final chapter."
+              ]
+            },
+            {
+              "section_id": "ch5_summary_findings",
+              "section_title": "Summary of Findings by Objectives",
+              "default_selected": true,
+              "guiding_questions": [
+                "What were the findings for each objective?"
+              ],
+              "rules": [
+                "Summarise findings strictly by objectives.",
+                "Do not introduce new results."
+              ]
+            },
+            {
+              "section_id": "ch5_conclusions",
+              "section_title": "Conclusions",
+              "default_selected": true,
+              "guiding_questions": [
+                "What conclusion follows from each finding?",
+                "How do the conclusions address the research problem?"
+              ],
+              "rules": [
+                "Ensure conclusions directly address the research problem.",
+                "Base conclusions on Chapter Four findings."
+              ]
+            },
+            {
+              "section_id": "ch5_recommendations",
+              "section_title": "Recommendations",
+              "default_selected": true,
+              "guiding_questions": [
+                "What should stakeholders do based on each finding?",
+                "Who should implement each recommendation?"
+              ],
+              "rules": [
+                "Make every recommendation flow directly from a finding.",
+                "Avoid recommendations not supported by Chapter Four."
+              ]
+            },
+            {
+              "section_id": "ch5_contribution",
+              "section_title": "Contribution to Knowledge",
+              "default_selected": false,
+              "guiding_questions": [
+                "What does the study add to theory, method, context, or practice?"
+              ],
+              "rules": [
+                "State contributions modestly and link them to the study findings."
+              ]
+            },
+            {
+              "section_id": "ch5_future",
+              "section_title": "Suggestions for Future Research",
+              "default_selected": true,
+              "guiding_questions": [
+                "What future studies are needed based on limitations?"
+              ],
+              "rules": [
+                "Link future research suggestions to study limitations."
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "chapter_number": 6,
+      "chapter_title": "Other Chapter",
+      "section_groups": [
+        {
+          "group_title": "Custom Chapter Sections",
+          "sections": [
+            {
+              "section_id": "ch6_custom_scope",
+              "section_title": "Custom Chapter Scope and Purpose",
+              "default_selected": true,
+              "guiding_questions": [
+                "What should this additional chapter cover?",
+                "Why is this chapter needed in the thesis, dissertation or project work?",
+                "What specific sections, models, evidence, tables or outputs should be included?"
+              ],
+              "rules": [
+                "Draft only the content requested by the user or institution for this additional chapter.",
+                "Make the chapter coherent with the project title, objectives, theory, methodology, results and recommendations.",
+                "Use relevant in-text citations, evidence and an APA reference list where applicable.",
+                "Use placeholders where project-specific evidence or details are missing."
+              ]
+            },
+            {
+              "section_id": "ch6_user_sections",
+              "section_title": "User-Specified Sections",
+              "default_selected": true,
+              "guiding_questions": [
+                "List the headings or sections you want the app to include in this chapter.",
+                "What should each section achieve?",
+                "Are there special formatting, evidence, table, equation or diagram requirements?"
+              ],
+              "rules": [
+                "Use the headings supplied by the user as the organising structure.",
+                "Keep the content aligned with the rest of the project.",
+                "Do not invent data, results, sources, ethical approvals, sample sizes or institutional details."
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "global_writing_guidance": [
+    "Use the selected level only to guide academic depth internally. Do not state in the generated chapter that the writing is designed to meet a level, checklist, template, or software requirement.",
+    "Write in a mature scholarly voice with well-developed academic sentences. Avoid very short, choppy sentences unless needed for clarity or emphasis.",
+    "Avoid weak problem-statement openings such as 'The research problem is that'. Frame the problem through evidence, contradiction, gap, policy concern, or unresolved practical challenge.",
+    "Avoid future-tense proposal wording. Draft chapters as part of a completed project, dissertation, or thesis, using past tense for methods and results and present tense for interpretation where appropriate."
+  ],
+  "academic_levels": [
+    {
+      "value": "Bachelors",
+      "depth": "Clear undergraduate-level academic writing with relevant definitions, context, and basic critical discussion."
+    },
+    {
+      "value": "Non-Research Masters",
+      "depth": "Applied master's-level writing with professional relevance, stronger synthesis, and practical implications."
+    },
+    {
+      "value": "Research Masters (e.g. MPhil)",
+      "depth": "Research master's-level writing with critical synthesis, theory-method alignment, explicit gaps, and rigorous methods."
+    },
+    {
+      "value": "Professional Doctorate (e.g. DBA, DEd)",
+      "depth": "Professional doctorate-level writing with advanced applied scholarship, professional problem framing, and practice contribution."
+    },
+    {
+      "value": "PhD",
+      "depth": "Doctoral-level writing with original contribution, advanced theory, rigorous methodology, and publication-quality argument."
+    }
+  ],
+  "reference_currency_rule": {
+    "recent_reference_share": "Aim for at least 70% of substantive references from the last five years where current literature exists.",
+    "older_reference_share": "Where recent references do not exist, use the most relevant credible available sources. Older sources are also acceptable for foundational theories, classic models, scarce-literature areas, and essential earlier studies.",
+    "integrity_guard": "Do not fabricate sources. Use verified or supplied citations where available. If no credible source details are available, insert a clear bracketed placeholder for the required source."
+  }
+}
