@@ -44,6 +44,17 @@ def home() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
 
 
+@app.get("/workspace")
+def workspace() -> FileResponse:
+    return FileResponse(STATIC_DIR / "workspace.html")
+
+
+@app.get("/register")
+def register_redirect() -> FileResponse:
+    # Registration is not yet implemented in the MVP. Send users to the workspace for now.
+    return FileResponse(STATIC_DIR / "workspace.html")
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
