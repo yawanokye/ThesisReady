@@ -111,52 +111,6 @@ def _level_depth_requirements(profile: dict[str, Any]) -> dict[str, str]:
     return {"selected_level": level, "depth_guidance": guidance}
 
 
-def _format_and_method_requirements(profile: dict[str, Any]) -> dict[str, Any]:
-    """Return rules for institutional format flexibility and secondary/econometric work."""
-    thesis_format = (profile.get("thesis_format") or "Standard five-chapter thesis/dissertation").strip()
-    method_stream = (profile.get("method_stream") or profile.get("data_type") or profile.get("research_approach") or "Primary survey data").strip()
-    format_notes = (profile.get("format_notes") or "").strip()
-
-    rules = [
-        "Treat the selected sections as the student's school-specific format. Draft only the selected headings and do not force unselected sections into the chapter.",
-        "Where the student's school format notes conflict with the default template, follow the school format notes unless they require fabrication or academic misconduct.",
-        "Use section headings naturally. Do not state that a heading was selected, required by a template, or included to satisfy the app.",
-        "Adapt wording to the selected thesis/dissertation/project format, whether standard thesis, applied project, article-based dissertation, qualitative case study, or secondary-data/econometric study.",
-    ]
-
-    stream = method_stream.lower()
-    if any(term in stream for term in ["secondary", "econometric", "time-series", "time series", "panel"]):
-        rules.extend([
-            "For secondary-data and econometric studies, do not write as if the study used respondents, questionnaires, interviews, pilot testing, response rate, or survey administration unless the user explicitly supplied primary-data details.",
-            "Use dataset, observation, unit of analysis, period, frequency, source, coverage, missing values, transformations, and model specification language rather than respondent-based survey language.",
-            "Chapter Three should include data sources, sample period, variable definitions, transformations, model equations, estimator justification, diagnostic tests, robustness checks, software, and reproducibility where those sections are selected.",
-            "Chapter Four should use uploaded results or supplied tables to report descriptive statistics, trends, diagnostic tests, econometric model results, robustness checks, and economic or policy interpretation where available.",
-            "Avoid unsupported causal interpretation. Use terms such as association, relationship, effect, predictive relationship, or estimated effect according to the design and identification strategy supplied.",
-            "Where econometric details are missing, use placeholders such as [insert model specification], [insert data source and period], [insert diagnostic test result], or [insert robustness check] rather than inventing output.",
-        ])
-    if "time" in stream:
-        rules.extend([
-            "For time-series studies, address frequency, sample period, stationarity, structural breaks, lag selection, cointegration, serial correlation, model stability, forecasting accuracy, and interpretation of dynamic relationships where relevant and supplied.",
-            "Use time-series terminology carefully, for example unit-root test, ARDL, VAR, VECM, ARIMA, GARCH, impulse response, variance decomposition, or error-correction only when the method is supplied or clearly appropriate."
-        ])
-    if "panel" in stream:
-        rules.extend([
-            "For panel-data studies, address country/firm/unit coverage, time period, fixed effects, random effects, Hausman test, cross-sectional dependence, heteroskedasticity, serial correlation, endogeneity, robust or clustered standard errors, and dynamic panel methods where relevant and supplied."
-        ])
-    if "qualitative" in stream:
-        rules.extend([
-            "For qualitative studies, use participants, documents, cases, interviews, observations, coding, themes, trustworthiness, credibility, transferability, dependability, confirmability, and reflexivity where relevant.",
-            "Do not force quantitative statistics, hypotheses, or econometric diagnostics into qualitative chapters unless required by a mixed-methods design."
-        ])
-
-    return {
-        "selected_format": thesis_format,
-        "method_stream": method_stream,
-        "format_notes": format_notes,
-        "rules": rules,
-    }
-
-
 def _uploaded_results_for_chapter(profile: dict[str, Any], chapter_number: int) -> dict[str, Any]:
     uploaded = profile.get("uploaded_results") or {}
     result = uploaded.get(str(chapter_number))
@@ -165,9 +119,40 @@ def _uploaded_results_for_chapter(profile: dict[str, Any], chapter_number: int) 
     return result or {}
 
 
-def _uploaded_chapter_for_revision(profile: dict[str, Any], chapter_number: int) -> dict[str, Any]:
-    uploaded = profile.get("uploaded_chapter_sources") or {}
-    return uploaded.get(str(chapter_number)) or {}
+def _retrieved_sources_for_prompt(profile: dict[str, Any]) -> dict[str, Any]:
+    """Return source-search results in a compact prompt-friendly form."""
+    retrieved = profile.get("retrieved_sources") or {}
+    sources = retrieved.get("sources") or []
+    compact_sources = []
+    for src in sources[:18]:
+        compact_sources.append({
+            "title": src.get("title", ""),
+            "authors": src.get("authors", []),
+            "year": src.get("year", ""),
+            "source": src.get("source", ""),
+            "doi": src.get("doi", ""),
+            "url": src.get("url", ""),
+            "abstract": src.get("abstract", ""),
+            "database": src.get("database", ""),
+            "apa_hint": src.get("apa_hint", ""),
+        })
+    return {
+        "query": retrieved.get("query", ""),
+        "searched_at": retrieved.get("searched_at", ""),
+        "recent_reference_window": retrieved.get("recent_reference_window", ""),
+        "databases": retrieved.get("databases", []),
+        "usage_note": retrieved.get("usage_note", ""),
+        "sources": compact_sources,
+        "source_use_rules": [
+            "Use retrieved_sources as the preferred source pool for in-text citations and literature-based claims.",
+            "Cite only sources that are directly relevant to the claim being made.",
+            "Do not cite a retrieved source merely because it appears in the list; the source must support the specific sentence or paragraph.",
+            "Where retrieved sources are insufficient for a claim, use a bracketed placeholder rather than inventing a citation.",
+            "When citing a retrieved source, use author-year in-text citation format based on its author and year metadata.",
+            "Do not invent page numbers, quotations, findings, or reference-list details not present in the metadata or supplied by the student.",
+        ],
+    }
+
 
 def _human_scholarly_style_requirements() -> list[str]:
     """Return high-standard academic writing rules for natural, polished chapter drafting."""
@@ -253,8 +238,6 @@ def build_drafting_prompt(
     selected_section_ids: list[str],
     answers: dict[str, Any] | None = None,
     extra_instructions: str = "",
-    revision_mode: bool = False,
-    revision_instructions: str = "",
 ) -> str:
     chapter = get_chapter(chapter_number)
     sections = selected_sections(chapter_number, selected_section_ids)
@@ -280,26 +263,11 @@ def build_drafting_prompt(
         },
         "project_profile": profile,
         "selected_academic_level_and_depth": _level_depth_requirements(profile),
-        "format_and_method_requirements": _format_and_method_requirements(profile),
         "reference_currency_requirements": _reference_currency_requirements(),
         "citation_and_evidence_requirements": _citation_and_evidence_requirements(chapter_number),
-        "citation_density_rules": _citation_density_rules(chapter_number),
         "human_scholarly_style_requirements": _human_scholarly_style_requirements(),
         "uploaded_results_for_this_chapter": _uploaded_results_for_chapter(profile, chapter_number),
-        "revision_request": {
-            "revision_mode": revision_mode,
-            "revision_instructions": revision_instructions,
-            "uploaded_chapter_source": _uploaded_chapter_for_revision(profile, chapter_number),
-            "revision_output_rules": [
-                "When revision_mode is true, revise the uploaded chapter rather than drafting from scratch.",
-                "Preserve accurate content from the uploaded chapter where it remains relevant and defensible.",
-                "Apply the student's revision instructions, selected sections, school format, scholarly style rules, citation rules, and compliance requirements.",
-                "Mark all new or substantially inserted wording exactly as {{ADD: inserted text}} so the interface and DOCX export can show it in red.",
-                "Mark proposed removals only when necessary as {{DEL: text to remove}}. Do not overuse deletion markers.",
-                "Do not use native Word tracked-change XML. Use the change markers exactly as specified for red inserted text and tracked-style export.",
-                "Do not include an editor's memo unless the student explicitly asks for one. Return the revised chapter text only."
-            ],
-        },
+        "retrieved_sources": _retrieved_sources_for_prompt(profile),
         "selected_sections": section_payload,
         "extra_instructions": extra_instructions,
         "chapter_specific_requirements": _chapter_specific_requirements(chapter_number),
@@ -310,15 +278,13 @@ def build_drafting_prompt(
             "Avoid very short sentences except where they are necessary for emphasis, transition, or clarity.",
             "Do not write sentences that say the work, chapter, section, depth, or argument is designed to meet the selected level of the project, thesis, or dissertation.",
             "Use the reference_currency_requirements: aim for at least 70% of substantive references within the stated recent-reference window, but where current sources do not exist, use the strongest credible available sources instead.",
-            "Use the citation_and_evidence_requirements and citation_density_rules: include relevant, accurate in-text citations or clear source placeholders across all substantive paragraphs, especially literature, methodology justification, discussion, and problem framing.",
-            "Do not leave a claim-heavy paragraph without citation support. When a paragraph makes factual, theoretical, empirical, methodological, policy, contextual, or interpretive claims and no verified source is available, place [insert verified source for this claim] close to the unsupported claim.",
-            "Avoid citation scarcity by distributing citations throughout the chapter instead of placing only one or two citations in a long section.",
+            "Use the citation_and_evidence_requirements: include relevant, accurate in-text citations across all substantive write-up sections, especially literature, methodology justification, discussion, and problem framing.",
+            "Use retrieved_sources as the preferred evidence base where the user has run the source finder. Cite only sources that are relevant to the claim, and do not cite a source just because it was retrieved.",
+            "If retrieved_sources do not provide enough support for a required claim, insert a bracketed placeholder such as [insert verified source for this claim] rather than guessing.",
             "For Chapter One, make the Background and Statement of the Problem factual and evidence-led. Use relevant accurate statistics, policy evidence, institutional evidence, or empirical findings to support the problem where supplied or confidently known.",
             "Do not fabricate citations, statistics, or reference-list entries. Use verified/supplied citations and facts where available. Where a required source, statistic, or fact is not supplied or cannot be stated confidently, insert a bracketed placeholder rather than inventing it.",
             "Use clear numbered headings matching the selected sections.",
-            "Draft only the selected sections and treat them as the student's school-specific format. Do not force a single institutional structure where the user has selected different sections.",
-            "Apply the format_and_method_requirements so the chapter fits the selected thesis format and data orientation.",
-            "For secondary data and econometric studies, avoid survey-only language unless primary data details were supplied. Use dataset, observation, model, period, frequency, estimator, diagnostic, and robustness language where relevant.",
+            "Draft only the selected sections.",
             "Use analytical and connective prose: show why each point matters to the study rather than merely naming concepts, authors, variables, or methods.",
             "Avoid weak or unscholarly problem-statement phrasing such as 'The research problem is that...'. Use an evidence-led academic formulation instead.",
             "Write as a completed academic project, dissertation, or thesis. Avoid proposal-style future tense across the write-up, except where Chapter Five legitimately suggests future research using 'should', 'could', or 'may'.",
@@ -332,115 +298,11 @@ def build_drafting_prompt(
             "For Chapter Four, first use any uploaded results or analysis output attached to the project profile, then use the student answers. Use placeholders only where actual output has not been supplied.",
             "For Chapter Four, report only results found in uploaded files or student answers. Do not fabricate numbers, tables, themes, or interpretation.",
             "For Chapter Five, base conclusions and recommendations only on findings supplied in the profile or answers.",
-            "When revising an uploaded chapter, edit the uploaded text according to the student's instructions and mark new insertions with {{ADD: ...}} so they appear red in preview and exported DOCX.",
         ],
     }
     return json.dumps(prompt, ensure_ascii=False, indent=2)
 
 
-
-
-
-def _citation_density_rules(chapter_number: int) -> list[str]:
-    """Return stronger paragraph-level citation rules without encouraging fabricated sources."""
-    rules = [
-        "Citation density requirement: every substantive paragraph that contains a claim, definition, theory, method justification, empirical statement, policy statement, statistic, trend, result comparison, or recommendation must contain either an accurate in-text citation or a bracketed source placeholder.",
-        "Do not leave claim-heavy paragraphs uncited. If the exact source is not supplied or cannot be stated confidently, add a placeholder immediately after the claim, for example [insert verified source for this claim].",
-        "Use citation-supported synthesis rather than placing one citation at the end of a long section. Citations should be close to the claims they support.",
-        "Avoid citation scarcity. Most developed academic paragraphs should contain at least one relevant citation or evidence placeholder unless the paragraph is purely transitional, introduces chapter structure, or summarises the student's own supplied results.",
-        "For factual or statistical claims, cite official reports, datasets, policy documents, institutional records, or peer-reviewed studies where supplied. Do not invent figures or sources.",
-    ]
-    if chapter_number == 1:
-        rules.extend([
-            "In Chapter One, the Background and Statement of the Problem require high evidence density. Each paragraph that establishes context, scale, trends, policy concern, empirical gap, or practical effect should include a citation, statistic, official source, or placeholder.",
-            "The Statement of the Problem should not contain broad claims such as 'there is limited evidence', 'students face challenges', 'performance has declined', or 'institutions struggle' unless those claims are supported by a citation, statistic, official record, or placeholder.",
-        ])
-    if chapter_number == 2:
-        rules.extend([
-            "In Chapter Two, nearly every paragraph should be citation-supported because it is reviewing concepts, theories, methods, and empirical studies.",
-            "When discussing prior empirical work, include author and year, context, method, finding, and limitation or relevance. Use placeholders for missing bibliographic details rather than inventing them.",
-        ])
-    if chapter_number == 3:
-        rules.extend([
-            "In Chapter Three, cite methodological authorities, measurement sources, model foundations, dataset documentation, validity/reliability thresholds, diagnostic test sources, or ethical standards where applicable.",
-            "Do not cite the student's own procedures as external facts, but cite the methodological principles and instruments that justify those procedures where sources are supplied or confidently known.",
-        ])
-    if chapter_number == 4:
-        rules.extend([
-            "In Chapter Four, citations are especially needed in the discussion of findings, where results are linked to theory and previous studies. The reporting of the student's own uploaded results does not require external citation, but comparisons and explanations do.",
-        ])
-    if chapter_number == 5:
-        rules.extend([
-            "In Chapter Five, recommendations should be traceable to findings. Where a recommendation invokes policy, practice standards, theory, or external evidence, include a citation or placeholder.",
-        ])
-    return rules
-
-
-def _has_intext_citation(text: str) -> bool:
-    patterns = [
-        r"\([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’\-]+(?:\s+(?:&|and)\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’\-]+|\s+et\s+al\.)?,\s*(?:19|20)\d{2}[a-z]?\)",
-        r"[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’\-]+(?:\s+(?:and|&)\s+[A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’\-]+|\s+et\s+al\.)?\s*\((?:19|20)\d{2}[a-z]?\)",
-        r"\[(?:insert|add)\s+(?:verified|credible|recent|current)?\s*(?:source|citation|evidence|statistic|reference)[^\]]*\]",
-        r"\[(?:source|citation|evidence)\s+needed[^\]]*\]",
-    ]
-    return any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in patterns)
-
-
-def _is_heading_or_structural_line(text: str) -> bool:
-    stripped = text.strip()
-    if not stripped:
-        return True
-    if stripped.startswith("#") or re.match(r"^\d+(\.\d+)*\s+", stripped):
-        return True
-    if stripped.startswith("|") or stripped.startswith("-") or stripped.startswith("*"):
-        return True
-    if stripped.startswith("{{ADD:") or stripped.startswith("{{DEL:"):
-        return False
-    return False
-
-
-def _is_substantive_paragraph(text: str, chapter_number: int) -> bool:
-    stripped = re.sub(r"\s+", " ", text).strip()
-    if _is_heading_or_structural_line(stripped):
-        return False
-    if len(stripped.split()) < 28:
-        return False
-    lower = stripped.lower()
-    transitional_phrases = [
-        "this chapter is organised", "the chapter is organised", "this section introduces", "the next section", "chapter summary",
-    ]
-    if any(phrase in lower for phrase in transitional_phrases) and len(stripped.split()) < 60:
-        return False
-    claim_words = [
-        "study", "research", "evidence", "literature", "theory", "model", "framework", "findings", "results", "method", "methodology", "sample", "population", "data", "policy", "institution", "students", "firms", "performance", "relationship", "effect", "impact", "influence", "associated", "significant", "gap", "challenge", "problem", "however", "although", "therefore", "suggests", "indicates", "shows", "reveals", "reported", "argued", "found", "established", "demonstrated", "according", "statistics", "percentage", "%",
-    ]
-    if chapter_number == 4 and any(term in lower for term in ["coefficient", "p-value", "mean", "standard deviation", "theme", "respondents", "table"]):
-        return False if "discussion" not in lower and "consistent" not in lower and "contradicts" not in lower else True
-    return any(word in lower for word in claim_words)
-
-
-def _enforce_citation_placeholders(text: str, chapter_number: int) -> str:
-    """Add source placeholders after claim-heavy paragraphs that have no citation.
-
-    This prevents unsupported claims while avoiding fabricated citations.
-    """
-    if not text:
-        return text
-    blocks = re.split(r"(\n\s*\n)", text)
-    output: list[str] = []
-    for block in blocks:
-        if re.match(r"\n\s*\n", block):
-            output.append(block)
-            continue
-        stripped = block.strip()
-        if _is_substantive_paragraph(stripped, chapter_number) and not _has_intext_citation(stripped):
-            # Keep revision markers intact by appending the placeholder outside them.
-            if stripped.endswith("."):
-                block = block.rstrip() + " [insert verified source for this claim]"
-            else:
-                block = block.rstrip() + ". [insert verified source for this claim]"
-        output.append(block)
-    return "".join(output)
 
 def _polish_generated_text(text: str) -> str:
     """Lightly remove common proposal/meta phrases that weaken scholarly output."""
@@ -499,18 +361,8 @@ def generate_chapter(
     answers: dict[str, Any] | None = None,
     extra_instructions: str = "",
     use_ai: bool = True,
-    revision_mode: bool = False,
-    revision_instructions: str = "",
 ) -> tuple[str, str]:
-    prompt = build_drafting_prompt(
-        profile,
-        chapter_number,
-        selected_section_ids,
-        answers,
-        extra_instructions,
-        revision_mode=revision_mode,
-        revision_instructions=revision_instructions,
-    )
+    prompt = build_drafting_prompt(profile, chapter_number, selected_section_ids, answers, extra_instructions)
     client = _safe_get_openai_client()
     if use_ai and client:
         model = os.getenv("OPENAI_MODEL", "gpt-5.5")
@@ -530,25 +382,16 @@ def generate_chapter(
             "Let the selected thesis, dissertation, or project-work level guide depth silently without appearing in the chapter text. "
             "Make each section read like publishable or supervisor-ready academic prose, with a clear line of reasoning and strong paragraph development. "
             "Apply the reference currency rule: aim for most substantive citations to be from the last five years, but where recent literature does not exist, use credible available sources, including foundational theories and essential older studies. "
-            "Include relevant and accurate in-text citations throughout the write-up. Every substantive paragraph that makes factual, theoretical, empirical, methodological, policy, contextual, or interpretive claims should contain an accurate citation or a bracketed source placeholder. For the problem statement, use factual evidence and accurate statistics to show that the problem exists, where those facts are supplied or can be stated confidently. "
-            "Do not fabricate citations, references, statistics, or institutional evidence. Use clear bracketed placeholders only when a credible source, fact, or statistic is not available or has not been supplied. "
-            "Support many institutional thesis formats by treating the selected sections and school-specific notes as the governing structure. "
-            "For secondary data and econometric work, use appropriate dataset, model, estimator, diagnostic, robustness, and economic interpretation language instead of primary survey wording unless primary data were actually used. "
-            "When revision mode is enabled, revise the uploaded chapter as the base text. Preserve sound content, apply the supplied instruction, and mark all new insertions exactly as {{ADD: inserted text}}. Mark proposed removals only when necessary as {{DEL: text}}."
+            "Include relevant and accurate in-text citations throughout the write-up. For the problem statement, use factual evidence and accurate statistics to show that the problem exists, where those facts are supplied or can be stated confidently. "
+            "When source-finder results are available in the prompt, treat them as the preferred citation pool, but only use records that genuinely support the argument being made. "
+            "Do not fabricate citations, references, statistics, or institutional evidence. Use clear bracketed placeholders only when a credible source, fact, or statistic is not available or has not been supplied."
         )
         response = client.responses.create(model=model, instructions=instructions, input=prompt)
         text = getattr(response, "output_text", "").strip()
         if text:
-            return _enforce_citation_placeholders(_polish_generated_text(text), chapter_number), "openai_responses_api"
+            return _polish_generated_text(text), "openai_responses_api"
 
-    return _enforce_citation_placeholders(_polish_generated_text(generate_fallback_chapter(
-        profile,
-        chapter_number,
-        selected_section_ids,
-        answers,
-        revision_mode=revision_mode,
-        revision_instructions=revision_instructions,
-    )), chapter_number), "local_template_fallback"
+    return _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)), "local_template_fallback"
 
 
 def generate_fallback_chapter(
@@ -556,8 +399,6 @@ def generate_fallback_chapter(
     chapter_number: int,
     selected_section_ids: list[str],
     answers: dict[str, Any] | None = None,
-    revision_mode: bool = False,
-    revision_instructions: str = "",
 ) -> str:
     chapter = get_chapter(chapter_number)
     sections = selected_sections(chapter_number, selected_section_ids)
@@ -573,27 +414,6 @@ def generate_fallback_chapter(
         f"Study title: {title}",
         "",
     ]
-
-    if revision_mode:
-        uploaded_source = _uploaded_chapter_for_revision(profile, chapter_number)
-        source_preview = str(uploaded_source.get("preview") or uploaded_source.get("text") or "").strip()
-        lines.extend([
-            "## Revision Source Note",
-            "",
-            f"The revised version should be developed from the uploaded chapter file **{uploaded_source.get('filename', 'uploaded chapter')}** and the supplied revision instruction.",
-            f"Revision instruction: {revision_instructions or '[insert revision instruction]'}",
-            "New insertions should be marked as {{ADD: red inserted text}} and proposed removals as {{DEL: text to remove}}.",
-            "",
-        ])
-        if source_preview:
-            lines.extend([
-                "## Uploaded Chapter Extract",
-                "",
-                source_preview[:2500],
-                "",
-                "{{ADD: [insert revised and improved text based on the uploaded chapter and the student's instruction]}}",
-                "",
-            ])
 
     for index, section in enumerate(sections, 1):
         section_title = section["section_title"]
@@ -649,13 +469,6 @@ def _placeholder_paragraph(section_title: str, rules: list[str], profile: dict[s
     requirements = " ".join(rules[:4]) if rules else "Follow the selected institutional requirements."
 
     if chapter_number == 3:
-        stream = str(profile.get("method_stream") or profile.get("data_type") or "").lower()
-        if any(term in stream for term in ["secondary", "econometric", "time-series", "time series", "panel"]):
-            return (
-                f"This section requires the secondary-data and econometric details that were actually used in {title}. "
-                f"The account should remain in past tense and should cover these expectations: {requirements} "
-                f"[insert data source, period, unit of analysis, variable construction, model specification, estimator, diagnostics, robustness checks, software, and verified methodological citations here]."
-            )
         return (
             f"This section requires the project-specific methodological details that were actually used in {title}. "
             f"The account should remain in past tense and should cover these methodological expectations: {requirements} "
