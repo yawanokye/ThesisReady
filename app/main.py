@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.database import init_db
-from app.routers import generation, projects, templates
+from app.routers import generation, projects, sources, templates
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -29,6 +29,7 @@ app.add_middleware(
 
 app.include_router(templates.router)
 app.include_router(projects.router)
+app.include_router(sources.router)
 app.include_router(generation.router)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -41,21 +42,6 @@ def on_startup() -> None:
 @app.get("/")
 def home() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
-
-
-@app.get("/register")
-def register() -> FileResponse:
-    return FileResponse(STATIC_DIR / "register.html")
-
-
-@app.get("/workspace")
-def workspace() -> FileResponse:
-    return FileResponse(STATIC_DIR / "workspace.html")
-
-
-@app.get("/app")
-def app_workspace() -> FileResponse:
-    return FileResponse(STATIC_DIR / "workspace.html")
 
 
 @app.get("/health")
