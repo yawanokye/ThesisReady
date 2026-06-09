@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,63 @@ from app.template_store import get_chapter
 router = APIRouter(prefix="/api/projects", tags=["generation"])
 EXPORT_DIR = Path("exports")
 
+
+
+def _source_key(src: dict[str, Any]) -> str:
+    doi = str(src.get("doi") or "").strip().lower()
+    if doi:
+        return "doi:" + doi
+    title = re.sub(r"[^a-z0-9]+", "", str(src.get("title") or "").lower())[:100]
+    return "title:" + title
+
+
+def _merge_sources(existing: list[dict[str, Any]], new_sources: list[dict[str, Any]], limit: int = 80) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for src in [*(existing or []), *(new_sources or [])]:
+        if not isinstance(src, dict):
+            continue
+        key = _source_key(src)
+        if not key or key == "title:" or key in seen:
+            continue
+        seen.add(key)
+        merged.append(src)
+        if len(merged) >= limit:
+            break
+    return merged
+
+
+def _merge_payload_sources_into_profile(profile: dict[str, Any], payload: DraftRequest) -> dict[str, Any]:
+    """Make source-search results available to the drafting prompt even if the DB update
+    was missed, stale, or the frontend generated immediately after source search."""
+    incoming_bank = getattr(payload, "source_bank", None) or []
+    incoming_retrieved = getattr(payload, "retrieved_sources", None) or {}
+    if isinstance(incoming_retrieved, dict):
+        incoming_bank = _merge_sources(incoming_bank, incoming_retrieved.get("sources") or [])
+
+    existing_bank = profile.get("source_bank") or []
+    if not isinstance(existing_bank, list):
+        existing_bank = []
+
+    merged_bank = _merge_sources(existing_bank, incoming_bank)
+    if merged_bank:
+        profile["source_bank"] = merged_bank
+        if isinstance(incoming_retrieved, dict) and incoming_retrieved:
+            current_retrieved = profile.get("retrieved_sources") or {}
+            current_sources = current_retrieved.get("sources") or [] if isinstance(current_retrieved, dict) else []
+            profile["retrieved_sources"] = {
+                **(current_retrieved if isinstance(current_retrieved, dict) else {}),
+                **incoming_retrieved,
+                "sources": _merge_sources(current_sources, incoming_retrieved.get("sources") or merged_bank),
+                "source_bank_count": len(merged_bank),
+            }
+        elif not profile.get("retrieved_sources"):
+            profile["retrieved_sources"] = {"sources": merged_bank, "source_bank_count": len(merged_bank)}
+
+    source_terms = getattr(payload, "source_search_terms", "") or ""
+    if source_terms:
+        profile["source_search_terms"] = source_terms
+    return profile
 
 @router.post("/{project_id}/draft")
 def draft_chapter(project_id: str, payload: DraftRequest):
@@ -52,6 +110,8 @@ def draft_chapter(project_id: str, payload: DraftRequest):
             revision_parts.append("Existing chapter text to revise:\n" + revision_text.strip())
         extra_instructions = (extra_instructions + "\n\n" + "\n\n".join(revision_parts)).strip()
 
+    project["profile"] = _merge_payload_sources_into_profile(project.get("profile", {}), payload)
+
     draft, source = generate_chapter(
         profile=project["profile"],
         chapter_number=payload.chapter_number,
@@ -70,10 +130,10 @@ def draft_chapter(project_id: str, payload: DraftRequest):
         conn.execute(
             """
             UPDATE projects
-            SET drafts_json = ?, selected_sections_json = ?, updated_at = CURRENT_TIMESTAMP
+            SET profile_json = ?, drafts_json = ?, selected_sections_json = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             """,
-            (json.dumps(drafts), json.dumps(selected), project_id),
+            (json.dumps(project.get("profile", {})), json.dumps(drafts), json.dumps(selected), project_id),
         )
         conn.commit()
 
