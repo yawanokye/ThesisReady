@@ -48,11 +48,16 @@ def _source_notes(sources: list[dict[str, Any]], max_items: int = 20) -> str:
         year = src.get("year") or "n.d."
         doi = src.get("doi") or ""
         database = src.get("database") or ""
+        tier = src.get("relevance_tier") or "unclassified"
+        reason = src.get("relevance_reason") or "No relevance explanation supplied."
+        use = src.get("suggested_use") or "Use only where it directly supports the claim."
+        prefix = f"{idx}. [{tier}] "
+        suffix = f" Relevance: {reason} Suggested use: {use}"
         if hint:
-            lines.append(f"{idx}. {hint}")
+            lines.append(prefix + f"{hint}." + suffix)
         else:
             doi_text = f" DOI: {doi}." if doi else ""
-            lines.append(f"{idx}. {authors} ({year}). {title}. {database}.{doi_text}")
+            lines.append(prefix + f"{authors} ({year}). {title}. {database}.{doi_text}" + suffix)
     return "\n".join(lines)
 
 
