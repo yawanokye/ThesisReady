@@ -156,9 +156,13 @@ def draft_chapter(project_id: str, payload: DraftRequest):
         )
         conn.commit()
 
+    response_chapter_title = chapter.get("chapter_title")
+    if payload.chapter_number == 6 and project.get("profile", {}).get("other_chapter_title"):
+        response_chapter_title = project["profile"].get("other_chapter_title")
+
     return {
         "chapter_number": payload.chapter_number,
-        "chapter_title": chapter.get("chapter_title"),
+        "chapter_title": response_chapter_title,
         "draft": draft,
         "source": source,
     }
