@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 from app.ai_service import generate_chapter
 from app.compliance import check_chapter
 from app.database import get_conn, row_to_dict
-from app.export import export_chapter_docx, export_compliance_docx
+from app.export import export_chapter_docx, export_compliance_docx, export_instrument_docx
 from app.result_uploads import extract_result_file
 from app.schemas import ComplianceRequest, DraftRequest
 from app.template_store import get_chapter
@@ -96,6 +96,15 @@ def draft_chapter(project_id: str, payload: DraftRequest):
         or getattr(payload, "uploaded_revision_text", "")
         or ""
     )
+    if not revision_text.strip():
+        uploaded_revisions = (project.get("profile", {}) or {}).get("uploaded_revisions") or {}
+        uploaded_revision = uploaded_revisions.get(str(payload.chapter_number)) or {}
+        revision_text = uploaded_revision.get("extracted_text", "") or revision_text
+        if uploaded_revision and not getattr(payload, "revision_filename", ""):
+            try:
+                payload.revision_filename = uploaded_revision.get("filename", "")
+            except Exception:
+                pass
     revision_instructions = getattr(payload, "revision_instructions", "") or ""
     extra_instructions = payload.extra_instructions or ""
 
@@ -103,6 +112,9 @@ def draft_chapter(project_id: str, payload: DraftRequest):
         revision_parts = [
             "Revision mode is enabled. Revise the uploaded chapter rather than drafting from scratch.",
             "Retain accurate content, improve scholarly flow, correct tense, align with the selected guideline sections, and do not invent new sources, statistics, findings, or approvals.",
+            "Preserve the uploaded chapter's existing argument and structure unless the revision instruction asks for restructuring.",
+            "Mark substantive new insertions with [[ADD]] and [[/ADD]] so the DOCX export can colour additions red. Do not mark unchanged original text as an addition.",
+            "Where helpful, include brief revision comments as bracketed comments such as [Revision comment: ...] without interrupting the academic flow.",
         ]
         if revision_instructions.strip():
             revision_parts.append(f"Revision instructions: {revision_instructions.strip()}")
@@ -111,6 +123,13 @@ def draft_chapter(project_id: str, payload: DraftRequest):
         extra_instructions = (extra_instructions + "\n\n" + "\n\n".join(revision_parts)).strip()
 
     project["profile"] = _merge_payload_sources_into_profile(project.get("profile", {}), payload)
+
+    other_title = getattr(payload, "other_chapter_title", "") or project["profile"].get("other_chapter_title", "")
+    other_instructions = getattr(payload, "other_chapter_instructions", "") or project["profile"].get("other_chapter_instructions", "")
+    if payload.chapter_number == 6 and (other_title or other_instructions):
+        project["profile"]["other_chapter_title"] = other_title
+        project["profile"]["other_chapter_instructions"] = other_instructions
+        extra_instructions = (extra_instructions + "\n\n" + f"Other chapter title: {other_title}\nUser-specified chapter requirements: {other_instructions}").strip()
 
     draft, source = generate_chapter(
         profile=project["profile"],
@@ -197,6 +216,57 @@ async def upload_results(
     }
 
 
+@router.post("/{project_id}/upload-revision")
+async def upload_revision(
+    project_id: str,
+    file: UploadFile = File(...),
+    chapter_number: int = Form(1),
+):
+    """Upload an existing chapter for revision.
+
+    The original text is extracted and stored under profile["uploaded_revisions"].
+    During draft generation, the frontend can also send this text in revision_text.
+    """
+    project = _get_project_or_404(project_id)
+    filename = file.filename or "chapter_revision_upload"
+    contents = await file.read()
+    try:
+        extracted = extract_result_file(filename, contents)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Could not process uploaded revision file: {exc}") from exc
+
+    profile = project.get("profile", {})
+    uploaded_revisions = profile.get("uploaded_revisions") or {}
+    uploaded_revisions[str(chapter_number)] = {
+        **extracted,
+        "content_type": file.content_type or "",
+        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+        "chapter_number": chapter_number,
+    }
+    profile["uploaded_revisions"] = uploaded_revisions
+
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE projects SET profile_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (json.dumps(profile), project_id),
+        )
+        conn.commit()
+
+    return {
+        "project_id": project_id,
+        "chapter_number": chapter_number,
+        "filename": extracted["filename"],
+        "file_type": extracted["file_type"],
+        "characters_extracted": extracted["characters_extracted"],
+        "truncated": extracted["truncated"],
+        "preview": extracted["preview"],
+        "extracted_text": extracted["extracted_text"],
+        "message": "Revision file uploaded and attached to the project profile.",
+    }
+
+
 @router.post("/{project_id}/check")
 def run_compliance_check(project_id: str, payload: ComplianceRequest):
     project = _get_project_or_404(project_id)
@@ -225,6 +295,20 @@ def export_chapter(project_id: str, chapter_number: int):
     if not draft.strip():
         raise HTTPException(status_code=400, detail="No draft found for this chapter")
     path = export_chapter_docx(project, chapter_number, draft, EXPORT_DIR)
+    return FileResponse(path, filename=path.name, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+
+@router.get("/{project_id}/export/instrument/{chapter_number}")
+def export_instrument(project_id: str, chapter_number: int):
+    project = _get_project_or_404(project_id)
+    if chapter_number != 3:
+        raise HTTPException(status_code=400, detail="Draft instruments are available for the Research Methods/Methodology chapter only.")
+    profile = project.get("profile", {})
+    data_type = str(profile.get("data_type") or "").lower()
+    approach = str(profile.get("research_approach") or "").lower()
+    if not any(key in data_type for key in ["primary", "survey", "qualitative", "mixed"]) and not any(key in approach for key in ["quantitative", "qualitative", "mixed"]):
+        raise HTTPException(status_code=400, detail="Draft instruments are intended for primary survey, qualitative, or mixed-method studies.")
+    path = export_instrument_docx(project, chapter_number, EXPORT_DIR)
     return FileResponse(path, filename=path.name, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 
