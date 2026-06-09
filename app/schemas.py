@@ -30,6 +30,8 @@ class ProjectCreate(BaseModel):
     retrieved_sources: dict[str, Any] = Field(default_factory=dict)
     source_bank: list[dict[str, Any]] = Field(default_factory=list)
     source_search_terms: str = ""
+    other_chapter_title: str = ""
+    other_chapter_instructions: str = ""
 
 
 class SectionSelection(BaseModel):
@@ -54,6 +56,8 @@ class DraftRequest(BaseModel):
     retrieved_sources: dict[str, Any] = Field(default_factory=dict)
     source_bank: list[dict[str, Any]] = Field(default_factory=list)
     source_search_terms: str = ""
+    other_chapter_title: str = ""
+    other_chapter_instructions: str = ""
 
 
 class DraftResponse(BaseModel):
