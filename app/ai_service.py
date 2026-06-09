@@ -204,6 +204,18 @@ def _source_attention_target(chapter_number: int, source_count: int) -> int:
     return min(source_count, 3)
 
 
+def _relevance_tier_rank(tier: Any) -> int:
+    return {"highly_relevant": 3, "partly_relevant": 2, "not_relevant": 1}.get(str(tier or ""), 0)
+
+
+def _source_relevance_counts(sources: list[dict[str, Any]]) -> dict[str, int]:
+    counts = {"highly_relevant": 0, "partly_relevant": 0, "not_relevant": 0, "unclassified": 0}
+    for src in sources:
+        tier = str(src.get("relevance_tier") or "unclassified")
+        counts[tier] = counts.get(tier, 0) + 1
+    return counts
+
+
 def _retrieved_sources_for_prompt(profile: dict[str, Any], chapter_number: int | None = None) -> dict[str, Any]:
     """Return source-search results in a compact prompt-friendly form."""
     retrieved = profile.get("retrieved_sources") or {}
@@ -220,9 +232,20 @@ def _retrieved_sources_for_prompt(profile: dict[str, Any], chapter_number: int |
             "url": src.get("url", ""),
             "abstract": src.get("abstract", ""),
             "database": src.get("database", ""),
+            "relevance_tier": src.get("relevance_tier", "unclassified"),
+            "relevance_reason": src.get("relevance_reason", "No relevance explanation supplied."),
+            "suggested_use": src.get("suggested_use", "Use only where it directly supports the claim."),
             "in_text_citation": src.get("in_text_citation", ""),
             "reference_entry_hint": src.get("apa_hint", ""),
         })
+    compact_sources.sort(
+        key=lambda item: (
+            _relevance_tier_rank(item.get("relevance_tier")),
+            bool(item.get("abstract")),
+            bool(item.get("doi")),
+        ),
+        reverse=True,
+    )
     target = _source_attention_target(int(chapter_number or 0), len(compact_sources))
     return {
         "query": retrieved.get("query", ""),
@@ -231,18 +254,21 @@ def _retrieved_sources_for_prompt(profile: dict[str, Any], chapter_number: int |
         "databases": retrieved.get("databases", []),
         "usage_note": retrieved.get("usage_note", ""),
         "source_count": len(compact_sources),
-        "recommended_relevant_sources_to_consider": target,
+        "relevance_counts": _source_relevance_counts(compact_sources),
+        "recommended_relevant_sources_to_review": target,
         "sources": compact_sources,
         "source_use_rules": [
             "Use retrieved_sources as an additional evidence bank alongside the student's project profile, pasted verified evidence, uploaded files, and placeholders.",
             "Do not replace student-supplied evidence with search results; enrich the existing argument only where a retrieved source is directly relevant.",
-            f"Use the recommended_relevant_sources_to_consider value ({target}) as a soft guide for reviewing the source bank, not as a compulsory citation quota.",
+            f"Use the recommended_relevant_sources_to_review value ({target}) only as a review guide, not as a compulsory citation quota.",
+            "Prioritise sources marked highly_relevant, then partly_relevant. Use not_relevant sources only if a human has confirmed their relevance in the project notes.",
             "Apply a relevance gate before every citation: cite a retrieved source only when its title, abstract, method, context, theory, or finding directly supports the sentence or paragraph being written.",
             "Do not cite irrelevant, weakly related, or merely keyword-matching sources. It is better to use a placeholder than to cite an unsuitable source.",
             "Do not list retrieved sources in the References section unless they were actually cited in the chapter body.",
             "Use the supplied in_text_citation value for author-year citations where possible.",
             "Use the supplied reference_entry_hint when building the References section for sources actually cited.",
             "Where retrieved sources are insufficient for a claim, use a bracketed placeholder rather than inventing or forcing a citation.",
+            "If any source search results are attached, end the chapter with a short Source Use Audit after the References section. The audit should list cited sources and relevant-but-not-cited sources with reasons. It should also state that irrelevant sources were excluded.",
             "Do not invent page numbers, quotations, findings, or reference-list details not present in the metadata or supplied by the student.",
         ],
     }
@@ -373,8 +399,8 @@ def build_drafting_prompt(
             "Use the reference_currency_requirements: aim for at least 70% of substantive references within the stated recent-reference window, but where current sources do not exist, use the strongest credible available sources instead.",
             "Use the citation_and_evidence_requirements: include relevant, accurate in-text citations across all substantive write-up sections, especially literature, methodology justification, discussion, and problem framing.",
             "Use retrieved_sources as an additional evidence bank where the user has run the source finder. Do not replace the project profile, user-provided evidence, uploaded files, or placeholders; enrich the draft with relevant retrieved sources.",
-            "When retrieved_sources contains relevant records, cite several of them directly in the body of the chapter using author-year in-text citations. Do not leave all retrieved sources unused.",
-            "Every chapter must end with a References section that includes complete reference entries for every source cited in the chapter, using available reference_entry_hint/apa_hint details from the source bank and user-supplied evidence notes.",
+            "When retrieved_sources contains sources marked highly_relevant or partly_relevant, review them carefully and integrate those that directly support the chapter argument. Do not cite not_relevant sources, and do not cite any source merely to increase citation count.",
+            "Every chapter must end with a References section that includes complete reference entries for every source cited in the chapter, using available reference_entry_hint/apa_hint details from the source bank and user-supplied evidence notes. If source search results were attached, add a short Source Use Audit after the References section.",
             "Increase in-text citation density: Chapter Two should be citation-rich; Chapter One should cite evidence for context, problem and gaps; Chapter Three should cite methodological authorities where appropriate; Chapter Four discussion should cite theory and prior studies.",
             "If retrieved_sources do not provide enough support for a required claim, insert a bracketed placeholder such as [insert verified source for this claim] rather than guessing.",
             "For Chapter One, make the Background and Statement of the Problem factual and evidence-led. Use relevant accurate statistics, policy evidence, institutional evidence, or empirical findings to support the problem where supplied or confidently known.",
@@ -492,6 +518,17 @@ def _source_reference_hints(sources: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+
+def _has_source_use_audit(text: str) -> bool:
+    return bool(re.search(r"(?im)^#{0,3}\s*source\s+use\s+audit\b", text or ""))
+
+
+def _relevant_source_bank(profile: dict[str, Any]) -> list[dict[str, Any]]:
+    sources = _merged_source_bank(profile)
+    relevant = [s for s in sources if str(s.get("relevance_tier") or "").lower() in {"highly_relevant", "partly_relevant", "unclassified"}]
+    relevant.sort(key=lambda item: _relevance_tier_rank(item.get("relevance_tier")), reverse=True)
+    return relevant
+
 def _review_source_integration(
     client: Any,
     model: str,
@@ -501,34 +538,43 @@ def _review_source_integration(
     profile: dict[str, Any],
     chapter_number: int,
 ) -> str:
-    """Ask the model once to revise the draft if retrieved sources were attached but not used."""
+    """Run a single relevance-gated review pass for attached source results.
+
+    This pass does not force citations. It asks the model to use clearly relevant
+    searched sources where they genuinely strengthen the chapter, and to add a
+    Source Use Audit explaining why sources were cited or excluded.
+    """
     source_bank = _merged_source_bank(profile)
     if not source_bank:
         return draft
-    target = _source_attention_target(chapter_number, len(source_bank))
-    if target <= 0:
-        return draft
-    used = _source_usage_count(draft, source_bank)
-    # Allow a small margin because some sources may not be relevant to the exact chapter.
-    required_now = max(1, min(target, len(source_bank)))
-    if used >= required_now:
+
+    relevant_sources = _relevant_source_bank(profile)
+    used = _source_usage_count(draft, relevant_sources)
+    has_audit = _has_source_use_audit(draft)
+
+    # If the draft already used at least one relevant source and includes an audit,
+    # do not keep revising. The audit lets a human judge whether non-use was defensible.
+    if used > 0 and has_audit:
         return draft
 
     repair_payload = {
-        "task": "Revise the chapter draft to integrate the attached literature sources that are relevant to the topic.",
+        "task": "Review the chapter draft against the attached source-search results using a relevance gate.",
         "chapter_number": chapter_number,
-        "reason_for_revision": (
-            f"The attached source search returned {len(source_bank)} source records, but only about {used} appear to be cited in the body. "
-            f"Consider integrating {required_now} relevant source-bank records as in-text citations where they genuinely support the argument."
+        "reason_for_review": (
+            f"The attached source search returned {len(source_bank)} source records. About {used} relevant source-bank records appear to be cited in the body. "
+            "Revise only where relevant searched sources genuinely support the chapter. Do not force unsuitable sources into the prose."
         ),
         "important_rules": [
             "Keep the student's project profile, uploaded results, supplied references, and placeholders; do not replace them.",
-            "Add relevant retrieved sources into the body of the chapter using author-year in-text citations.",
-            "Do not cite a source unless it supports the specific point being made.",
-            "Increase citation density without making the writing mechanical or over-cited.",
-            "Retain red bracketed placeholders where verified evidence is still missing.",
-            "End the chapter with a References section that contains every source cited in the chapter, using the reference hints supplied below.",
-            "Do not invent new sources, statistics, page numbers, quotations, or findings.",
+            "Use highly_relevant and partly_relevant source-bank records where they directly support a specific point, theory, method, context, empirical gap, or discussion.",
+            "Do not cite sources marked not_relevant unless the student's own notes explicitly confirm their relevance.",
+            "Do not cite a source unless it supports the specific sentence or paragraph being written.",
+            "If no searched source fits a claim, keep or add a bracketed placeholder instead of forcing a citation.",
+            "Increase citation density only where doing so improves scholarly support and accuracy.",
+            "End the chapter with a References section for sources actually cited in the body.",
+            "After the References section, add a short Source Use Audit with columns: Source Key, Relevance Tier, Decision, Reason.",
+            "In the Source Use Audit, mark sources as Cited, Not cited - not relevant, or Not cited - not needed for this chapter.",
+            "Do not invent new sources, statistics, page numbers, quotations, findings, or reference details.",
         ],
         "source_bank_reference_hints": _source_reference_hints(source_bank),
         "original_generation_prompt": original_prompt,
@@ -537,7 +583,10 @@ def _review_source_integration(
     try:
         response = client.responses.create(
             model=model,
-            instructions=instructions + " Revise rather than restart. Preserve the student's context and integrate relevant attached sources.",
+            instructions=(
+                instructions
+                + " Revise rather than restart. Preserve the student's context. Use only relevant attached sources and include a Source Use Audit."
+            ),
             input=json.dumps(repair_payload, ensure_ascii=False, indent=2),
         )
         revised = getattr(response, "output_text", "").strip()
@@ -576,7 +625,7 @@ def generate_chapter(
             "Make each section read like publishable or supervisor-ready academic prose, with a clear line of reasoning and strong paragraph development. "
             "Apply the reference currency rule: aim for most substantive citations to be from the last five years, but where recent literature does not exist, use credible available sources, including foundational theories and essential older studies. "
             "Include relevant and accurate in-text citations throughout the write-up. For the problem statement, use factual evidence and accurate statistics to show that the problem exists, where those facts are supplied or can be stated confidently. "
-            "When source-finder results are available in the prompt, review them as an additional evidence bank and integrate only records that directly support the chapter argument; do not ignore relevant literature, but do not force irrelevant search results into the write-up. "
+            "When source-finder results are available in the prompt, review them as an additional evidence bank. Integrate highly_relevant and partly_relevant records only where they directly support the argument; exclude not_relevant records. Add a Source Use Audit after the References section explaining which searched sources were cited or excluded. "
             "Do not fabricate citations, references, statistics, or institutional evidence. Use clear bracketed placeholders only when a credible source, fact, or statistic is not available or has not been supplied."
         )
         response = client.responses.create(model=model, instructions=instructions, input=prompt)

@@ -97,6 +97,18 @@ def check_chapter(chapter_number: int, selected_section_ids: list[str], draft: s
         }
     )
 
+    audit_result = _check_source_use_audit(paragraphs)
+    items.append(
+        {
+            "section_id": "source_use_audit",
+            "section_title": "Source Use Audit",
+            "requirement": "Where source-search results were used or attached, the chapter should include a Source Use Audit explaining which searched sources were cited or excluded.",
+            "status": audit_result["status"],
+            "evidence": audit_result["evidence"],
+            "suggested_action": audit_result["suggested_action"],
+        }
+    )
+
     score = _score(items)
     return {"chapter_number": chapter_number, "score_percent": score, "items": items}
 
@@ -257,4 +269,27 @@ def _check_references_section(paragraphs: list[str]) -> dict[str, str]:
         "status": "Weak",
         "evidence": "References heading was found, but the entries appear incomplete or missing.",
         "suggested_action": "Add complete reference entries for sources actually cited in the chapter.",
+    }
+
+
+def _check_source_use_audit(paragraphs: list[str]) -> dict[str, str]:
+    text = "\n\n".join(paragraphs or [])
+    match = re.search(r"(?im)^#{0,3}\s*source\s+use\s+audit\b", text)
+    if not match:
+        return {
+            "status": "Weak",
+            "evidence": "No Source Use Audit section was found. This is acceptable only when no source-search results were attached.",
+            "suggested_action": "If the source finder was used, add a Source Use Audit after the References section showing cited, not cited, and excluded sources with reasons.",
+        }
+    audit_text = text[match.end():].strip()
+    if re.search(r"(?i)\b(cited|not cited|excluded|not relevant|source key|relevance tier)\b", audit_text):
+        return {
+            "status": "Passed",
+            "evidence": "Source Use Audit section found with citation/exclusion decisions.",
+            "suggested_action": "None",
+        }
+    return {
+        "status": "Weak",
+        "evidence": "Source Use Audit heading was found, but the decisions or reasons appear incomplete.",
+        "suggested_action": "Use columns such as Source Key, Relevance Tier, Decision, and Reason.",
     }
