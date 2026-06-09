@@ -365,6 +365,22 @@ def _chapter_specific_requirements(chapter_number: int) -> list[str]:
     return common
 
 
+
+def _effective_chapter_title(chapter: dict[str, Any], profile: dict[str, Any], chapter_number: int) -> str:
+    """Return the chapter title used in prompts and fallback drafts.
+
+    The dropdown uses standard names such as Introduction and Others. When the user
+    selects Others and supplies a custom title, the generated chapter should use the
+    user's title while the menu still shows Others.
+    """
+    if int(chapter_number or 0) == 6:
+        custom_title = str(profile.get("other_chapter_title") or "").strip()
+        if custom_title:
+            return custom_title
+        return "Others"
+    return str(chapter.get("chapter_title") or "").strip() or "Chapter"
+
+
 def build_drafting_prompt(
     profile: dict[str, Any],
     chapter_number: int,
@@ -373,6 +389,7 @@ def build_drafting_prompt(
     extra_instructions: str = "",
 ) -> str:
     chapter = get_chapter(chapter_number)
+    effective_chapter_title = _effective_chapter_title(chapter, profile, chapter_number)
     sections = selected_sections(chapter_number, selected_section_ids)
     answers = answers or {}
 
@@ -392,7 +409,7 @@ def build_drafting_prompt(
         "task": "Draft a full academic project chapter using selected institutional guideline sections.",
         "chapter": {
             "chapter_number": chapter_number,
-            "chapter_title": chapter.get("chapter_title"),
+            "chapter_title": effective_chapter_title,
         },
         "project_profile": profile,
         "selected_academic_level_and_depth": _level_depth_requirements(profile),
@@ -672,6 +689,7 @@ def generate_fallback_chapter(
     answers: dict[str, Any] | None = None,
 ) -> str:
     chapter = get_chapter(chapter_number)
+    effective_chapter_title = _effective_chapter_title(chapter, profile, chapter_number)
     sections = selected_sections(chapter_number, selected_section_ids)
     answers = answers or {}
 
@@ -680,7 +698,7 @@ def generate_fallback_chapter(
     ref_info = _reference_currency_requirements()
     lines = [
         f"# CHAPTER {chapter_number}",
-        f"# {chapter.get('chapter_title', '').upper()}",
+        f"# {effective_chapter_title.upper()}",
         "",
         f"Study title: {title}",
         "",
