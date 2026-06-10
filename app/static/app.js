@@ -74,9 +74,9 @@ function updateChapterSpecificUi() {
   const resultsBox = $("resultsUploadBox");
   if (resultsBox) resultsBox.hidden = !isResultsChapter();
   const instrumentBtn = $("downloadInstrumentBtn");
-  if (instrumentBtn) instrumentBtn.hidden = !(isMethodsChapter() && isPrimaryOrQualitative());
+  if (instrumentBtn) instrumentBtn.hidden = true;
   const supplementBtn = $("downloadMethodsSupplementBtn");
-  if (supplementBtn) supplementBtn.hidden = !isMethodsChapter();
+  if (supplementBtn) supplementBtn.disabled = !currentProjectId;
   const otherBox = $("otherChapterBox");
   if (otherBox) otherBox.hidden = currentChapter !== 6;
 }
@@ -287,6 +287,7 @@ async function createProject() {
   const result = await api("/api/projects", { method: "POST", body: JSON.stringify(profile) });
   currentProjectId = result.id;
   $("projectStatus").textContent = `Project created: ${result.id}`;
+  updateChapterSpecificUi();
 }
 
 async function generateDraft() {
@@ -485,7 +486,15 @@ $("draftBtn").addEventListener("click", () => generateDraft().catch(err => $("dr
 if ($("uploadResultsBtn")) $("uploadResultsBtn").addEventListener("click", () => uploadResults().catch(err => $("uploadStatus").textContent = err.message));
 if ($("uploadRevisionBtn")) $("uploadRevisionBtn").addEventListener("click", () => uploadRevision().catch(err => $("revisionStatus").textContent = err.message));
 if ($("downloadInstrumentBtn")) $("downloadInstrumentBtn").addEventListener("click", () => download(`/api/projects/${currentProjectId}/export/instrument/${currentChapter}`));
-if ($("downloadMethodsSupplementBtn")) $("downloadMethodsSupplementBtn").addEventListener("click", () => download(`/api/projects/${currentProjectId}/export/methods-supplement/${currentChapter}`));
+if ($("downloadMethodsSupplementBtn")) $("downloadMethodsSupplementBtn").addEventListener("click", () => {
+  const status = $("methodsSupplementStatus");
+  if (!currentProjectId) {
+    if (status) status.textContent = "Create the project profile first, then download the supplementary methods chapter.";
+    return;
+  }
+  if (status) status.textContent = "Preparing supplementary methods chapter...";
+  download(`/api/projects/${currentProjectId}/export/methods-supplement`);
+});
 if ($("data_type")) $("data_type").addEventListener("change", updateChapterSpecificUi);
 if ($("research_approach")) $("research_approach").addEventListener("change", updateChapterSpecificUi);
 if ($("findSourcesBtn")) {

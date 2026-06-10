@@ -134,6 +134,15 @@
         </label>
       </div>
       <div id="sectionsBox" class="sections"></div>
+
+      <div class="supplement-box" id="methodsSupplementBox">
+        <h3>Supplementary Methods Chapter</h3>
+        <p class="hint">This is separate from the Research Methods/Methodology chapter. The main methodology chapter remains a clean, submission-ready chapter. Use this supplementary chapter to gather and organise measurement information, questionnaire/interview-guide items, scale sources, variable definitions, secondary-data sources, coding notes, and appendix materials needed for analysis.</p>
+        <div class="actions compact-actions">
+          <button id="downloadMethodsSupplementBtn" type="button">Download supplementary methods chapter DOCX</button>
+        </div>
+        <p id="methodsSupplementStatus" class="status"></p>
+      </div>
     </section>
 
     <section class="card wide">
@@ -183,8 +192,6 @@
         <button id="checkBtn">Run compliance check</button>
         <button id="downloadDraftBtn" disabled>Download draft DOCX</button>
         <button id="downloadCheckBtn" disabled>Download checklist DOCX</button>
-        <button id="downloadInstrumentBtn" type="button" hidden>Download draft instrument DOCX</button>
-        <button id="downloadMethodsSupplementBtn" type="button" hidden>Download supplementary instrument/data-source chapter DOCX</button>
       </div>
       <p id="draftStatus" class="status"></p>
       <textarea id="draftOutput" rows="18" placeholder="Draft will appear here"></textarea>
