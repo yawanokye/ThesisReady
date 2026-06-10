@@ -75,6 +75,8 @@ function updateChapterSpecificUi() {
   if (resultsBox) resultsBox.hidden = !isResultsChapter();
   const instrumentBtn = $("downloadInstrumentBtn");
   if (instrumentBtn) instrumentBtn.hidden = !(isMethodsChapter() && isPrimaryOrQualitative());
+  const supplementBtn = $("downloadMethodsSupplementBtn");
+  if (supplementBtn) supplementBtn.hidden = !isMethodsChapter();
   const otherBox = $("otherChapterBox");
   if (otherBox) otherBox.hidden = currentChapter !== 6;
 }
@@ -483,6 +485,7 @@ $("draftBtn").addEventListener("click", () => generateDraft().catch(err => $("dr
 if ($("uploadResultsBtn")) $("uploadResultsBtn").addEventListener("click", () => uploadResults().catch(err => $("uploadStatus").textContent = err.message));
 if ($("uploadRevisionBtn")) $("uploadRevisionBtn").addEventListener("click", () => uploadRevision().catch(err => $("revisionStatus").textContent = err.message));
 if ($("downloadInstrumentBtn")) $("downloadInstrumentBtn").addEventListener("click", () => download(`/api/projects/${currentProjectId}/export/instrument/${currentChapter}`));
+if ($("downloadMethodsSupplementBtn")) $("downloadMethodsSupplementBtn").addEventListener("click", () => download(`/api/projects/${currentProjectId}/export/methods-supplement/${currentChapter}`));
 if ($("data_type")) $("data_type").addEventListener("change", updateChapterSpecificUi);
 if ($("research_approach")) $("research_approach").addEventListener("change", updateChapterSpecificUi);
 if ($("findSourcesBtn")) {
