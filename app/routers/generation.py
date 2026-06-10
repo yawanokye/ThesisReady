@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 from app.ai_service import generate_chapter
 from app.compliance import check_chapter
 from app.database import get_conn, row_to_dict
-from app.export import export_chapter_docx, export_compliance_docx, export_instrument_docx
+from app.export import export_chapter_docx, export_compliance_docx, export_instrument_docx, export_methods_supplement_docx
 from app.result_uploads import extract_result_file
 from app.schemas import ComplianceRequest, DraftRequest
 from app.template_store import get_chapter
@@ -309,6 +309,17 @@ def export_instrument(project_id: str, chapter_number: int):
     if not any(key in data_type for key in ["primary", "survey", "qualitative", "mixed"]) and not any(key in approach for key in ["quantitative", "qualitative", "mixed"]):
         raise HTTPException(status_code=400, detail="Draft instruments are intended for primary survey, qualitative, or mixed-method studies.")
     path = export_instrument_docx(project, chapter_number, EXPORT_DIR)
+    return FileResponse(path, filename=path.name, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+
+
+
+@router.get("/{project_id}/export/methods-supplement/{chapter_number}")
+def export_methods_supplement(project_id: str, chapter_number: int):
+    project = _get_project_or_404(project_id)
+    if chapter_number != 3:
+        raise HTTPException(status_code=400, detail="The supplementary instrument/data-source chapter is available for the Research Methods/Methodology chapter only.")
+    path = export_methods_supplement_docx(project, chapter_number, EXPORT_DIR)
     return FileResponse(path, filename=path.name, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 
