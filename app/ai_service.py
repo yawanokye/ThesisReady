@@ -340,13 +340,15 @@ def _chapter_specific_requirements(chapter_number: int) -> list[str]:
 
     if chapter_number == 4:
         return common + [
-            "Present results objective by objective.",
-            "Use uploaded results, statistical output, qualitative coding output, or analysis tables where available.",
-            "Convert uploaded software output into clear academic tables and narrative interpretation where possible.",
-            "Map each result to the relevant research objective or hypothesis.",
-            "Use placeholders for statistical output only where actual results have not been supplied.",
-            "Do not invent coefficients, p-values, sample sizes, reliability values, model fit statistics, themes, or quotations.",
-            "Where the uploaded output is unclear or incomplete, state what additional output is needed instead of making unsupported claims.",
+            "Write a clean Results/Data Analysis and Discussion chapter. Do not refer to the file as 'uploaded results', 'the uploaded output', 'the output uploaded', or similar; convert the supplied output into normal thesis prose and tables.",
+            "Study any supplied results, statistical output, qualitative coding output, Excel tables, SPSS/Stata/R output, or analysis notes and reorganise them into a coherent chapter aligned with the methods and objectives.",
+            "Create all required tables that match the research methods, objectives, questions and hypotheses: response/profile table, descriptive statistics, reliability/validity where applicable, assumptions/diagnostics, objective-by-objective results, model estimates/path coefficients/regression/econometric tables, qualitative theme tables, and hypothesis decision tables where relevant.",
+            "Use only results actually supplied in uploaded files or student answers. Do not invent coefficients, p-values, sample sizes, reliability values, model fit statistics, themes, quotations or percentages.",
+            "Where a required result is missing, create a clean placeholder table with bracketed red placeholders such as [insert regression coefficients and p-values here] and add a short advisory sentence telling the user the exact result/output to obtain.",
+            "Where a figure, graph, conceptual/path diagram or visual result is required but missing, insert a red placeholder such as [insert Figure 4.1: Conceptual/path diagram or chart here] and state the output needed to create it.",
+            "Advise what should go to appendix, including raw software output, long diagnostics, full correlation matrices, full interview transcripts, questionnaires, codebooks and lengthy robustness checks. Keep the main text clean.",
+            "Map each result to the relevant research objective, question or hypothesis before discussing it.",
+            "Interpret results beyond description and link discussion to theory, prior studies and context using relevant citations.",
         ]
 
     if chapter_number == 5:
@@ -416,7 +418,7 @@ def build_drafting_prompt(
         "reference_currency_requirements": _reference_currency_requirements(),
         "citation_and_evidence_requirements": _citation_and_evidence_requirements(chapter_number),
         "human_scholarly_style_requirements": _human_scholarly_style_requirements(),
-        "uploaded_results_for_this_chapter": _uploaded_results_for_chapter(profile, chapter_number),
+        "analysis_evidence_for_this_chapter": _uploaded_results_for_chapter(profile, chapter_number),
         "retrieved_sources": _retrieved_sources_for_prompt(profile, chapter_number),
         "selected_sections": section_payload,
         "extra_instructions": extra_instructions,
@@ -452,8 +454,12 @@ def build_drafting_prompt(
             "When revision mode is enabled, preserve the original structure as far as possible, revise with comments in the narrative where helpful, and wrap new inserted material in [[ADD]] and [[/ADD]] markers so the DOCX export can colour additions red.",
             "For Chapter Two tables, use a properly structured markdown table with meaningful column headers and one idea per cell.",
             "For Chapter Three, use past tense for completed project work and avoid future-tense proposal wording.",
-            "For Chapter Four, first use any uploaded results or analysis output attached to the project profile, then use the student answers. Use placeholders only where actual output has not been supplied.",
+            "For Chapter Four, transform supplied result files and answers into a clean thesis chapter. Do not write phrases such as 'the uploaded results', 'uploaded output', 'the output uploaded', or 'the attached file shows'. Present the tables and narrative as normal Results/Data Analysis and Discussion content.",
+            "For Chapter Four, create the tables required by the selected methodology and objectives. If a required table cannot be completed from the supplied results, create a placeholder markdown table with red bracketed placeholders and advise the user exactly which output to obtain.",
+            "For Chapter Four, insert red placeholders for required missing figures, graphs, path diagrams, conceptual diagrams or charts, and advise whether they belong in the main chapter or appendix.",
+            "For Chapter Four, advise which materials should move to appendices, such as raw software output, lengthy diagnostic tables, full correlation matrices, full questionnaires, interview transcripts, codebooks and robustness checks.",
             "For Chapter Four, report only results found in uploaded files or student answers. Do not fabricate numbers, tables, themes, or interpretation.",
+            "For questionnaire or interview-guide outputs, build draft instruments from the constructs, variables and objectives supplied in the project profile rather than giving only a generic structure.",
             "For Chapter Five, base conclusions and recommendations only on findings supplied in the profile or answers.",
         ],
     }
@@ -495,6 +501,15 @@ def _polish_generated_text(text: str) -> str:
         r"\bwill assess\b": "assessed",
         r"\bwill investigate\b": "investigated",
         r"\bwill determine\b": "determined",
+        r"\bthe uploaded results show\b": "the results show",
+        r"\bthe uploaded output shows\b": "the results show",
+        r"\bthe output uploaded shows\b": "the results show",
+        r"\bthe attached results show\b": "the results show",
+        r"\bfrom the uploaded results\b": "from the results",
+        r"\bfrom the uploaded output\b": "from the results",
+        r"\bfrom the attached output\b": "from the results",
+        r"\buploaded results\b": "results",
+        r"\buploaded output\b": "results",
     }
     polished = text
     for pattern, replacement in replacements.items():
@@ -795,30 +810,40 @@ def _fallback_results_section(section_answers: dict[str, Any], profile: dict[str
     objectives = profile.get("objectives") or []
     if isinstance(objectives, str):
         objectives = [obj.strip() for obj in re.split(r"\n|;", objectives) if obj.strip()]
+    if not objectives:
+        objectives = ["[insert research objective 1]", "[insert research objective 2]"]
 
     lines: list[str] = []
-    if uploaded:
+    extracted = str((uploaded or {}).get("extracted_text") or (uploaded or {}).get("preview") or "").strip()
+    if extracted:
         lines.append(
-            f"The results write-up should be developed from the uploaded file **{uploaded.get('filename', 'results file')}**. "
-            f"The extracted output contains {uploaded.get('characters_extracted', 0)} characters. "
-            "Only statistics, themes, tables, and findings that appear in the uploaded output should be reported."
+            "The chapter should convert the supplied analysis evidence into clean academic results tables and interpretation. "
+            "Do not mention the file upload in the final prose; present the evidence as normal thesis results."
         )
-        preview = str(uploaded.get("preview") or "").strip()
-        if preview:
-            lines.append("\n**Extracted results preview:**\n")
-            lines.append(preview[:1800])
+        lines.append("\n**Available analysis evidence for drafting use only:**\n")
+        lines.append(extracted[:2200])
     else:
         lines.append(
-            "No result file has been uploaded for this chapter. Upload SPSS, Excel, CSV, Word, PDF, or text output, or paste the key results in the guided questions. "
-            "Until results are supplied, the chapter should use placeholders rather than invented statistics."
+            "The results required for this section were not supplied. The chapter should contain placeholder tables in red bracketed text and should tell the user exactly which analysis output is needed."
         )
 
-    if objectives:
-        lines.append("\n**Objective-to-results mapping template:**\n")
-        lines.append("| Research Objective | Uploaded Result/Table | Interpretation Required | Discussion Link |")
-        lines.append("|---|---|---|---|")
-        for objective in objectives:
-            lines.append(f"| {objective} | [identify table/statistic/theme from uploaded output] | [interpret the result] | [link to theory and prior studies] |")
+    lines.append("\n**Objective-to-results table:**\n")
+    lines.append("| Research Objective | Required Analysis/Table | Result to Report | Interpretation | Required Action if Missing |")
+    lines.append("|---|---|---|---|---|")
+    for objective in objectives:
+        lines.append(
+            f"| {objective} | [insert analysis method aligned with methodology] | [insert statistic/coefficient/theme/result] | [insert interpretation linked to objective] | [obtain the exact software/output table needed for this objective] |"
+        )
+
+    lines.append("\n**Suggested missing-results placeholders:**\n")
+    lines.append("| Required Table/Figure | Purpose | Placeholder | User Action |")
+    lines.append("|---|---|---|---|")
+    lines.append("| Response rate or data profile | Establish final sample/dataset | [insert final sample, usable responses, response rate or dataset period] | Provide response summary or dataset description |")
+    lines.append("| Descriptive statistics | Summarise variables/constructs | [insert means, standard deviations, frequencies or theme counts] | Provide descriptive output |")
+    lines.append("| Main analysis table | Answer objectives/hypotheses | [insert coefficients, p-values, path estimates, themes or comparison statistics] | Provide regression/SEM/econometric/qualitative output |")
+    lines.append("| Figure or diagram | Visualise key results/model | [insert Figure: results chart/path diagram/conceptual model here] | Provide chart, model output or diagram data |")
+
+    lines.append("\n**Appendix guidance:** raw software output, long diagnostic tables, full questionnaires, interview transcripts, full correlation matrices, detailed coding sheets and robustness checks should normally go to the appendix unless a supervisor requires them in the main text.")
 
     if section_answers:
         joined = []
