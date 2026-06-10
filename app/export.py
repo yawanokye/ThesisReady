@@ -223,6 +223,27 @@ def _add_markdown_table(doc: Document, block: str) -> None:
     doc.add_paragraph("")
 
 
+def _looks_like_raw_equation(text: str) -> bool:
+    """Detect model/equation blocks that were generated without $$ markers."""
+    stripped = str(text or "").strip()
+    if not stripped or "=" not in stripped:
+        return False
+    if len(stripped) > 500:
+        return False
+    lowered = stripped.lower()
+    if lowered.startswith(("where", "note", "table", "figure")):
+        return False
+    # Avoid converting ordinary prose sentences with equals signs.
+    word_count = len(re.findall(r"[A-Za-z]{3,}", stripped))
+    has_math_marker = bool(
+        re.search(r"\\(?:alpha|beta|gamma|delta|epsilon|varepsilon|mu|sum|frac|theta|lambda|sigma)", stripped)
+        or re.search(r"\b[A-Za-z]{1,8}_\{?[A-Za-z0-9]+\}?", stripped)
+        or re.search(r"[ββααμμεεΣ∑₀₁₂₃₄₅₆₇₈₉]", stripped)
+        or "varepsilon" in lowered
+    )
+    return has_math_marker and word_count <= 35
+
+
 def _equation_from_block(block: str) -> str | None:
     stripped = block.strip()
     if stripped.startswith("$$") and stripped.endswith("$$"):
@@ -230,6 +251,8 @@ def _equation_from_block(block: str) -> str | None:
     lines = stripped.splitlines()
     if len(lines) >= 3 and lines[0].strip() == "$$" and lines[-1].strip() == "$$":
         return "\n".join(lines[1:-1]).strip()
+    if _looks_like_raw_equation(stripped):
+        return stripped
     return None
 
 
@@ -587,9 +610,14 @@ def export_methods_supplement_docx(project: dict[str, Any], chapter_number: int,
     doc.add_heading("Research Instrument and Data Source Specification", level=1)
     doc.add_paragraph(f"Study title: {title}")
     doc.add_paragraph(
-        "This supplementary chapter supports the Research Methods/Methodology chapter. It documents the proposed research "
-        "instrument, scale or item sources, variable measurement decisions, data-source traceability and appendix materials. "
-        "It should be reviewed against supervisor comments, ethical approval conditions and the final institutional format before use."
+        "This is a separate working and support chapter. It does not replace the main Research Methods/Methodology chapter, "
+        "which should remain a complete, polished, submission-ready chapter. This supplementary chapter is used to gather and organise "
+        "the information needed for analysis: questionnaire or interview-guide items, validated scale sources, variable definitions, "
+        "secondary-data sources, coding decisions, transformation notes, data-quality checks and appendix materials."
+    )
+    doc.add_paragraph(
+        "Use this document as an instrument/data-source planning file and as material for the appendix where required. "
+        "Only move content from this supplementary chapter into the main methodology chapter if the supervisor or institutional format requires it."
     )
 
     _add_objective_construct_matrix(doc, objectives, constructs)
@@ -608,6 +636,7 @@ def export_methods_supplement_docx(project: dict[str, Any], chapter_number: int,
     if include_secondary:
         _add_secondary_data_source_chapter(doc, objectives, constructs, sources)
 
+    _add_scale_and_data_source_search_plan(doc, constructs, data_type, sources)
     _add_appendix_guidance(doc, include_primary=include_primary, include_secondary=include_secondary)
     _add_supplement_reference_notes(doc, sources)
 
@@ -736,6 +765,35 @@ def _add_secondary_data_source_chapter(doc: Document, objectives: list[str], con
         _set_cell_text_with_markup(row[5], "[insert log, differencing, scaling, index construction or coding]")
         _set_cell_text_with_markup(row[6], "[insert missing-data, outlier, unit-root, stationarity or consistency checks]")
         _set_cell_text_with_markup(row[7], "Data dictionary, extraction log, raw data sample and codebook")
+
+
+def _add_scale_and_data_source_search_plan(doc: Document, constructs: list[str], data_type: str, sources: list[dict[str, Any]]) -> None:
+    doc.add_heading("Scale, Instrument and Data-Source Search Plan", level=2)
+    doc.add_paragraph(
+        "Use this table to guide targeted searches for validated questionnaire scales, interview protocols, official datasets or variable definitions. "
+        "Replace placeholders after verifying the original source, DOI, report title, database name or institutional document."
+    )
+    table = doc.add_table(rows=1, cols=5)
+    table.style = "Table Grid"
+    headers = ["Construct/Variable", "Information Needed", "Suggested Search Terms", "Potential Source Type", "Action Before Use"]
+    for i, h in enumerate(headers):
+        table.rows[0].cells[i].text = h
+    if not constructs:
+        constructs = ["[insert construct/variable]"]
+    secondary = any(key in str(data_type or "").lower() for key in ["secondary", "econometric", "time-series", "panel"])
+    for construct in constructs:
+        matched = _match_sources_for_construct(construct, sources, limit=1)
+        source_type = "Official database, annual report, regulatory report, World Bank/IMF/OECD/WHO/UNESCO dataset, institutional records" if secondary else "Validated scale, adapted questionnaire items, prior empirical study, interview protocol, measurement paper"
+        info_needed = "Exact data source, variable definition, coverage, frequency and transformation" if secondary else "Validated item wording, scale origin, response format, reliability/validity evidence and adaptation permission if needed"
+        search_terms = f'"{construct}" questionnaire scale validated items measurement OR "{construct}" data source variable definition'
+        if matched:
+            search_terms += f"; also review: {_format_source_hint(matched[0])}"
+        row = table.add_row().cells
+        _set_cell_text_with_markup(row[0], construct)
+        _set_cell_text_with_markup(row[1], info_needed)
+        _set_cell_text_with_markup(row[2], search_terms)
+        _set_cell_text_with_markup(row[3], source_type)
+        _set_cell_text_with_markup(row[4], "Verify source, cite in APA style, adapt ethically, pilot/test, and document coding or transformation decisions")
 
 
 def _add_appendix_guidance(doc: Document, include_primary: bool, include_secondary: bool) -> None:

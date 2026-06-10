@@ -459,8 +459,10 @@ def build_drafting_prompt(
             "For Chapter Four, insert red placeholders for required missing figures, graphs, path diagrams, conceptual diagrams or charts, and advise whether they belong in the main chapter or appendix.",
             "For Chapter Four, advise which materials should move to appendices, such as raw software output, lengthy diagnostic tables, full correlation matrices, full questionnaires, interview transcripts, codebooks and robustness checks.",
             "For Chapter Four, report only results found in uploaded files or student answers. Do not fabricate numbers, tables, themes, or interpretation.",
+            "For the Research Methods/Methodology chapter, produce a complete, clean, submission-ready methodology chapter. Do not present it as a planning note, upload summary, worksheet, or supplementary file.",
             "For questionnaire or interview-guide outputs, build draft instruments from the constructs, variables and objectives supplied in the project profile rather than giving only a generic structure.",
-            "Do not overload the main Research Methods/Methodology chapter with a full questionnaire, interview guide or data-source codebook. Those details belong in the separate supplementary instrument/data-source chapter or appendix unless the institution requires them in the main chapter.",
+            "Keep a clear distinction between the main Research Methods/Methodology chapter and the separate Supplementary Methods Chapter. The main chapter explains and justifies the methods for submission; the supplementary chapter gathers instrument items, questionnaire/interview-guide drafts, measurement sources, data-source registers, coding notes, and appendix materials for analysis preparation.",
+            "Do not overload the main Research Methods/Methodology chapter with a full questionnaire, interview guide, scale bank, secondary-data register, or data-source codebook. Those details belong in the separate Supplementary Methods Chapter or appendix unless the institution specifically requires them in the main chapter.",
             "For Chapter Five, base conclusions and recommendations only on findings supplied in the profile or answers.",
         ],
     }
