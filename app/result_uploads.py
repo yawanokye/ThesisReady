@@ -79,7 +79,7 @@ def _extract_delimited(content: bytes, delimiter: str = ",") -> str:
 
     max_cols = max(len(row) for row in rows)
     normalised = [row + [""] * (max_cols - len(row)) for row in rows]
-    return _rows_to_markdown_table(normalised, title="Uploaded tabular results")
+    return _rows_to_markdown_table(normalised, title="Tabular analysis evidence")
 
 
 def _extract_docx(content: bytes) -> str:
