@@ -9,6 +9,8 @@ let uploadedRevisionFilename = "";
 
 const $ = (id) => document.getElementById(id);
 
+const APP_STATIC_VERSION = "20260610-human2";
+
 const levelDepthGuidance = {
   "Bachelors": "Use clear undergraduate depth: accurate definitions, relevant context, basic critical discussion, and a defensible but not overly complex methodology.",
   "Non-Research Masters": "Use applied master's depth: stronger synthesis, professional relevance, practical implications, and clear methodological justification.",
@@ -32,8 +34,19 @@ async function api(path, options = {}) {
     ...options,
   });
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || response.statusText);
+    let message = response.statusText || "Request failed";
+    try {
+      const data = await response.json();
+      if (data && data.detail) {
+        message = Array.isArray(data.detail) ? data.detail.map(item => item.msg || JSON.stringify(item)).join("; ") : String(data.detail);
+      }
+    } catch (err) {
+      try {
+        const text = await response.text();
+        if (text) message = text;
+      } catch (_) {}
+    }
+    throw new Error(message);
   }
   return response.json();
 }
