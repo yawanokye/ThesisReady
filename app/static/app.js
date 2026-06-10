@@ -215,13 +215,15 @@ function collectProfile() {
     citation_evidence_notes: $("citation_evidence_notes") ? $("citation_evidence_notes").value.trim() : "",
     research_approach: $("research_approach").value,
     data_type: $("data_type") ? $("data_type").value : "Primary data",
+    variables: {
+      raw_variables: lines($("variables_constructs") ? $("variables_constructs").value : "")
+    },
     expected_chapters: 6,
     other_chapter_title: $("otherChapterTitle") ? $("otherChapterTitle").value.trim() : "",
     other_chapter_instructions: $("otherChapterInstructions") ? $("otherChapterInstructions").value.trim() : "",
     objectives: lines($("objectives").value),
     research_questions: [],
     hypotheses: [],
-    variables: {},
     notes: $("format_notes") ? $("format_notes").value.trim() : ""
   };
 }
