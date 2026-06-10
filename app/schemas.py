@@ -32,6 +32,8 @@ class ProjectCreate(BaseModel):
     source_search_terms: str = ""
     other_chapter_title: str = ""
     other_chapter_instructions: str = ""
+    draft_maturity: str = "Supervisor-ready draft"
+    student_contribution: dict[str, Any] = Field(default_factory=dict)
 
 
 class SectionSelection(BaseModel):
@@ -58,6 +60,9 @@ class DraftRequest(BaseModel):
     source_search_terms: str = ""
     other_chapter_title: str = ""
     other_chapter_instructions: str = ""
+    draft_maturity: str = "Supervisor-ready draft"
+    student_contribution: dict[str, Any] = Field(default_factory=dict)
+    human_revision_pass: bool = True
 
 
 class DraftResponse(BaseModel):

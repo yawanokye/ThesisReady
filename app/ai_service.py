@@ -293,6 +293,43 @@ def _human_scholarly_style_requirements() -> list[str]:
     ]
 
 
+
+
+def _student_contribution_requirements(profile: dict[str, Any]) -> dict[str, Any]:
+    """Return user-supplied human contribution and writing-style controls.
+
+    These controls are designed to improve academic quality and specificity.
+    They are not detector-evasion instructions. The model should use them to build
+    a supervised, evidence-led draft from the student's own inputs.
+    """
+    contribution = profile.get("student_contribution") or {}
+    if not isinstance(contribution, dict):
+        contribution = {}
+    return {
+        "draft_maturity": contribution.get("draft_maturity") or profile.get("draft_maturity") or "Supervisor-ready draft",
+        "central_argument": contribution.get("central_argument") or "",
+        "local_context_notes": contribution.get("local_context_notes") or "",
+        "evidence_anchors": contribution.get("evidence_anchors") or "",
+        "supervisor_comments": contribution.get("supervisor_comments") or "",
+        "preferred_style": contribution.get("preferred_style") or "",
+        "writing_sample": contribution.get("writing_sample") or "",
+        "phrases_to_avoid": contribution.get("phrases_to_avoid") or "",
+        "human_revision_pass_requested": bool(contribution.get("human_revision_pass", True)),
+        "paragraph_development_protocol": [
+            "Before writing each substantive paragraph, identify the paragraph purpose, the evidence or user input available, the interpretation required, and the link to the study objective.",
+            "Use the student's project-specific context, evidence anchors, supervisor comments, and preferred style wherever supplied.",
+            "If the user has not supplied enough evidence for a confident claim, use a clear red bracketed placeholder instead of writing a generic unsupported claim.",
+            "Avoid over-polished, perfectly balanced, template-like prose. Use natural scholarly reasoning, varied sentence structure, and context-specific transitions.",
+            "Do not add a visible AI-detection or humanisation note to the chapter; the chapter should read as an ordinary academic draft.",
+        ],
+        "generic_language_to_avoid": [
+            "in today's world", "it is important to note", "delve into", "plays a crucial role",
+            "various factors", "significant impact used vaguely", "this highlights the importance",
+            "this study aims to contribute used vaguely", "moreover repeated mechanically",
+            "furthermore repeated mechanically", "the research problem is that",
+        ],
+    }
+
 def _chapter_specific_requirements(chapter_number: int) -> list[str]:
     """Return chapter-level drafting rules that apply beyond section rules."""
     common = [
@@ -432,6 +469,7 @@ def build_drafting_prompt(
         "reference_currency_requirements": _reference_currency_requirements(),
         "citation_and_evidence_requirements": _citation_and_evidence_requirements(chapter_number),
         "human_scholarly_style_requirements": _human_scholarly_style_requirements(),
+        "student_contribution_and_style_controls": _student_contribution_requirements(profile),
         "analysis_evidence_for_this_chapter": _uploaded_results_for_chapter(profile, chapter_number),
         "retrieved_sources": _retrieved_sources_for_prompt(profile, chapter_number),
         "selected_sections": section_payload,
@@ -440,7 +478,11 @@ def build_drafting_prompt(
         "output_requirements": [
             "Write in formal British English.",
             "Use the selected academic level internally to determine depth and sophistication, but never mention the selected level in the generated chapter text.",
-            "Follow the human_scholarly_style_requirements so the writing sounds natural, rigorous, context-specific, and carefully supervised rather than generic or mechanical.",
+            "Follow the human_scholarly_style_requirements and student_contribution_and_style_controls so the writing sounds natural, rigorous, context-specific, evidence-led and carefully supervised rather than generic or mechanical.",
+            "Use the student's central argument, local context notes, evidence anchors, supervisor comments, preferred writing style and supplied writing sample as style/context guidance; do not copy the writing sample verbatim unless the user has written it as content to include.",
+            "Use an evidence-to-paragraph method: each substantive paragraph should have a purpose, a claim grounded in supplied evidence or source-bank material, interpretation, and a clear link to the objective or chapter argument.",
+            "Where the user has supplied limited information, avoid creating long polished generic prose. Write a focused draft with red bracketed placeholders asking for the exact missing facts, data, citations, institutional details, result tables, or supervisor decisions.",
+            "Respect the selected draft maturity: a structured draft can be more schematic; a supervisor-ready or revised academic draft must be more developed, but still grounded in user-supplied evidence and sources.",
             "Avoid very short sentences except where they are necessary for emphasis, transition, or clarity.",
             "Do not write sentences that say the work, chapter, section, depth, or argument is designed to meet the selected level of the project, thesis, or dissertation.",
             "Use the reference_currency_requirements: aim for at least 70% of substantive references within the stated recent-reference window, but where current sources do not exist, use the strongest credible available sources instead.",
@@ -522,6 +564,12 @@ def _polish_generated_text(text: str) -> str:
         r"\bthe uploaded output shows\b": "the results show",
         r"\bthe output uploaded shows\b": "the results show",
         r"\bthe attached results show\b": "the results show",
+        r"\bin today's world\b": "in the present context",
+        r"\bit is important to note that\b": "",
+        r"\bdelve into\b": "examine",
+        r"\bplays a crucial role\b": "is important",
+        r"\bvarious factors\b": "specific factors",
+        r"\bit is imperative\b": "it is necessary",
         r"\bfrom the uploaded results\b": "from the results",
         r"\bfrom the uploaded output\b": "from the results",
         r"\bfrom the attached output\b": "from the results",
@@ -663,6 +711,78 @@ def _review_source_integration(
         return draft
     return draft
 
+
+
+def _generic_language_score(text: str) -> int:
+    patterns = [
+        r"\bin today's world\b", r"\bit is important to note\b", r"\bdelve into\b",
+        r"\bplays a crucial role\b", r"\bvarious factors\b", r"\bsignificant impact\b",
+        r"\bthis highlights the importance\b", r"\bthis study aims to contribute\b",
+        r"\bmoreover\b", r"\bfurthermore\b", r"\bthe research problem is that\b",
+    ]
+    lower = text or ""
+    return sum(len(re.findall(pattern, lower, flags=re.IGNORECASE)) for pattern in patterns)
+
+
+def _human_academic_revision_pass(
+    client: Any,
+    model: str,
+    instructions: str,
+    original_prompt: str,
+    draft: str,
+    profile: dict[str, Any],
+    chapter_number: int,
+) -> str:
+    """Run one quality-focused revision pass to reduce generic prose.
+
+    This is an academic-quality pass, not a detector-evasion pass. It asks the model
+    to make the writing more context-specific, evidence-led and supervisor-ready while
+    preserving citations, data, placeholders and chapter structure.
+    """
+    controls = _student_contribution_requirements(profile)
+    if not controls.get("human_revision_pass_requested", True):
+        return draft
+
+    has_user_context = any(str(controls.get(k) or "").strip() for k in [
+        "central_argument", "local_context_notes", "evidence_anchors", "supervisor_comments", "preferred_style", "writing_sample", "phrases_to_avoid"
+    ])
+    # Always run the pass for AI-generated drafts, but keep it short and conservative.
+    revision_payload = {
+        "task": "Revise the chapter for human-supervised academic quality, specificity and natural scholarly flow.",
+        "chapter_number": chapter_number,
+        "draft_maturity": controls.get("draft_maturity"),
+        "student_contribution_controls": controls,
+        "quality_rules": [
+            "Revise rather than restart. Preserve the chapter structure, headings, accurate citations, tables, equations, placeholders and supplied results.",
+            "Do not attempt to evade AI detectors and do not mention AI detection. The purpose is academic quality, specificity, and defensible student-supervised writing.",
+            "Remove generic filler, repetitive transitions, vague claims, inflated language, and over-polished template-like phrasing.",
+            "Strengthen paragraph-level reasoning: each paragraph should connect claim, evidence or placeholder, interpretation, and relevance to the study objective or chapter argument.",
+            "Use the student's central argument, local context notes, evidence anchors, supervisor comments and preferred style where supplied.",
+            "Where evidence is missing, keep or add red bracketed placeholders instead of inventing claims, statistics, results, ethical approvals, sources, sample sizes or institutional facts.",
+            "Do not add a visible humanisation note, contribution log or detector note to the chapter body.",
+            "Keep APA references complete and limited to sources cited in the chapter body.",
+        ],
+        "generic_language_score_before_revision": _generic_language_score(draft),
+        "user_context_supplied": has_user_context,
+        "original_generation_prompt": original_prompt,
+        "draft_to_revise": draft,
+    }
+    try:
+        response = client.responses.create(
+            model=model,
+            instructions=(
+                instructions
+                + " Perform one conservative academic-quality revision pass. Do not restart the chapter. Do not add unsupported content."
+            ),
+            input=json.dumps(revision_payload, ensure_ascii=False, indent=2),
+        )
+        revised = getattr(response, "output_text", "").strip()
+        if revised:
+            return _polish_generated_text(revised)
+    except Exception:
+        return draft
+    return draft
+
 def generate_chapter(
     profile: dict[str, Any],
     chapter_number: int,
@@ -678,10 +798,10 @@ def generate_chapter(
         instructions = (
             "You are ProjectReady AI, an academic project-work drafting and compliance assistant. "
             "You help students draft chapters from selected guidelines. You support learning and compliance. "
-            "Write in a natural, high-standard scholarly voice that sounds like a carefully supervised academic draft, not generic AI prose. "
+            "Write in a natural, high-standard scholarly voice that sounds like a carefully supervised academic draft built from the student's own evidence, context, supervisor comments and project decisions, not generic AI prose. "
             "Use the selected academic level only to determine depth; never mention the selected level or say the chapter is written to meet a level, checklist, template, or software requirement. "
             "Avoid generic AI-style phrasing, repetition, filler, overclaiming, template-like prose, and very short choppy sentences except where a short sentence is needed for clarity. "
-            "Build coherent academic arguments with critical synthesis, contextual relevance, and defensible reasoning. "
+            "Build coherent academic arguments with critical synthesis, contextual relevance, and defensible reasoning. Use paragraph-level judgement rather than formulaic section filling. "
             "Do not begin the problem statement with phrases such as 'The research problem is that'; frame the problem through evidence, contradiction, gap, policy concern, or unresolved practical challenge. "
             "You do not fabricate sources, results, approvals, page numbers, or evidence. "
             "When the user has not provided facts, use clear placeholders rather than inventing content. "
@@ -701,6 +821,15 @@ def generate_chapter(
         if text:
             polished = _polish_generated_text(text)
             polished = _review_source_integration(
+                client=client,
+                model=model,
+                instructions=instructions,
+                original_prompt=prompt,
+                draft=polished,
+                profile=profile,
+                chapter_number=chapter_number,
+            )
+            polished = _human_academic_revision_pass(
                 client=client,
                 model=model,
                 instructions=instructions,
