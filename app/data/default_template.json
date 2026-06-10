@@ -1471,6 +1471,152 @@
           ]
         }
       ]
+    },
+    {
+      "chapter_number": 7,
+      "chapter_title": "Supplementary Methods Chapter",
+      "section_groups": [
+        {
+          "group_title": "Supplementary Methods, Instrument and Data-Source Preparation",
+          "sections": [
+            {
+              "section_id": "ch7_purpose_scope",
+              "section_title": "Purpose and Scope of the Supplementary Methods Chapter",
+              "default_selected": true,
+              "guiding_questions": [
+                "Should this supplementary chapter support a primary survey, qualitative, mixed-method, secondary-data, econometric, time-series or panel-data study?",
+                "What decisions, instruments, data sources, coding notes or appendix materials should this support document prepare?",
+                "Which parts are intended only for the appendix or research preparation, rather than the submission-ready methodology chapter?"
+              ],
+              "rules": [
+                "Make clear that this is a supplementary working/support chapter for instrument, measurement, variable, data-source and appendix preparation; it must not replace or rewrite the main Research Methods/Methodology chapter.",
+                "Organise the material so the student can gather complete analysis inputs before writing or revising the results chapter.",
+                "Use red bracketed placeholders where project-specific details, scale sources, data sources, coding decisions, permissions, or validation evidence are missing."
+              ]
+            },
+            {
+              "section_id": "ch7_objective_construct_alignment",
+              "section_title": "Objective-to-Construct or Objective-to-Variable Alignment",
+              "default_selected": true,
+              "guiding_questions": [
+                "List each research objective and the construct, variable, concept, theme or indicator needed to answer it.",
+                "For each objective, what role does each construct or variable play: independent, dependent, mediator, moderator, control, demographic, theme or outcome?",
+                "What analysis or evidence will be needed for each objective?"
+              ],
+              "rules": [
+                "Create a clean alignment table with columns such as Research Objective, Research Question/Hypothesis, Construct/Variable, Role in the Study, Measurement/Data Needed, Proposed Analysis, and Required Source/Evidence.",
+                "Align every instrument section, questionnaire item, interview prompt, data source and analysis requirement with the objectives.",
+                "Do not invent constructs, variables or objectives; use supplied information and placeholders where details are missing."
+              ]
+            },
+            {
+              "section_id": "ch7_instrument_traceability",
+              "section_title": "Instrument Development and Source Traceability",
+              "default_selected": true,
+              "guiding_questions": [
+                "Which questionnaire scales, interview-guide themes, validated items, published instruments or institutional records should inform measurement?",
+                "Which sources from the project source bank support the constructs, scale items, operational definitions or data-source choices?",
+                "Which constructs still need verified scale/item sources?"
+              ],
+              "rules": [
+                "Use the project source bank where available to identify likely scale, questionnaire, measurement or data-source references, but cite only sources that are clearly relevant.",
+                "Create a source traceability table with columns such as Construct/Variable, Proposed Indicator/Item Area, Source/Author-Year, Adapted or Adopted, Response Scale/Data Source, and Verification Needed.",
+                "Where a questionnaire scale, validated item source or data source is missing, insert a red placeholder such as [insert verified scale source for this construct]."
+              ]
+            },
+            {
+              "section_id": "ch7_questionnaire",
+              "section_title": "Draft Questionnaire for Primary Survey Studies",
+              "default_selected": true,
+              "guiding_questions": [
+                "What respondent screening, consent, demographic and study-variable sections should the questionnaire contain?",
+                "What items should be drafted for each construct or variable in the objectives?",
+                "What response scale should be used for each item or section?"
+              ],
+              "rules": [
+                "For primary survey or mixed-method studies, draft a complete questionnaire aligned with the objectives and constructs, including introduction/consent text, respondent profile items, construct items, response scales and closing notes.",
+                "Do not provide only a generic questionnaire structure; draft construct-specific items using the variables and objectives supplied by the user.",
+                "If validated item sources are not supplied, mark the relevant items or scale source with red placeholders and advise the user to verify/adapt the scale before data collection."
+              ]
+            },
+            {
+              "section_id": "ch7_interview_guide",
+              "section_title": "Draft Interview Guide where Applicable",
+              "default_selected": false,
+              "guiding_questions": [
+                "Is the study qualitative or mixed-methods, and who will be interviewed?",
+                "What themes, constructs or objectives should the interview guide cover?",
+                "What probes will help obtain deeper explanations without leading respondents?"
+              ],
+              "rules": [
+                "For qualitative or mixed-method studies, draft an interview guide aligned with the objectives, constructs, themes and respondent category.",
+                "Include opening script, consent reminder, main questions, probes, closing question and interviewer notes.",
+                "Avoid leading questions and mark missing participant category, context or ethical details with red placeholders."
+              ]
+            },
+            {
+              "section_id": "ch7_data_source_register",
+              "section_title": "Variable and Data Source Register for Secondary, Econometric, Time-Series or Panel Studies",
+              "default_selected": true,
+              "guiding_questions": [
+                "Which variables, indicators, proxies or datasets are needed for each objective or model?",
+                "What is the preferred source for each variable, including institution, database, report, URL, frequency, country/firm coverage and study period?",
+                "What variables still require verified data sources or alternative proxies?"
+              ],
+              "rules": [
+                "For secondary-data, econometric, time-series or panel-data studies, create a variable/data-source register with columns such as Variable, Symbol, Operational Definition, Expected Sign/Role, Preferred Data Source, Frequency, Period, Unit, Transformation and Verification Needed.",
+                "Use credible sources where supplied or available in the project source bank; do not invent datasets, URLs, sample periods or variable definitions.",
+                "Insert red placeholders such as [insert verified World Bank/IMF/BoG/GSS/data source and access link] where the exact source is missing."
+              ]
+            },
+            {
+              "section_id": "ch7_operational_definition_coding",
+              "section_title": "Operational Definition, Coding and Transformation Notes",
+              "default_selected": true,
+              "guiding_questions": [
+                "How should each construct, variable or questionnaire item be coded?",
+                "What transformations are required, such as logs, percentages, index construction, reverse coding, differencing, lagging or standardisation?",
+                "Which assumptions, diagnostics or cleaning steps are needed before analysis?"
+              ],
+              "rules": [
+                "Create an operational definition and coding table that links variables/constructs to indicators, codes, scales, transformations, expected direction and analysis use.",
+                "For survey studies, include coding of Likert items, reverse-coded items, composite score computation and missing-data handling.",
+                "For secondary/econometric studies, include transformations, units, stationarity or diagnostic notes where relevant, using placeholders where details are absent."
+              ]
+            },
+            {
+              "section_id": "ch7_validation_quality_checks",
+              "section_title": "Validation, Reliability and Quality Checks",
+              "default_selected": true,
+              "guiding_questions": [
+                "What checks are needed to confirm that the questionnaire, interview guide or dataset is suitable for analysis?",
+                "What reliability, validity, pilot-test, expert-review, diagnostic or robustness checks should be reported later?",
+                "Which outputs should the user obtain before analysis and results writing?"
+              ],
+              "rules": [
+                "For survey studies, include content validity, expert review, pilot testing, reliability, construct validity, common method variance and social desirability safeguards where applicable.",
+                "For qualitative studies, include credibility, dependability, confirmability, transferability and audit-trail notes where applicable.",
+                "For secondary/econometric studies, include missing data checks, outlier checks, stationarity, multicollinearity, heteroskedasticity, autocorrelation, model specification and robustness checks where relevant."
+              ]
+            },
+            {
+              "section_id": "ch7_appendix_placement",
+              "section_title": "Appendix Placement Guide",
+              "default_selected": true,
+              "guiding_questions": [
+                "Which materials should appear in the main methodology chapter and which should be moved to the appendix?",
+                "Should the full questionnaire, interview guide, coding sheet, raw software output, data dictionary or source register go into the appendix?",
+                "What appendix labels should be used?"
+              ],
+              "rules": [
+                "Advise clearly which materials should go to the appendix, including full questionnaire, interview guide, consent form, scale permission notes, data dictionary, variable coding sheet, raw outputs, diagnostic outputs and long source tables.",
+                "Keep the supplementary chapter practical and complete enough to support data collection, analysis preparation and later results writing.",
+                "Use red placeholders for missing appendix labels or documents that the user still needs to provide."
+              ]
+            }
+          ]
+        }
+      ]
     }
   ]
 }
