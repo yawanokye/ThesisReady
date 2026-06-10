@@ -364,6 +364,18 @@ def _chapter_specific_requirements(chapter_number: int) -> list[str]:
             "Keep the chapter aligned with the overall project title, objectives, theory, method, results and recommendations.",
         ]
 
+    if chapter_number == 7:
+        return [
+            "Treat this as a Supplementary Methods Chapter, not the main Research Methods/Methodology chapter. It is a working/support document for gathering analysis inputs, developing instruments, tracing measurement/data sources, preparing coding notes and organising appendix materials.",
+            "Do not rewrite or replace the submission-ready Research Methods/Methodology chapter. Keep the distinction clear in the generated text.",
+            "For primary survey or mixed-method studies, include objective-to-construct alignment, instrument development and source traceability, draft questionnaire, draft interview guide where applicable, validation notes and appendix placement guide.",
+            "For secondary data, econometrics, time-series or panel-data studies, include a variable/data-source register, operational definition table, preferred data source placeholders, transformation/coding notes, quality checks and appendix guidance.",
+            "Use the project source bank where available for questionnaire scales, validated item sources, operational definitions and data-source traceability. Cite only relevant sources.",
+            "Where a questionnaire scale, validated item source, data source, period, frequency, code, transformation, permission note or validation output is missing, insert a red bracketed placeholder such as [insert verified scale source for this construct] or [insert verified data source and access link].",
+            "Create clean, complete tables for alignment, source traceability, questionnaire items, interview themes, variable/data-source register, coding/transformation notes, quality checks and appendix placement where relevant.",
+            "Include an APA-style References section containing only sources cited in the supplementary chapter.",
+        ]
+
     return common
 
 
@@ -380,6 +392,8 @@ def _effective_chapter_title(chapter: dict[str, Any], profile: dict[str, Any], c
         if custom_title:
             return custom_title
         return "Others"
+    if int(chapter_number or 0) == 7:
+        return "Supplementary Methods Chapter"
     return str(chapter.get("chapter_title") or "").strip() or "Chapter"
 
 
@@ -461,7 +475,7 @@ def build_drafting_prompt(
             "For Chapter Four, report only results found in uploaded files or student answers. Do not fabricate numbers, tables, themes, or interpretation.",
             "For the Research Methods/Methodology chapter, produce a complete, clean, submission-ready methodology chapter. Do not present it as a planning note, upload summary, worksheet, or supplementary file.",
             "For questionnaire or interview-guide outputs, build draft instruments from the constructs, variables and objectives supplied in the project profile rather than giving only a generic structure.",
-            "Keep a clear distinction between the main Research Methods/Methodology chapter and the separate Supplementary Methods Chapter. The main chapter explains and justifies the methods for submission; the supplementary chapter gathers instrument items, questionnaire/interview-guide drafts, measurement sources, data-source registers, coding notes, and appendix materials for analysis preparation.",
+            "Keep a clear distinction between the main Research Methods/Methodology chapter and the Supplementary Methods Chapter. The main methodology chapter is the clean submission-ready chapter; the supplementary chapter is a separate support document for instruments, data sources, scale traceability, coding, validation checks and appendix materials.",
             "Do not overload the main Research Methods/Methodology chapter with a full questionnaire, interview guide, scale bank, secondary-data register, or data-source codebook. Those details belong in the separate Supplementary Methods Chapter or appendix unless the institution specifically requires them in the main chapter.",
             "For Chapter Five, base conclusions and recommendations only on findings supplied in the profile or answers.",
         ],

@@ -24,6 +24,7 @@ CHAPTER_LABELS = {
     4: "results_data_analysis_discussion_chapter",
     5: "summary_conclusion_recommendation_chapter",
     6: "other_chapter",
+    7: "supplementary_methods_chapter",
 }
 
 
