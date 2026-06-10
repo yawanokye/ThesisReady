@@ -124,6 +124,34 @@ def draft_chapter(project_id: str, payload: DraftRequest):
 
     project["profile"] = _merge_payload_sources_into_profile(project.get("profile", {}), payload)
 
+    # Merge human contribution and writing-style controls from the current draft request.
+    incoming_contribution = getattr(payload, "student_contribution", None) or {}
+    if isinstance(incoming_contribution, dict):
+        existing_contribution = project["profile"].get("student_contribution") or {}
+        if not isinstance(existing_contribution, dict):
+            existing_contribution = {}
+        merged_contribution = {**existing_contribution, **incoming_contribution}
+        project["profile"]["student_contribution"] = merged_contribution
+        project["profile"]["draft_maturity"] = merged_contribution.get("draft_maturity") or getattr(payload, "draft_maturity", "") or project["profile"].get("draft_maturity", "Supervisor-ready draft")
+        if getattr(payload, "human_revision_pass", None) is not None:
+            merged_contribution["human_revision_pass"] = bool(getattr(payload, "human_revision_pass", True))
+
+    contribution = project["profile"].get("student_contribution") or {}
+    if isinstance(contribution, dict) and any(str(contribution.get(k) or "").strip() for k in ["central_argument", "local_context_notes", "evidence_anchors", "supervisor_comments", "preferred_style", "writing_sample"]):
+        human_parts = ["Student contribution and writing-style controls supplied. Use them to improve academic specificity and natural scholarly flow; do not add a visible AI or detector note to the chapter."]
+        for label, key in [
+            ("Central argument", "central_argument"),
+            ("Local context notes", "local_context_notes"),
+            ("Evidence anchors", "evidence_anchors"),
+            ("Supervisor comments", "supervisor_comments"),
+            ("Preferred style / phrases to avoid", "preferred_style"),
+            ("Writing sample for tone guidance", "writing_sample"),
+        ]:
+            value = str(contribution.get(key) or "").strip()
+            if value:
+                human_parts.append(f"{label}: {value}")
+        extra_instructions = (extra_instructions + "\n\n" + "\n".join(human_parts)).strip()
+
     other_title = getattr(payload, "other_chapter_title", "") or project["profile"].get("other_chapter_title", "")
     other_instructions = getattr(payload, "other_chapter_instructions", "") or project["profile"].get("other_chapter_instructions", "")
     if payload.chapter_number == 6 and (other_title or other_instructions):
