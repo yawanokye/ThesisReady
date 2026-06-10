@@ -364,6 +364,18 @@ function collectProfile() {
     research_area: $("research_area").value.trim(),
     study_context: $("study_context").value.trim(),
     citation_evidence_notes: $("citation_evidence_notes") ? $("citation_evidence_notes").value.trim() : "",
+    draft_maturity: $("draftMaturity") ? $("draftMaturity").value : "Supervisor-ready draft",
+    student_contribution: {
+      draft_maturity: $("draftMaturity") ? $("draftMaturity").value : "Supervisor-ready draft",
+      central_argument: $("centralArgument") ? $("centralArgument").value.trim() : "",
+      local_context_notes: $("localContextNotes") ? $("localContextNotes").value.trim() : "",
+      evidence_anchors: $("evidenceAnchors") ? $("evidenceAnchors").value.trim() : "",
+      supervisor_comments: $("supervisorComments") ? $("supervisorComments").value.trim() : "",
+      preferred_style: $("preferredStyle") ? $("preferredStyle").value.trim() : "",
+      writing_sample: $("writingSample") ? $("writingSample").value.trim() : "",
+      phrases_to_avoid: $("preferredStyle") ? $("preferredStyle").value.trim() : "",
+      human_revision_pass: $("humanRevisionPass") ? $("humanRevisionPass").checked : true
+    },
     research_approach: $("research_approach").value,
     data_type: $("data_type") ? $("data_type").value : "Primary data",
     variables: {
@@ -439,6 +451,32 @@ async function createProject() {
   updateChapterSpecificUi();
 }
 
+function genericLanguageAudit(text) {
+  const patterns = [
+    /\bin today's world\b/gi,
+    /\bit is important to note\b/gi,
+    /\bdelve into\b/gi,
+    /\bplays a crucial role\b/gi,
+    /\bvarious factors\b/gi,
+    /\bsignificant impact\b/gi,
+    /\bthis highlights the importance\b/gi,
+    /\bmoreover\b/gi,
+    /\bfurthermore\b/gi
+  ];
+  return patterns.reduce((count, pattern) => count + ((text || '').match(pattern) || []).length, 0);
+}
+
+function showDraftQualityHint(text) {
+  const count = genericLanguageAudit(text);
+  const status = $("draftStatus");
+  if (!status) return;
+  if (count > 8) {
+    status.textContent = "Draft generated. Quality note: review the chapter for generic transitions and add more project-specific evidence before final submission.";
+  } else {
+    status.textContent = "Draft generated based on the information provided. Review, evidence and revise before submission.";
+  }
+}
+
 async function generateDraft() {
   if (!currentProjectId) await createProject();
   const payload = {
@@ -453,13 +491,26 @@ async function generateDraft() {
     revision_filename: uploadedRevisionFilename,
     other_chapter_title: $("otherChapterTitle") ? $("otherChapterTitle").value.trim() : "",
     other_chapter_instructions: $("otherChapterInstructions") ? $("otherChapterInstructions").value.trim() : "",
+    draft_maturity: $("draftMaturity") ? $("draftMaturity").value : "Supervisor-ready draft",
+    student_contribution: {
+      draft_maturity: $("draftMaturity") ? $("draftMaturity").value : "Supervisor-ready draft",
+      central_argument: $("centralArgument") ? $("centralArgument").value.trim() : "",
+      local_context_notes: $("localContextNotes") ? $("localContextNotes").value.trim() : "",
+      evidence_anchors: $("evidenceAnchors") ? $("evidenceAnchors").value.trim() : "",
+      supervisor_comments: $("supervisorComments") ? $("supervisorComments").value.trim() : "",
+      preferred_style: $("preferredStyle") ? $("preferredStyle").value.trim() : "",
+      writing_sample: $("writingSample") ? $("writingSample").value.trim() : "",
+      phrases_to_avoid: $("preferredStyle") ? $("preferredStyle").value.trim() : "",
+      human_revision_pass: $("humanRevisionPass") ? $("humanRevisionPass").checked : true
+    },
+    human_revision_pass: $("humanRevisionPass") ? $("humanRevisionPass").checked : true,
     ...currentSourcePayload()
   };
   $("draftStatus").textContent = "Generating draft...";
   const result = await api(`/api/projects/${currentProjectId}/draft`, { method: "POST", body: JSON.stringify(payload) });
   $("draftOutput").value = result.draft;
   renderDraftPreview(result.draft);
-  $("draftStatus").textContent = "Draft generated based on the information provided.";
+  showDraftQualityHint(result.draft);
   $("downloadDraftBtn").disabled = false;
 }
 

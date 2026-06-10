@@ -77,6 +77,37 @@
         <textarea id="citation_evidence_notes" rows="4" placeholder="Paste verified sources, statistics, report details, DOI links, policy evidence, institutional records, or key citation notes. The app will use these to support claims and the problem statement."></textarea>
       </label>
 
+      <div class="source-box human-input-box">
+        <h3>Student contribution and writing style</h3>
+        <p class="hint">These fields help the draft read like a supervised academic chapter built from the student's own context, evidence and judgement. They improve quality; they are not a detector-evasion tool.</p>
+        <label>Draft maturity
+          <select id="draftMaturity">
+            <option value="Structured first draft">Structured first draft</option>
+            <option value="Supervisor-ready draft" selected>Supervisor-ready draft</option>
+            <option value="Revised academic draft">Revised academic draft</option>
+          </select>
+        </label>
+        <label>Central argument or position for the chapter
+          <textarea id="centralArgument" rows="2" placeholder="What should this chapter argue, justify or demonstrate?"></textarea>
+        </label>
+        <label>Local context, institutional detail or student-specific judgement to include
+          <textarea id="localContextNotes" rows="3" placeholder="Add the specific setting, institutional experience, supervisor preference, local examples, or decisions that must shape the writing."></textarea>
+        </label>
+        <label>Evidence anchors for the chapter
+          <textarea id="evidenceAnchors" rows="3" placeholder="Paste key evidence, source notes, result references, report titles, statistics, table names, or facts that paragraphs should be built around."></textarea>
+        </label>
+        <label>Supervisor comments or required corrections
+          <textarea id="supervisorComments" rows="3" placeholder="Paste supervisor comments or corrections the draft should address."></textarea>
+        </label>
+        <label>Preferred writing style and phrases to avoid
+          <textarea id="preferredStyle" rows="2" placeholder="e.g. formal British English, moderate sentence length, analytical not promotional; avoid 'plays a crucial role' and repeated 'furthermore'."></textarea>
+        </label>
+        <label>Optional sample of the student's own academic writing style
+          <textarea id="writingSample" rows="3" placeholder="Paste a short paragraph written by the student. The app will use it only as tone guidance and will not copy it verbatim."></textarea>
+        </label>
+        <label class="inline"><input type="checkbox" id="humanRevisionPass" checked /> Run academic quality revision pass after drafting</label>
+      </div>
+
       <div class="source-box">
         <h3>Find literature sources for this study</h3>
         <p class="hint">Search open scholarly metadata sources and attach relevant papers to the project before drafting. Verify all sources before final submission.</p>
