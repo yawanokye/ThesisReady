@@ -314,12 +314,14 @@ def export_instrument(project_id: str, chapter_number: int):
 
 
 
-@router.get("/{project_id}/export/methods-supplement/{chapter_number}")
-def export_methods_supplement(project_id: str, chapter_number: int):
+@router.get("/{project_id}/export/methods-supplement")
+def export_methods_supplement(project_id: str):
     project = _get_project_or_404(project_id)
-    if chapter_number != 3:
-        raise HTTPException(status_code=400, detail="The supplementary instrument/data-source chapter is available for the Research Methods/Methodology chapter only.")
-    path = export_methods_supplement_docx(project, chapter_number, EXPORT_DIR)
+    # This is intentionally independent of the selected chapter. The main
+    # Research Methods/Methodology chapter remains a submission-ready chapter,
+    # while this supplementary chapter gathers instruments, measurement details,
+    # variable/data-source registers and appendix materials for analysis.
+    path = export_methods_supplement_docx(project, 0, EXPORT_DIR)
     return FileResponse(path, filename=path.name, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 
