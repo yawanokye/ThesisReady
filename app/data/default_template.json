@@ -1,36 +1,72 @@
 {
-  "template_id": "default_thesis_project_template",
-  "template_name": "Default Project Work and Thesis Template",
-  "description": "A customisable project work template adapted from the thesis self-evaluation checklist. Users may select only the sections required by their institution, supervisor, programme, or research design. The project profile also lets users choose the level of thesis, dissertation, or project work so the drafting depth can match Bachelors, Non-Research Masters, Research Masters, Professional Doctorate, or PhD expectations.",
+  "template_id": "default_general_project_thesis_template",
+  "template_name": "General Project Work, Dissertation and Thesis Template",
+  "description": "A flexible, section-based template. Users select only the sections required by their institution, supervisor, discipline, research design or school format.",
   "chapters": [
     {
       "chapter_number": 1,
       "chapter_title": "Introduction",
       "section_groups": [
         {
-          "group_title": "Core Introduction Sections",
+          "group_title": "General Introduction Sections",
           "sections": [
+            {
+              "section_id": "ch1_chapter_intro",
+              "section_title": "Introduction to the Chapter",
+              "default_selected": true,
+              "guiding_questions": [
+                "What does this chapter introduce?",
+                "What is the overall focus of the study?",
+                "How should the chapter be organised?"
+              ],
+              "rules": [
+                "Introduce the chapter briefly and outline its major sections.",
+                "Recall the study focus without repeating the entire abstract.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
             {
               "section_id": "ch1_background",
               "section_title": "Background to the Study",
               "default_selected": true,
               "guiding_questions": [
-                "What broad global, regional, or national issue does the study relate to?",
-                "What local context makes the issue important?",
-                "What key concepts and variables must the reader understand?",
-                "What empirical or policy evidence supports the context?",
-                "What gap should the background gradually lead to?",
-                "What recent and credible in-text citations should support the background?",
-                "What verified facts, statistics, official reports, policy documents, or empirical evidence should be used?"
+                "What broad global, regional, national or sector issue does the study relate to?",
+                "What local or institutional context makes the issue important?",
+                "What key concepts, variables or constructs must the reader understand?",
+                "What empirical, policy or statistical evidence supports the context?"
               ],
               "rules": [
                 "Move clearly from broad context to local or study-specific context.",
-                "Introduce key concepts, variables, and relevant theoretical ideas.",
-                "Use recent empirical or policy evidence where available.",
+                "Introduce key concepts, variables, constructs and relevant theoretical ideas.",
+                "Use accurate facts, current statistics, policy evidence and empirical studies where available.",
                 "Signal knowledge gaps without fully stating the problem too early.",
-                "End with a smooth transition to the statement of the problem.",
-                "Include relevant and accurate in-text citations for substantive claims.",
-                "Use verified facts and statistics to establish the context where available. If figures are not supplied, insert a placeholder rather than inventing them."
+                "End with a smooth transition to the problem statement.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch1_context",
+              "section_title": "Context and Setting of the Study",
+              "default_selected": false,
+              "guiding_questions": [
+                "What country, sector, community, industry, institution or organisation is involved?",
+                "Why is this context appropriate for the study?",
+                "What recent facts or policy evidence should support the context?"
+              ],
+              "rules": [
+                "Describe the study context with evidence.",
+                "Justify why the context matters for the research problem.",
+                "Avoid broad context that is not linked to the study.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
@@ -38,23 +74,39 @@
               "section_title": "Statement of the Problem",
               "default_selected": true,
               "guiding_questions": [
-                "What exactly is the research problem?",
-                "What evidence shows that the problem exists?",
-                "What weaknesses exist in previous studies, policies, or practice?",
-                "Where is the problem situated?",
-                "What precise focus did the study address?",
-                "What exact statistics or factual evidence prove that the problem exists?",
-                "Which verified sources should be cited in the problem statement?"
+                "What exactly is the practical, empirical, theoretical, policy or methodological problem?",
+                "What evidence proves that the problem exists?",
+                "Who or what is affected?",
+                "What weaknesses exist in prior studies, policies or practice?",
+                "What exact research focus did the study address?"
               ],
               "rules": [
-                "State a clear, specific, researchable problem rather than a broad description.",
-                "Support the problem with empirical, practical, or policy evidence.",
-                "Explain weaknesses or gaps in existing studies or approaches.",
-                "Situate the problem in the study context.",
-                "End with a precise research focus.",
-                "Support the problem statement with relevant accurate statistics, facts, policy evidence, or empirical evidence.",
-                "Include accurate in-text citations for every major factual claim.",
-                "Do not invent figures or citations; use bracketed placeholders where verified evidence is needed."
+                "Frame the problem analytically through evidence, contradiction, gap, unresolved concern or practical difficulty.",
+                "Do not begin with weak wording such as 'The research problem is that'.",
+                "Support the problem with accurate statistics, policy evidence, institutional evidence or empirical studies.",
+                "Situate the problem in the study context and end with a precise research focus.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch1_gap",
+              "section_title": "Research Gap",
+              "default_selected": false,
+              "guiding_questions": [
+                "What is unknown, under-examined, unresolved or contextually limited in the literature?",
+                "What theoretical, empirical, methodological, population or contextual gap exists?"
+              ],
+              "rules": [
+                "State the gap clearly and specifically.",
+                "Link the gap to the proposed objectives and context.",
+                "Avoid vague claims such as 'few studies exist' unless supported by evidence.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
@@ -62,13 +114,17 @@
               "section_title": "Purpose of the Study",
               "default_selected": true,
               "guiding_questions": [
-                "What is the overall purpose of the study?",
+                "What was the overall purpose of the study?",
                 "How does the purpose flow from the problem statement?"
               ],
               "rules": [
                 "State the overall intent of the study in one clear paragraph.",
                 "Ensure the purpose flows directly from the problem statement.",
-                "Do not introduce variables not already in the study profile."
+                "Do not introduce variables or constructs not used elsewhere.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
@@ -78,13 +134,16 @@
               "guiding_questions": [
                 "What is the general objective?",
                 "What are the specific objectives?",
-                "Which variables or concepts does each objective address?"
+                "Which variables, constructs, concepts or relationships does each objective address?"
               ],
               "rules": [
-                "Use measurable action verbs such as examine, analyse, assess, determine, evaluate, explore, or investigate.",
-                "Sequence objectives logically from general to specific.",
-                "Make each objective traceable to the problem or gap.",
-                "Avoid objectives that cannot be addressed by the proposed data and analysis."
+                "Use measurable action verbs such as examine, analyse, assess, determine, evaluate, explore or investigate.",
+                "Sequence objectives logically.",
+                "Make every objective traceable to the problem, gap and methodology.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
@@ -93,12 +152,15 @@
               "default_selected": true,
               "guiding_questions": [
                 "What research question corresponds to each objective?",
-                "Should the questions be descriptive, explanatory, comparative, or predictive?"
+                "Should the questions be descriptive, explanatory, comparative, predictive or interpretive?"
               ],
               "rules": [
-                "Create one research question for each specific objective unless the institution requires otherwise.",
+                "Create one research question for each specific objective unless the school requires otherwise.",
                 "Ensure each question can be answered by the proposed method and data.",
-                "Keep the wording aligned with the variables and context."
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
@@ -107,13 +169,17 @@
               "default_selected": false,
               "guiding_questions": [
                 "Does the study require hypotheses?",
-                "What relationship is expected between the variables?",
-                "Should each hypothesis be null, alternative, directional, or non-directional?"
+                "What relationship is expected between variables?",
+                "Should each hypothesis be null, alternative, directional or non-directional?"
               ],
               "rules": [
-                "Use hypotheses only where the research design supports hypothesis testing.",
+                "Use hypotheses only where the design supports hypothesis testing.",
                 "Match each hypothesis to a research objective or research question.",
-                "Use testable relationships between clearly defined variables."
+                "Use clear, testable relationships between variables.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
@@ -121,15 +187,17 @@
               "section_title": "Significance of the Study",
               "default_selected": true,
               "guiding_questions": [
-                "Who benefits from the study?",
-                "What is the theoretical contribution?",
-                "What is the practical contribution?",
-                "What is the policy or institutional contribution?"
+                "Who will benefit from the study?",
+                "What is the theoretical, practical, policy, managerial, social or methodological contribution?"
               ],
               "rules": [
-                "Address theory, practice, and policy where applicable.",
+                "Address theory, practice and policy where applicable.",
                 "Avoid exaggerated claims.",
-                "Link significance to the study problem, context, and expected findings."
+                "Link significance to the problem, context and expected findings.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
@@ -137,24 +205,15 @@
               "section_title": "Scope of the Study",
               "default_selected": false,
               "guiding_questions": [
-                "What subject, geographical, population, and methodological scope does the study cover?"
+                "What subject, geographical, population, time, conceptual and methodological scope does the study cover?"
               ],
               "rules": [
                 "Define the boundaries of the study clearly.",
-                "Mention the population, location, variables, and method covered."
-              ]
-            },
-            {
-              "section_id": "ch1_limitations",
-              "section_title": "Limitations of the Study",
-              "default_selected": true,
-              "guiding_questions": [
-                "What genuine constraints may affect the study?",
-                "How were these constraints managed, or how were they controlled in the study?"
-              ],
-              "rules": [
-                "Acknowledge genuine constraints without weakening the study unnecessarily.",
-                "Explain mitigation steps where possible."
+                "Mention population, location, variables/constructs, period and method where relevant.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
@@ -162,12 +221,49 @@
               "section_title": "Delimitation of the Study",
               "default_selected": true,
               "guiding_questions": [
-                "What choices deliberately narrow the study?",
+                "What choices deliberately narrowed the study?",
                 "Why are these boundaries reasonable?"
               ],
               "rules": [
-                "Clearly define what the study includes and excludes.",
-                "Justify the scope in relation to the objectives."
+                "State deliberate boundaries and justify them in relation to objectives.",
+                "Distinguish delimitations from limitations.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch1_limitations",
+              "section_title": "Limitations of the Study",
+              "default_selected": true,
+              "guiding_questions": [
+                "What genuine constraints affected the study?",
+                "How were these constraints managed?"
+              ],
+              "rules": [
+                "Acknowledge genuine constraints without weakening the study unnecessarily.",
+                "Explain mitigation steps where possible.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch1_assumptions",
+              "section_title": "Assumptions of the Study",
+              "default_selected": false,
+              "guiding_questions": [
+                "What assumptions underlie the study design, data or analysis?"
+              ],
+              "rules": [
+                "State only assumptions that matter to the study.",
+                "Avoid unnecessary or generic assumptions.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
@@ -175,15 +271,19 @@
               "section_title": "Definition of Terms",
               "default_selected": false,
               "guiding_questions": [
-                "Which technical terms, constructs, or variables need definition?"
+                "Which technical terms, constructs or variables need definition?"
               ],
               "rules": [
-                "Define only terms that are central to the study.",
-                "Use concise academic definitions and keep them consistent with later chapters."
+                "Define only terms central to the study.",
+                "Use concise academic definitions and keep them consistent with later chapters.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
-              "section_id": "ch1_organisation",
+              "section_id": "ch1_structure",
               "section_title": "Organisation of the Study",
               "default_selected": true,
               "guiding_questions": [
@@ -191,8 +291,29 @@
                 "What does each chapter cover?"
               ],
               "rules": [
-                "Make the stated chapter structure match the actual project structure.",
-                "Describe each chapter briefly and accurately."
+                "Make the stated chapter structure match the actual project.",
+                "Describe each chapter briefly and accurately.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch1_custom",
+              "section_title": "Custom School-Specific Introduction Section",
+              "default_selected": false,
+              "guiding_questions": [
+                "List any additional section title required by your school or supervisor.",
+                "What should this section include?"
+              ],
+              "rules": [
+                "Use the exact heading or instructions supplied by the user.",
+                "Keep the section aligned with the chapter and project.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             }
           ]
@@ -204,31 +325,57 @@
       "chapter_title": "Literature Review",
       "section_groups": [
         {
-          "group_title": "Literature Review Sections",
+          "group_title": "General Literature Review Sections",
           "sections": [
             {
               "section_id": "ch2_intro",
-              "section_title": "Introduction",
+              "section_title": "Introduction to the Chapter",
               "default_selected": true,
               "guiding_questions": [
-                "What does Chapter Two review, and how is it organised?"
+                "What does the literature review cover?",
+                "How is the chapter organised?"
               ],
               "rules": [
-                "Introduce the chapter and explain the organisation of the literature review."
+                "Introduce the chapter and explain the logic of organisation.",
+                "State whether the review is objective-driven, thematic, variable-based, conceptual, theoretical, empirical or mixed.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
-              "section_id": "ch2_conceptual",
-              "section_title": "Conceptual Review",
+              "section_id": "ch2_concepts",
+              "section_title": "Conceptual Clarification and Definitions",
               "default_selected": true,
               "guiding_questions": [
-                "What key concepts and variables require explanation?"
+                "Which concepts, variables or constructs require definition?",
+                "How are they used in this study?"
               ],
               "rules": [
-                "Explain each major concept and its relevance to the study objectives.",
-                "Maintain consistency with Chapter One variables.",
-                "Use relevant and accurate in-text citations for all theory, concept, empirical, and gap claims.",
-                "Do not fabricate studies, authors, years, or findings; use placeholders where verified source details are not supplied."
+                "Define and explain key concepts in relation to the study.",
+                "Maintain consistency with Chapter One variables and objectives.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch2_conceptual_review",
+              "section_title": "Conceptual Review by Variables or Constructs",
+              "default_selected": true,
+              "guiding_questions": [
+                "What are the key variables/constructs?",
+                "How does each relate to the study objectives?"
+              ],
+              "rules": [
+                "Review each variable or construct separately before discussing relationships.",
+                "Use recent and foundational sources where appropriate.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
@@ -237,14 +384,31 @@
               "default_selected": true,
               "guiding_questions": [
                 "Which theories underpin the study?",
-                "How does each theory link to objectives or hypotheses?"
+                "How does each theory link to objectives, variables or hypotheses?"
               ],
               "rules": [
                 "Review only directly relevant theories.",
-                "Link each theory to specific objectives or hypotheses.",
-                "Acknowledge key limitations or boundaries of the theories.",
-                "Use relevant and accurate in-text citations for all theory, concept, empirical, and gap claims.",
-                "Do not fabricate studies, authors, years, or findings; use placeholders where verified source details are not supplied."
+                "Link each theory to specific objectives, variables, constructs or hypotheses.",
+                "Acknowledge limitations or boundaries of the theory.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch2_theory_table",
+              "section_title": "Theory-to-Objective Mapping Table",
+              "default_selected": false,
+              "guiding_questions": [
+                "Which theory supports each objective or hypothesis?"
+              ],
+              "rules": [
+                "Create a table mapping objective, theory, key proposition, variable/construct link and relevance to the study.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
@@ -253,18 +417,66 @@
               "default_selected": true,
               "guiding_questions": [
                 "What prior studies relate to each objective?",
-                "What were their contexts, methods, and findings?",
-                "What gaps remain?",
-                "Which verified studies, including authors, years, contexts, methods, and findings, should be cited for each objective?"
+                "What were their contexts, methods, findings and gaps?"
               ],
               "rules": [
                 "Organise the empirical review by research objectives.",
                 "Give each objective a dedicated subsection.",
-                "Discuss prior studies' contexts, methods, and findings.",
-                "Highlight contradictions and weaknesses in prior studies.",
+                "Discuss contexts, methods, findings, contradictions and weaknesses.",
                 "End each subsection with a study-specific gap.",
-                "Use relevant and accurate in-text citations for all theory, concept, empirical, and gap claims.",
-                "Do not fabricate studies, authors, years, or findings; use placeholders where verified source details are not supplied."
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch2_empirical_themes",
+              "section_title": "Empirical Review by Themes",
+              "default_selected": false,
+              "guiding_questions": [
+                "What themes organise the empirical literature?",
+                "How does each theme relate to the current study?"
+              ],
+              "rules": [
+                "Use this section where the school prefers thematic literature review.",
+                "Synthesize evidence rather than listing studies.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch2_empirical_variables",
+              "section_title": "Empirical Review by Variables or Relationships",
+              "default_selected": false,
+              "guiding_questions": [
+                "Which relationships among variables/constructs require empirical review?"
+              ],
+              "rules": [
+                "Review empirical evidence for each relationship in the conceptual model.",
+                "Highlight agreement, contradiction and gaps.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch2_hyp_dev",
+              "section_title": "Hypotheses or Proposition Development",
+              "default_selected": false,
+              "guiding_questions": [
+                "What theoretical and empirical evidence supports each hypothesis or proposition?"
+              ],
+              "rules": [
+                "Develop hypotheses or propositions from theory and prior empirical evidence.",
+                "Match each to the relevant objective.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
@@ -272,27 +484,17 @@
               "section_title": "Conceptual Framework",
               "default_selected": true,
               "guiding_questions": [
-                "What relationships among variables should the framework show?"
+                "What variables/constructs and relationships should the framework show?",
+                "Which variables are independent, dependent, mediating, moderating or control variables?"
               ],
               "rules": [
-                "Show the main variables and expected relationships.",
-                "Ensure the framework matches the objectives and hypotheses.",
-                "Do not generate messy ASCII diagrams. Present the conceptual framework as a clean relationship table and, where a diagram is needed, use a simple Mermaid flowchart code block or a concise text-renderable layout.",
-                "Include a brief narrative explaining the direction of each relationship, mediator, moderator or control variable."
-              ]
-            },
-            {
-              "section_id": "ch2_hyp_dev",
-              "section_title": "Hypotheses Development",
-              "default_selected": false,
-              "guiding_questions": [
-                "What theoretical and empirical basis supports each hypothesis?"
-              ],
-              "rules": [
-                "Develop hypotheses from theory and prior empirical evidence.",
-                "Match each hypothesis to the relevant objective.",
-                "Use relevant and accurate in-text citations for all theory, concept, empirical, and gap claims.",
-                "Do not fabricate studies, authors, years, or findings; use placeholders where verified source details are not supplied."
+                "Do not create messy ASCII diagrams.",
+                "Provide a clean diagram-ready relationship table and a red placeholder for the final diagram or a simple Mermaid/flowchart specification if useful.",
+                "Explain the framework in prose after the table.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
@@ -300,32 +502,15 @@
               "section_title": "Literature Gap Table",
               "default_selected": false,
               "guiding_questions": [
-                "What objective does each row of the table address?",
-                "Which prior authors and years are relevant to each objective?",
-                "What was the context of each prior study?",
-                "What method was used in each prior study?",
-                "What key finding was reported?",
-                "What specific gap remains for the present study?",
-                "How is each gap relevant to the current study?"
+                "What gaps are revealed by literature for each objective?"
               ],
               "rules": [
-                "Generate a well-structured markdown table, not a paragraph.",
-                "Use the following columns exactly: Research Objective, Key Authors and Year, Context of Study, Method Used, Key Findings, Identified Gap, Relevance to Current Study.",
-                "Create at least one row for each research objective.",
-                "Keep each cell concise and focused on one idea.",
-                "Do not fabricate authors, years, contexts, methods, or findings. Use placeholders such as [insert author and year] where the student has not supplied details.",
-                "Ensure the gap in each row is specific to the current study.",
-                "Use relevant and accurate in-text citations for all theory, concept, empirical, and gap claims.",
-                "Do not fabricate studies, authors, years, or findings; use placeholders where verified source details are not supplied."
-              ],
-              "table_columns": [
-                "Research Objective",
-                "Key Authors and Year",
-                "Context of Study",
-                "Method Used",
-                "Key Findings",
-                "Identified Gap",
-                "Relevance to Current Study"
+                "Generate a clean markdown table with columns: Research Objective, Key Authors and Year, Context, Method, Key Findings, Gap, Relevance to Current Study.",
+                "Each objective should have at least one row.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
@@ -336,16 +521,32 @@
                 "What are the key conclusions from the review?"
               ],
               "rules": [
-                "Summarise the key concepts, theories, empirical findings, and gaps without introducing new issues."
+                "Summarise key concepts, theories, empirical findings and gaps without adding new issues.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch2_custom",
+              "section_title": "Custom School-Specific Literature Section",
+              "default_selected": false,
+              "guiding_questions": [
+                "List any additional literature review section required by your school.",
+                "What should it contain?"
+              ],
+              "rules": [
+                "Use the exact heading or instructions supplied by the user.",
+                "Keep the section aligned with the literature review chapter.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             }
           ]
         }
-      ],
-      "drafting_guidance": [
-        "Organise the chapter according to selected sections and the research objectives.",
-        "Use structured tables where requested, especially for the literature gap table.",
-        "Do not fabricate authors, publication years, findings, or citations. Use placeholders where details are missing."
       ]
     },
     {
@@ -353,43 +554,62 @@
       "chapter_title": "Research Methods/Methodology",
       "section_groups": [
         {
-          "group_title": "Methodology Sections",
+          "group_title": "General Methodology Sections",
           "sections": [
             {
               "section_id": "ch3_intro",
-              "section_title": "Introduction",
+              "section_title": "Introduction to the Chapter",
               "default_selected": true,
               "guiding_questions": [
-                "What is the purpose of the study as stated in Chapter One?",
-                "What methodological issues will this chapter cover?",
-                "How does the chapter link the research objectives to the chosen methods?"
+                "What is the purpose of the methodology chapter?",
+                "What key methodological choices does the chapter cover?",
+                "How does it link to the study objectives?"
               ],
               "rules": [
-                "Provide an introduction and overview of the methodology chapter.",
-                "Recall the purpose of the study without repeating Chapter One excessively.",
-                "Outline the methodological areas covered in the chapter, including philosophy, approach, design, population, sampling, data source, instrument, validity, reliability, ethics, and analysis.",
-                "Use completed-study wording rather than proposal future tense."
+                "Provide an introduction and overview to the chapter.",
+                "Briefly recall the purpose of the study.",
+                "Outline the chapter sections.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
               "section_id": "ch3_philosophy",
-              "section_title": "Research Philosophy, Paradigm, and Approach",
+              "section_title": "Research Philosophy, Paradigm, Ontology and Epistemology",
               "default_selected": true,
               "guiding_questions": [
-                "What philosophical paradigm guided the study?",
-                "What ontological assumption about reality underpinned the study?",
-                "What epistemological assumption about knowledge guided the inquiry?",
-                "Which alternative paradigms were considered and why was the selected paradigm appropriate?",
-                "How did the paradigm align with the study objectives and method?"
+                "What philosophy or paradigm guided the study?",
+                "What ontology and epistemology are assumed?",
+                "Why is the paradigm appropriate?"
               ],
               "rules": [
-                "State and justify the research philosophy.",
+                "State and justify the research philosophy/paradigm.",
                 "Explain ontology and epistemology where required.",
-                "State and justify the research approach.",
-                "Show consistency among philosophy, approach, design, methods, and analysis.",
-                "Write this section in past tense for a completed study.",
-                "Contrast relevant philosophical positions before justifying the adopted stance.",
-                "Link the selected paradigm directly to the study rather than defining paradigms in isolation."
+                "Link the paradigm to the study, not as generic textbook content.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch3_approach",
+              "section_title": "Research Approach",
+              "default_selected": true,
+              "guiding_questions": [
+                "Was the study quantitative, qualitative or mixed methods?",
+                "Was it deductive, inductive or abductive?",
+                "Why was this approach more appropriate than alternatives?"
+              ],
+              "rules": [
+                "State and justify the approach.",
+                "Align the approach with philosophy, objectives, design and analysis.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
@@ -397,151 +617,199 @@
               "section_title": "Research Design and Time Horizon",
               "default_selected": true,
               "guiding_questions": [
-                "What research approach was used: quantitative, qualitative, mixed methods, secondary data, econometrics, or another approach?",
-                "What specific design was used: descriptive, correlational, explanatory, quasi-experimental, case study, cross-sectional, longitudinal, predictive, model-testing, pre-post, interrupted time series, or another design?",
-                "Why did this design fit the study better than the alternatives?",
-                "How did the design align with the philosophical stance and objectives?"
+                "What design was used: descriptive, explanatory, exploratory, correlational, causal, case study, econometric, experimental or mixed?",
+                "Was the study cross-sectional, longitudinal, comparative, panel, time-series or case-based?"
               ],
               "rules": [
-                "Clearly state the research design.",
-                "State the study type and time horizon with justification.",
-                "State the unit of analysis.",
-                "Ensure the design fits the framework and analysis requirements.",
-                "Use completed-study wording, not proposal wording.",
-                "Justify the selected approach against plausible alternatives.",
-                "State the specific type of design and explain why it was appropriate.",
-                "Ensure the selected design agrees with the research approach, objectives, and analytical strategy."
+                "Clearly state and justify the research design and time horizon.",
+                "Explain why the design fits the conceptual framework, questions and hypotheses.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
-              "section_id": "ch3_setting_population",
-              "section_title": "Study Setting, Population, and Sampling Frame",
-              "default_selected": true,
+              "section_id": "ch3_setting",
+              "section_title": "Study Area, Setting or Context",
+              "default_selected": false,
               "guiding_questions": [
-                "Where was the study conducted and why was this setting appropriate?",
-                "What constituted the target population?",
-                "What was the size and composition of the target population?",
-                "What was the accessible population?",
-                "What was the unit of analysis and why was it appropriate?",
-                "What inclusion and exclusion criteria applied?"
+                "Where was the study conducted?",
+                "Why was the setting appropriate?"
               ],
               "rules": [
                 "Describe and justify the study setting.",
-                "Define the target population clearly.",
-                "Describe the sampling frame.",
-                "Address relevant strata or groups.",
-                "Explain how non-response was handled where applicable.",
-                "Describe the target population, accessible population, population size, composition, and unit of analysis.",
-                "Justify why the selected population and unit of analysis fit the research objectives."
+                "Use context-specific evidence where available.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch3_population",
+              "section_title": "Target Population, Participants and Unit of Analysis",
+              "default_selected": true,
+              "guiding_questions": [
+                "Who or what constituted the target population?",
+                "What was the accessible population?",
+                "What was the unit of analysis?",
+                "What inclusion and exclusion criteria applied?"
+              ],
+              "rules": [
+                "Define target and accessible populations clearly.",
+                "State the unit of analysis and justify it.",
+                "Address inclusion/exclusion criteria.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch3_sampling_frame",
+              "section_title": "Sampling Frame",
+              "default_selected": false,
+              "guiding_questions": [
+                "What list, database, institutional record or access point provided the sampling frame?"
+              ],
+              "rules": [
+                "Describe the sampling frame or explain why one was not available.",
+                "Address limitations of the frame.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
               "section_id": "ch3_sampling",
-              "section_title": "Sample Size Determination and Sampling Technique",
+              "section_title": "Sample Size Determination and Sampling Procedure",
               "default_selected": true,
               "guiding_questions": [
-                "What sample size was used or proposed?",
-                "How was the sample size determined?",
-                "What assumptions supported the sample size, including population size, proportion or variance, margin of error, confidence level, statistical analysis, power, and non-response allowance?",
-                "What sampling technique was used and why?",
-                "What sampling steps were followed?",
-                "Was any section of the population deliberately restricted, and why?"
+                "What sample size was used?",
+                "How was it determined?",
+                "What assumptions were used?",
+                "What sampling technique was used and why?"
               ],
               "rules": [
-                "State and justify the sampling technique that was used.",
-                "State and justify the sample size method that was used.",
-                "Link sample size adequacy to the intended analysis.",
+                "State and justify the sample size method.",
+                "Link sample size to intended analysis.",
                 "Describe sampling steps clearly enough to replicate.",
-                "Acknowledge potential sampling bias and mitigation steps.",
-                "Explain why the sample size and sampling technique were critical for the study.",
-                "State assumptions used in determining the sample size, including confidence level, margin of error, population proportion or variance, power, and non-response rate where applicable.",
-                "Explain the sample composition and the sampling steps clearly enough for replication."
+                "Acknowledge sampling bias and mitigation.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch3_data_source",
+              "section_title": "Data Type and Sources",
+              "default_selected": true,
+              "guiding_questions": [
+                "Was the study based on primary, secondary or mixed data?",
+                "What were the data sources?",
+                "How reliable and adequate were the sources?"
+              ],
+              "rules": [
+                "State data type and justify it.",
+                "For secondary data, list variables, sources, period and frequency in a table.",
+                "For primary data, state who supplied the data and how.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
               "section_id": "ch3_instrument",
-              "section_title": "Data Type, Sources, and Data Collection Instrument",
+              "section_title": "Data Collection Instrument",
               "default_selected": true,
               "guiding_questions": [
-                "Was the study based on primary data, secondary data, or both?",
-                "What data collection instrument was used?",
-                "Why was the instrument appropriate for the study?",
-                "What sections did the instrument contain?",
-                "What weaknesses of the method were addressed, including common method variance and social desirability where survey data were used?",
-                "What procedural remedies and statistical remedies were used for common method variance?"
+                "What instrument was used: questionnaire, interview guide, observation checklist, archival template or secondary-data extraction sheet?",
+                "What sections did it contain?",
+                "What sources informed the items?"
               ],
               "rules": [
-                "State data type and justify it.",
                 "Describe the instrument clearly.",
-                "Describe the structure of the instrument.",
-                "State item sources with citations where appropriate.",
-                "State and justify the administration mode used.",
-                "For primary survey studies, describe the questionnaire, interview guide, or observation guide clearly and link it to the study variables or concepts.",
-                "Include a variable or construct measurement table with columns: Variable/Concept, Indicator/Dimension, Operational Indicator, Item Scale, Level of Measurement, and Origin/Source.",
-                "For self-report survey data, discuss common method variance, social desirability, and relevant ex-ante and ex-post remedies."
+                "Link sections/items to variables, constructs and objectives.",
+                "State item sources with citations where applicable.",
+                "Address weaknesses such as CMV or social desirability where relevant.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
               "section_id": "ch3_measurement",
-              "section_title": "Operationalisation and Measurement of Variables",
+              "section_title": "Operationalisation and Measurement of Variables or Concepts",
               "default_selected": true,
               "guiding_questions": [
-                "What were the key variables, constructs or concepts?",
-                "What operational definitions or proxies existed in the literature?",
-                "Which definitions, proxies or indicators were adopted or adapted and why?",
-                "How were the variables or constructs measured?",
-                "Were existing items or validated indicators available?",
-                "How were new or adapted items validated?"
+                "What are the independent, dependent, mediating, moderating and control variables?",
+                "What dimensions, indicators, item scales, proxies or coding were used?"
               ],
               "rules": [
-                "Operationalise all variables clearly.",
-                "State dimensions and indicators for each construct.",
-                "Specify measurement scales.",
-                "Justify control variables.",
-                "Describe coding, scoring, and composite score procedures.",
-                "Describe coding, scoring, and composite score procedures in past tense.",
-                "Explain operational definitions and proxies from the literature before stating what was adopted or adapted.",
-                "Justify why the selected indicators or measures were superior or more appropriate than alternatives where relevant.",
-                "State whether items were adopted, adapted or developed, and justify the decision."
+                "Operationalise all variables/constructs clearly.",
+                "Create a table showing variable/construct, indicator/proxy/item, measurement scale, level of measurement and source/origin.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
               "section_id": "ch3_pilot",
               "section_title": "Pilot Testing and Instrument Refinement",
-              "default_selected": true,
+              "default_selected": false,
               "guiding_questions": [
                 "Was the instrument piloted?",
-                "Who participated in the pilot?",
-                "Where was the pilot conducted?",
-                "What changes were made after the pilot?",
-                "How did the pilot support clarity and feasibility?"
+                "Who participated?",
+                "What changes were made?"
               ],
               "rules": [
-                "Report pilot sample, setting, and purpose.",
-                "Describe changes made after pilot testing.",
+                "Report pilot sample, setting, purpose and changes made.",
                 "Use pilot evidence to support clarity and feasibility.",
-                "Use past tense because this section reports what was done."
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
-              "section_id": "ch3_validity_reliability",
-              "section_title": "Validity and Reliability",
+              "section_id": "ch3_validity",
+              "section_title": "Validity, Reliability and Trustworthiness",
               "default_selected": true,
               "guiding_questions": [
-                "How were reliability and validity addressed?",
-                "What tools or criteria were used to test reliability?",
-                "What tools or criteria were used to test validity?",
-                "What thresholds or decision rules were used?"
+                "How were content, construct, convergent and discriminant validity assessed?",
+                "What reliability or trustworthiness criteria were used?"
               ],
               "rules": [
-                "Describe content validity procedures.",
-                "State construct validity approach where applicable.",
-                "State convergent and discriminant validity criteria where applicable.",
-                "State reliability tests and thresholds.",
-                "Document corrective actions where thresholds were not met.",
-                "Use past tense when reporting tests conducted and decisions made.",
-                "State the specific tools used for reliability and validity assessment and justify their use.",
-                "Report thresholds or decision rules for reliability and validity tests where applicable."
+                "For quantitative studies, state validity and reliability tests with thresholds.",
+                "For qualitative studies, address credibility, transferability, dependability and confirmability.",
+                "Document corrective actions where thresholds are not met.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch3_bias_cmv",
+              "section_title": "Common Method Bias, Social Desirability and Bias Control",
+              "default_selected": false,
+              "guiding_questions": [
+                "Could common method variance or social desirability affect the study?",
+                "What procedural and statistical remedies were used?"
+              ],
+              "rules": [
+                "Explain CMV/social desirability risks where survey data are used.",
+                "State ex ante and ex post remedies.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
@@ -550,18 +818,17 @@
               "default_selected": true,
               "guiding_questions": [
                 "What permissions were obtained?",
-                "What steps were followed in data collection?",
-                "What time period did data collection cover?",
-                "How was the response rate managed?",
-                "How were data handled, stored, anonymised, and tracked?"
+                "What steps were followed?",
+                "What period did collection cover?",
+                "How were data stored and anonymised?"
               ],
               "rules": [
-                "Describe access and permissions obtained.",
-                "Give a step-by-step data collection process.",
-                "State the time period of data collection.",
-                "Describe response rate management.",
-                "Describe data storage, anonymisation, and tracking.",
-                "Use past tense throughout this section."
+                "Give a step-by-step data collection process in past tense.",
+                "State permissions, period, response management and data handling.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
@@ -569,44 +836,53 @@
               "section_title": "Data Preparation and Assumption Checks",
               "default_selected": true,
               "guiding_questions": [
-                "How were missing data treated?",
-                "How were outliers checked and treated?",
-                "What assumptions were tested?",
-                "How was common method bias addressed?"
+                "How were missing data, outliers and coding handled?",
+                "What assumptions were assessed?"
               ],
               "rules": [
-                "State missing data treatment.",
-                "Describe outlier detection and treatment.",
-                "Check normality, multicollinearity, and other relevant assumptions.",
-                "Address common method bias for survey data where applicable.",
-                "Use past tense when reporting procedures and tests conducted."
+                "State missing data, outlier, normality, multicollinearity and other assumption checks as relevant.",
+                "For econometrics, include stationarity, cointegration, autocorrelation, heteroskedasticity or cross-sectional dependence where relevant.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
               "section_id": "ch3_analysis",
-              "section_title": "Data Analysis Plan",
+              "section_title": "Data Processing and Analysis Plan",
               "default_selected": true,
               "guiding_questions": [
-                "How was each research objective, research question or hypothesis analysed?",
-                "What analytical technique was used for each objective or hypothesis?",
-                "What assumptions applied to each technique before estimation or analysis?",
-                "How were assumptions assessed after estimation or analysis?",
-                "What theoretical or empirical model was specified?",
-                "What decision rule was used?",
-                "How was robustness or validation assessed?"
+                "How was each objective, question or hypothesis analysed?",
+                "What software was used?",
+                "What decision rules applied?"
               ],
               "rules": [
-                "Map analyses to objectives.",
-                "State descriptive and inferential analyses clearly.",
-                "Explain hypothesis testing and significance criteria.",
-                "Explain moderation or mediation testing where applicable.",
-                "State model specification with controls.",
+                "Map every objective or hypothesis to an analytical technique, assumptions, diagnostics and decision rule.",
+                "Create a clean analysis mapping table.",
                 "State software used.",
-                "Use past tense when describing analyses conducted.",
-                "Provide an objective-by-objective data analysis plan.",
-                "Include a table with columns: Research Objective, Research Question/Hypothesis, Analytical Technique, Ex-Ante Assumptions, Post-Estimation/Analysis Checks, and Decision Rule.",
-                "State model equations using display equation format and define all variables after each equation.",
-                "Explain robustness, validation or diagnostic checks appropriate to the technique used."
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch3_model_equations",
+              "section_title": "Model Specification and Equations",
+              "default_selected": false,
+              "guiding_questions": [
+                "What theoretical, statistical, econometric or path model was estimated?",
+                "What equation or path diagram is required?"
+              ],
+              "rules": [
+                "Write equations inside $$ ... $$ blocks so they can be exported as Word equations.",
+                "Define every symbol and variable below the equation.",
+                "Do not present equations as ordinary prose where equation formatting is needed.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
@@ -614,41 +890,54 @@
               "section_title": "Ethical Considerations",
               "default_selected": true,
               "guiding_questions": [
-                "What ethical clearance or approval was obtained or required?",
-                "How was informed consent obtained?",
-                "How were confidentiality and anonymity maintained?",
-                "How were data protected and stored?",
-                "What risks to participants were addressed and how were they mitigated?"
+                "What ethical clearance or permission was obtained?",
+                "How were consent, confidentiality, anonymity, risk and data protection handled?"
               ],
               "rules": [
-                "State ethical clearance source.",
-                "Describe informed consent.",
-                "State confidentiality and anonymity measures.",
-                "Describe data protection and storage.",
-                "Address risks and mitigation measures.",
-                "Use past tense for completed ethical procedures."
+                "State ethical clearance source where available.",
+                "Describe consent, confidentiality, anonymity, risks and data protection.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
-              "section_id": "ch3_summary",
+              "section_id": "ch3_chapter_summary",
               "section_title": "Chapter Summary",
               "default_selected": true,
               "guiding_questions": [
-                "What key methodological choices were made in the study?"
+                "What methodological choices were made?",
+                "How does the chapter transition to results?"
               ],
               "rules": [
                 "Restate key methodological choices without new content.",
-                "Make a clear transition to Chapter Four.",
-                "Summarise the completed methodological choices in past tense."
+                "Make a clear transition to the results/analysis chapter.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch3_custom",
+              "section_title": "Custom School-Specific Methodology Section",
+              "default_selected": false,
+              "guiding_questions": [
+                "List any additional methodology section required by your school.",
+                "What should this section include?"
+              ],
+              "rules": [
+                "Use the exact heading or instructions supplied by the user.",
+                "Keep it consistent with philosophy, design, data, analysis and ethics.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             }
           ]
         }
-      ],
-      "drafting_guidance": [
-        "Write the methodology as a completed final project, dissertation, or thesis chapter.",
-        "Use past tense throughout, for example: the study adopted, data were collected, respondents were selected, and data were analysed.",
-        "Avoid proposal wording such as will use, will collect, will be analysed, and will be conducted. The generated chapter should read as a completed academic project, not a proposal."
       ]
     },
     {
@@ -656,75 +945,195 @@
       "chapter_title": "Results/Data Analysis and Discussion",
       "section_groups": [
         {
-          "group_title": "Results and Discussion Sections",
+          "group_title": "General Results, Analysis and Discussion Sections",
           "sections": [
             {
               "section_id": "ch4_intro",
-              "section_title": "Introduction",
+              "section_title": "Introduction to the Chapter",
               "default_selected": true,
               "guiding_questions": [
-                "What results does the chapter present?"
+                "What does the chapter present?",
+                "How are the results organised?"
               ],
               "rules": [
-                "Introduce the chapter and remind the reader of the objectives."
+                "Introduce the chapter without referring to uploaded files or software output.",
+                "State that results are presented by objectives, questions, hypotheses or themes as appropriate.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
-              "section_id": "ch4_uploaded_results",
-              "section_title": "Uploaded Results and Analytical Output",
+              "section_id": "ch4_response_rate",
+              "section_title": "Response Rate, Data Source or Sample Description",
               "default_selected": true,
               "guiding_questions": [
-                "What result file or analysis output has been uploaded for this chapter?",
-                "Which tables, models, themes, coefficients, test statistics, or figures should be prioritised?",
-                "Which research objectives or hypotheses does the uploaded output address?",
-                "Are there supervisor instructions on how the results should be presented?"
+                "What was the response rate or final usable sample?",
+                "What dataset, period or cases were analysed?"
               ],
               "rules": [
-                "Use the uploaded results or analysis output to support the Chapter Four write-up.",
-                "Report only results that appear in the uploaded output or student-supplied answers.",
-                "Map each uploaded result to the relevant research objective or hypothesis.",
-                "Convert software output into clear academic tables and narrative where possible.",
-                "Do not invent sample sizes, coefficients, p-values, themes, quotations, reliability values, or model fit statistics."
+                "Present response rate, final sample, data source or case profile in a clean table.",
+                "If not available, insert a red placeholder table and tell the user what information to obtain.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
               "section_id": "ch4_profile",
-              "section_title": "Response Rate and Respondent Profile",
+              "section_title": "Respondent, Firm, Case or Data Profile",
               "default_selected": true,
               "guiding_questions": [
-                "What is the response rate?",
-                "What demographic or institutional characteristics describe the respondents?"
+                "What demographic, institutional, firm, case or dataset characteristics should be presented?"
               ],
               "rules": [
-                "Present response rate and profile clearly before inferential results."
+                "Create clean profile tables aligned with the study design.",
+                "Use only supplied/uploaded results; if missing, add red placeholder tables.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
-              "section_id": "ch4_results_objectives",
+              "section_id": "ch4_data_screening",
+              "section_title": "Data Screening, Cleaning and Preparation Results",
+              "default_selected": false,
+              "guiding_questions": [
+                "What missing data, outlier, coding, normality or diagnostic results should be reported?"
+              ],
+              "rules": [
+                "Report data screening outcomes where supplied.",
+                "Create placeholder tables for missing required diagnostics.",
+                "Advise which raw cleaning logs or detailed diagnostics should go to appendix.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch4_descriptive",
+              "section_title": "Descriptive Statistics or Thematic Overview",
+              "default_selected": true,
+              "guiding_questions": [
+                "What descriptive statistics, frequencies, means, standard deviations or theme overview should be presented?"
+              ],
+              "rules": [
+                "Create clean tables aligned with objectives and variables.",
+                "Interpret the table without overstatement.",
+                "If required statistics are not supplied, create red placeholder tables.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch4_measurement",
+              "section_title": "Reliability, Validity, Measurement Model or Trustworthiness Results",
+              "default_selected": false,
+              "guiding_questions": [
+                "What reliability, validity, CFA/PLS-SEM, factor analysis or qualitative trustworthiness results are required?"
+              ],
+              "rules": [
+                "Present reliability/validity or trustworthiness results in clean tables.",
+                "For SEM, include loadings, alpha, CR, AVE, HTMT/Fornell-Larcker where supplied.",
+                "If missing, insert red placeholder tables and specify the needed output.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch4_assumptions",
+              "section_title": "Assumption Checks and Diagnostic Tests",
+              "default_selected": false,
+              "guiding_questions": [
+                "What assumptions or diagnostics are required for the chosen analysis?"
+              ],
+              "rules": [
+                "Report only diagnostics supplied in the results file or user answers.",
+                "Create placeholder tables for required but missing tests, and advise user to obtain them.",
+                "Place lengthy raw diagnostic output in appendix.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch4_objective_results",
               "section_title": "Results by Objectives",
               "default_selected": true,
               "guiding_questions": [
                 "What result addresses each objective?",
-                "What tables or statistics support each result?"
+                "What table or statistic supports each result?"
               ],
               "rules": [
                 "Present results objective by objective.",
-                "Ensure each objective from Chapter One is addressed.",
-                "Interpret results beyond description."
+                "Create all required tables that align with the methods and objectives.",
+                "Do not write phrases such as 'the uploaded results show' or 'the output uploaded'. Write a clean chapter as if the results are already part of the thesis.",
+                "Use placeholder tables in red where required results are missing.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
-              "section_id": "ch4_hypotheses",
-              "section_title": "Hypothesis Testing",
+              "section_id": "ch4_hypothesis",
+              "section_title": "Hypothesis Testing or Research Question Answers",
               "default_selected": false,
               "guiding_questions": [
-                "What hypothesis is tested?",
+                "What hypothesis or research question is tested?",
                 "What decision rule applies?",
-                "Is the hypothesis accepted, rejected, or not supported?"
+                "What is the decision?"
               ],
               "rules": [
-                "Clearly state the decision for each hypothesis.",
-                "Use the selected significance criteria consistently."
+                "State each hypothesis/question, analysis, statistic, p-value/criterion and decision where supplied.",
+                "If any hypothesis test is missing, create a red placeholder table indicating the required result.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch4_model_results",
+              "section_title": "Regression, SEM, Econometric, Comparative or Qualitative Results",
+              "default_selected": false,
+              "guiding_questions": [
+                "What model results, coefficients, fit indices, estimates, themes or quotations are required?"
+              ],
+              "rules": [
+                "Report model results only from supplied/uploaded evidence.",
+                "Create polished tables for coefficients, path estimates, model fit, diagnostics or themes as appropriate.",
+                "Do not invent coefficients, p-values, fit statistics, themes or quotations.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch4_figures",
+              "section_title": "Figures, Graphs and Visual Results",
+              "default_selected": false,
+              "guiding_questions": [
+                "What figures, graphs, plots or diagrams are required?"
+              ],
+              "rules": [
+                "Insert red placeholders for required figures or diagrams where image/data output is missing.",
+                "Explain what data or output the user must supply.",
+                "Advise that large raw charts, screenshots or software output should go to appendix unless needed in the main text.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
@@ -733,14 +1142,33 @@
               "default_selected": true,
               "guiding_questions": [
                 "How do findings compare with theory and previous studies?",
-                "What explanations are plausible?"
+                "What explanations are plausible?",
+                "What does each finding mean in context?"
               ],
               "rules": [
-                "Link findings to theory.",
-                "Compare findings with previous studies.",
-                "Explain what the results mean in the study context.",
-                "Use relevant in-text citations when comparing findings with theories and previous studies.",
-                "Do not invent prior studies; use verified supplied sources or placeholders."
+                "Discuss findings objective by objective.",
+                "Link findings to theory, prior studies and the study context.",
+                "Do not repeat numbers without interpretation.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch4_appendix_guidance",
+              "section_title": "Appendix Guidance for Results Materials",
+              "default_selected": false,
+              "guiding_questions": [
+                "Which raw outputs, instruments, diagnostics, tables or supplementary materials should go to appendix?"
+              ],
+              "rules": [
+                "Advise what belongs in the main text and what belongs in appendices.",
+                "Mention raw software outputs, questionnaires, detailed diagnostics, long correlation matrices or full interview excerpts where appropriate.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
@@ -751,16 +1179,32 @@
                 "What are the main results from the chapter?"
               ],
               "rules": [
-                "Summarise key findings by objectives without adding new evidence."
+                "Summarise key findings by objectives without adding new evidence.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch4_custom",
+              "section_title": "Custom School-Specific Results Section",
+              "default_selected": false,
+              "guiding_questions": [
+                "List any additional results/analysis section required by your school.",
+                "What output should support it?"
+              ],
+              "rules": [
+                "Use the exact heading or instructions supplied by the user.",
+                "Do not invent results; use placeholders where results are missing.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             }
           ]
         }
-      ],
-      "drafting_guidance": [
-        "Use uploaded results or analysis output for Chapter Four where available.",
-        "Present findings objective by objective and avoid inventing statistics not contained in the upload or answers.",
-        "Where the upload is unclear, ask for clarification or use placeholders rather than making unsupported claims."
       ]
     },
     {
@@ -768,17 +1212,38 @@
       "chapter_title": "Summary, Conclusion and Recommendation",
       "section_groups": [
         {
-          "group_title": "Conclusion Sections",
+          "group_title": "General Final Chapter Sections",
           "sections": [
             {
               "section_id": "ch5_intro",
-              "section_title": "Introduction",
+              "section_title": "Introduction to the Chapter",
               "default_selected": true,
               "guiding_questions": [
                 "What does the final chapter cover?"
               ],
               "rules": [
-                "Introduce the purpose of the final chapter."
+                "Introduce the purpose and structure of the final chapter.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch5_summary_study",
+              "section_title": "Summary of the Study",
+              "default_selected": true,
+              "guiding_questions": [
+                "What was the study about?",
+                "What problem, purpose, methods and analysis were used?"
+              ],
+              "rules": [
+                "Summarise the study without introducing new evidence.",
+                "Keep it concise and linked to objectives.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
@@ -790,7 +1255,11 @@
               ],
               "rules": [
                 "Summarise findings strictly by objectives.",
-                "Do not introduce new results."
+                "Do not introduce new results.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
@@ -799,11 +1268,15 @@
               "default_selected": true,
               "guiding_questions": [
                 "What conclusion follows from each finding?",
-                "How do the conclusions address the research problem?"
+                "How do conclusions address the research problem?"
               ],
               "rules": [
                 "Ensure conclusions directly address the research problem.",
-                "Base conclusions on Chapter Four findings."
+                "Base conclusions only on Chapter Four findings.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
@@ -816,7 +1289,27 @@
               ],
               "rules": [
                 "Make every recommendation flow directly from a finding.",
-                "Avoid recommendations not supported by Chapter Four."
+                "Avoid unsupported recommendations.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch5_policy_practice",
+              "section_title": "Policy, Practice or Managerial Implications",
+              "default_selected": false,
+              "guiding_questions": [
+                "What do the findings imply for policy, practice, management or professional work?"
+              ],
+              "rules": [
+                "Separate implications from recommendations where the school requires it.",
+                "Link each implication to a finding.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
@@ -824,10 +1317,30 @@
               "section_title": "Contribution to Knowledge",
               "default_selected": false,
               "guiding_questions": [
-                "What does the study add to theory, method, context, or practice?"
+                "What does the study add to theory, method, context, evidence or practice?"
               ],
               "rules": [
-                "State contributions modestly and link them to the study findings."
+                "State contributions modestly and link them to findings.",
+                "Avoid exaggerated claims of originality.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch5_limitations",
+              "section_title": "Limitations of the Study",
+              "default_selected": false,
+              "guiding_questions": [
+                "What limitations remain after completing the study?"
+              ],
+              "rules": [
+                "State limitations honestly and link them to future research.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
@@ -835,10 +1348,46 @@
               "section_title": "Suggestions for Future Research",
               "default_selected": true,
               "guiding_questions": [
-                "What future studies are needed based on limitations?"
+                "What future studies are needed based on limitations and findings?"
               ],
               "rules": [
-                "Link future research suggestions to study limitations."
+                "Link future research suggestions to limitations and unresolved issues.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch5_summary",
+              "section_title": "Chapter Summary",
+              "default_selected": false,
+              "guiding_questions": [
+                "What closing summary is required?"
+              ],
+              "rules": [
+                "Close the final chapter without adding new evidence.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch5_custom",
+              "section_title": "Custom School-Specific Final Chapter Section",
+              "default_selected": false,
+              "guiding_questions": [
+                "List any additional final chapter section required by your school.",
+                "What should it contain?"
+              ],
+              "rules": [
+                "Use the exact heading or instructions supplied by the user.",
+                "Keep the content traceable to findings and conclusions.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             }
           ]
@@ -854,18 +1403,20 @@
           "sections": [
             {
               "section_id": "ch6_custom_scope",
-              "section_title": "Custom Chapter Scope and Purpose",
+              "section_title": "Custom Chapter Title, Scope and Purpose",
               "default_selected": true,
               "guiding_questions": [
-                "What should this additional chapter cover?",
-                "Why is this chapter needed in the thesis, dissertation or project work?",
-                "What specific sections, models, evidence, tables or outputs should be included?"
+                "What is the title of this chapter?",
+                "What should this chapter cover?",
+                "Why is this chapter needed?"
               ],
               "rules": [
-                "Draft only the content requested by the user or institution for this additional chapter.",
-                "Make the chapter coherent with the project title, objectives, theory, methodology, results and recommendations.",
-                "Use relevant in-text citations, evidence and an APA reference list where applicable.",
-                "Use placeholders where project-specific evidence or details are missing."
+                "Use the user-specified chapter title and scope.",
+                "Draft only the content requested by the user or institution.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
             {
@@ -873,52 +1424,53 @@
               "section_title": "User-Specified Sections",
               "default_selected": true,
               "guiding_questions": [
-                "List the headings or sections you want the app to include in this chapter.",
-                "What should each section achieve?",
-                "Are there special formatting, evidence, table, equation or diagram requirements?"
+                "List the headings or sections you want included.",
+                "What should each section achieve?"
               ],
               "rules": [
                 "Use the headings supplied by the user as the organising structure.",
-                "Keep the content aligned with the rest of the project.",
-                "Do not invent data, results, sources, ethical approvals, sample sizes or institutional details."
+                "Keep the content aligned with the project title, objectives, methods, results and recommendations.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch6_tables_figures_equations",
+              "section_title": "Tables, Figures, Diagrams or Equations Required",
+              "default_selected": false,
+              "guiding_questions": [
+                "What tables, figures, diagrams or equations should this chapter include?"
+              ],
+              "rules": [
+                "Use clean markdown tables and equation blocks where required.",
+                "Use red placeholders for missing figures, diagrams or data.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+              ]
+            },
+            {
+              "section_id": "ch6_appendix_guidance",
+              "section_title": "Appendix or Supplementary Material Guidance",
+              "default_selected": false,
+              "guiding_questions": [
+                "Which materials should be placed in appendix rather than the main chapter?"
+              ],
+              "rules": [
+                "Advise on materials suitable for appendix.",
+                "Keep main text readable and concise.",
+                "Use formal British English and a natural scholarly style.",
+                "Use relevant accurate in-text citations for substantive claims.",
+                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             }
           ]
         }
       ]
     }
-  ],
-  "global_writing_guidance": [
-    "Use the selected level only to guide academic depth internally. Do not state in the generated chapter that the writing is designed to meet a level, checklist, template, or software requirement.",
-    "Write in a mature scholarly voice with well-developed academic sentences. Avoid very short, choppy sentences unless needed for clarity or emphasis.",
-    "Avoid weak problem-statement openings such as 'The research problem is that'. Frame the problem through evidence, contradiction, gap, policy concern, or unresolved practical challenge.",
-    "Avoid future-tense proposal wording. Draft chapters as part of a completed project, dissertation, or thesis, using past tense for methods and results and present tense for interpretation where appropriate."
-  ],
-  "academic_levels": [
-    {
-      "value": "Bachelors",
-      "depth": "Clear undergraduate-level academic writing with relevant definitions, context, and basic critical discussion."
-    },
-    {
-      "value": "Non-Research Masters",
-      "depth": "Applied master's-level writing with professional relevance, stronger synthesis, and practical implications."
-    },
-    {
-      "value": "Research Masters (e.g. MPhil)",
-      "depth": "Research master's-level writing with critical synthesis, theory-method alignment, explicit gaps, and rigorous methods."
-    },
-    {
-      "value": "Professional Doctorate (e.g. DBA, DEd)",
-      "depth": "Professional doctorate-level writing with advanced applied scholarship, professional problem framing, and practice contribution."
-    },
-    {
-      "value": "PhD",
-      "depth": "Doctoral-level writing with original contribution, advanced theory, rigorous methodology, and publication-quality argument."
-    }
-  ],
-  "reference_currency_rule": {
-    "recent_reference_share": "Aim for at least 70% of substantive references from the last five years where current literature exists.",
-    "older_reference_share": "Where recent references do not exist, use the most relevant credible available sources. Older sources are also acceptable for foundational theories, classic models, scarce-literature areas, and essential earlier studies.",
-    "integrity_guard": "Do not fabricate sources. Use verified or supplied citations where available. If no credible source details are available, insert a clear bracketed placeholder for the required source."
-  }
+  ]
 }
