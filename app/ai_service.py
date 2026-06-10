@@ -335,7 +335,7 @@ def _chapter_specific_requirements(chapter_number: int) -> list[str]:
             "For primary survey studies, include common method variance and social desirability safeguards, including procedural remedies such as varied scale formats, careful item ordering, anonymity, and statistical checks where applicable.",
             "Use a variable or construct operationalisation table where measurement is discussed, with columns: Variable/Concept, Indicator/Dimension, Operational Indicator, Item Scale, Level of Measurement, and Origin/Source.",
             "Use an analysis-plan table where data analysis is discussed, with columns: Research Objective, Research Question/Hypothesis, Analytical Technique, Ex-Ante Assumptions, Post-Estimation/Analysis Checks, and Decision Rule.",
-            "When model equations are needed, present each equation in a separate display equation block using double dollar delimiters, then define all variables directly below the equation.",
+            "When model equations are needed, present each equation in a separate display equation block using double dollar delimiters. Prefer clean Word-friendly mathematical notation using Unicode Greek letters and subscripts where possible, for example SDᵢ = β₀ + β₁PCRᵢ + ∑ₖ₌₁ᵐ βₖCVₖᵢ + εᵢ. Define all variables directly below the equation.",
         ]
 
     if chapter_number == 4:
@@ -449,7 +449,7 @@ def build_drafting_prompt(
             "Keep variables, objectives, questions, hypotheses, theories, context, and methods internally consistent.",
             "Use markdown tables only where a table is clearly requested or useful.",
             "Use APA 7th style for the chapter References section. Include only sources cited in the chapter body, and keep entries clean, complete and alphabetised where possible.",
-            "When equations are required, place each equation in a display equation block using the format $$ equation $$ so that the DOCX exporter can convert it into a Word equation object. Do not leave important equations only as ordinary text.",
+            "When equations are required, place each equation in a display equation block using the format $$ equation $$. Use clean Word-friendly mathematical notation where possible, with Unicode Greek letters and subscripts rather than raw LaTeX commands. Do not leave important equations only as ordinary text.",
             "For conceptual framework diagrams, avoid messy ASCII art. Use a clean relationship table and, where appropriate, a Mermaid flowchart code block. Keep the diagram simple enough to be readable.",
             "When revision mode is enabled, preserve the original structure as far as possible, revise with comments in the narrative where helpful, and wrap new inserted material in [[ADD]] and [[/ADD]] markers so the DOCX export can colour additions red.",
             "For Chapter Two tables, use a properly structured markdown table with meaningful column headers and one idea per cell.",
@@ -460,6 +460,7 @@ def build_drafting_prompt(
             "For Chapter Four, advise which materials should move to appendices, such as raw software output, lengthy diagnostic tables, full correlation matrices, full questionnaires, interview transcripts, codebooks and robustness checks.",
             "For Chapter Four, report only results found in uploaded files or student answers. Do not fabricate numbers, tables, themes, or interpretation.",
             "For questionnaire or interview-guide outputs, build draft instruments from the constructs, variables and objectives supplied in the project profile rather than giving only a generic structure.",
+            "Do not overload the main Research Methods/Methodology chapter with a full questionnaire, interview guide or data-source codebook. Those details belong in the separate supplementary instrument/data-source chapter or appendix unless the institution requires them in the main chapter.",
             "For Chapter Five, base conclusions and recommendations only on findings supplied in the profile or answers.",
         ],
     }
@@ -670,7 +671,7 @@ def generate_chapter(
             "When the user has not provided facts, use clear placeholders rather than inventing content. "
             "Write as a completed final project, dissertation, or thesis. Avoid proposal-style future tense across chapters, especially Chapter Three methodology. "
             "For Chapter Two, format literature gap tables as clean markdown tables with clear columns. Avoid messy conceptual framework diagrams; use clean relationship tables and simple Mermaid flowcharts where a diagram is needed. "
-            "For equations, use display equation blocks with double dollar delimiters so the DOCX exporter can create Word equation objects. "
+            "For equations, use display equation blocks with double dollar delimiters and clean Word-friendly notation so the DOCX exporter can create readable Word equation objects. "
             "For Chapter Four, use uploaded results files where available and never invent analysis output. "
             "Let the selected thesis, dissertation, or project-work level guide depth silently without appearing in the chapter text. "
             "Make each section read like publishable or supervisor-ready academic prose, with a clear line of reasoning and strong paragraph development. "

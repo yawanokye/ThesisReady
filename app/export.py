@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import parse_xml
 from docx.oxml.ns import nsdecls
 from docx.shared import Pt, RGBColor
@@ -26,10 +27,79 @@ CHAPTER_LABELS = {
 }
 
 
+SUBSCRIPT_MAP = str.maketrans("0123456789+-=()abcdefghijklmnopqrstuvwxyz", "₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎ₐᵦ꜀ᑯₑբ₉ₕᵢⱼₖₗₘₙₒₚ૧ᵣₛₜᵤᵥwₓᵧ₂")
+SUPERSCRIPT_MAP = str.maketrans("0123456789+-=()abcdefghijklmnopqrstuvwxyz", "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ᵃᵇᶜᵈᵉᶠᵍʰⁱʲᵏˡᵐⁿᵒᵖ۹ʳˢᵗᵘᵛʷˣʸᶻ")
+
+GREEK_LATEX = {
+    "alpha": "α", "beta": "β", "gamma": "γ", "delta": "δ", "epsilon": "ε", "varepsilon": "ε",
+    "zeta": "ζ", "eta": "η", "theta": "θ", "vartheta": "θ", "iota": "ι", "kappa": "κ",
+    "lambda": "λ", "mu": "μ", "nu": "ν", "xi": "ξ", "pi": "π", "rho": "ρ", "sigma": "σ",
+    "tau": "τ", "upsilon": "υ", "phi": "φ", "varphi": "φ", "chi": "χ", "psi": "ψ", "omega": "ω",
+    "Delta": "Δ", "Gamma": "Γ", "Theta": "Θ", "Lambda": "Λ", "Pi": "Π", "Sigma": "Σ", "Phi": "Φ", "Omega": "Ω",
+}
+
+MATH_COMMANDS = {
+    "sum": "∑", "times": "×", "cdot": "·", "leq": "≤", "geq": "≥", "neq": "≠", "approx": "≈",
+    "rightarrow": "→", "to": "→", "leftarrow": "←", "infty": "∞", "pm": "±", "%": "%",
+}
+
+
+def _to_subscript(value: str) -> str:
+    return str(value or "").translate(SUBSCRIPT_MAP)
+
+
+def _to_superscript(value: str) -> str:
+    return str(value or "").translate(SUPERSCRIPT_MAP)
+
+
+def _latex_to_word_equation_text(equation: str) -> str:
+    """Convert common LaTeX-style model notation into readable Word equation text.
+
+    This does not try to be a full LaTeX engine. It handles the notation normally
+    produced by the app for methods chapters, including Greek letters, subscripts,
+    superscripts, sums, fractions and simple aligned equations. The text is then
+    embedded in a Word OMML math object so it opens as an equation rather than as
+    raw backslash-filled text.
+    """
+    text = str(equation or "")
+    text = text.replace("\\begin{aligned}", "").replace("\\end{aligned}", "")
+    text = text.replace("\\begin{align}", "").replace("\\end{align}", "")
+    text = text.replace("\\begin{equation}", "").replace("\\end{equation}", "")
+    text = text.replace("\\left", "").replace("\\right", "")
+    text = text.replace("\\,", " ").replace("\\;", " ").replace("\\:", " ")
+    text = re.sub(r"\\\\\s*", "\n", text)
+    text = re.sub(r"\\frac\{([^{}]+)\}\{([^{}]+)\}", r"(\1)/(\2)", text)
+
+    for name, symbol in {**GREEK_LATEX, **MATH_COMMANDS}.items():
+        text = re.sub(rf"\\{name}\b", symbol, text)
+
+    # Convert common subscript and superscript patterns after replacing commands.
+    text = re.sub(r"_\{([^{}]+)\}", lambda m: _to_subscript(m.group(1)), text)
+    text = re.sub(r"_([A-Za-z0-9+-=])", lambda m: _to_subscript(m.group(1)), text)
+    text = re.sub(r"\^\{([^{}]+)\}", lambda m: _to_superscript(m.group(1)), text)
+    text = re.sub(r"\^([A-Za-z0-9+-=])", lambda m: _to_superscript(m.group(1)), text)
+
+    # Remove remaining LaTeX grouping and simple spacing commands.
+    text = text.replace("{", "").replace("}", "")
+    text = text.replace("\\ ", " ")
+    text = re.sub(r"\\([A-Za-z]+)", r"\1", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def _clean_inline_latex_text(text: str) -> str:
+    """Replace inline LaTeX markers such as \(PCR_i\) with readable text."""
+    cleaned = re.sub(r"\\\((.*?)\\\)", lambda m: _latex_to_word_equation_text(m.group(1)), str(text or ""))
+    cleaned = re.sub(r"\$([^$\n]+)\$", lambda m: _latex_to_word_equation_text(m.group(1)), cleaned)
+    return cleaned
+
+
 def _add_runs_with_markup(paragraph, text: str) -> None:
     """Add text to a paragraph, colouring placeholders and revision additions red."""
+    text = _clean_inline_latex_text(str(text or ""))
     active_addition = False
-    for segment in ADD_PATTERN.split(str(text or "")):
+    for segment in ADD_PATTERN.split(text):
         if not segment:
             continue
         if segment == "[[ADD]]":
@@ -164,12 +234,13 @@ def _equation_from_block(block: str) -> str | None:
 
 
 def _add_word_equation(doc: Document, equation: str) -> None:
-    paragraph = doc.add_paragraph()
-    # This creates a Word OMML equation object. It is intentionally simple, but Word
-    # treats it as an equation rather than plain paragraph text.
-    safe = html.escape(equation or "")
-    omath = parse_xml(f'<m:oMath {nsdecls("m") }><m:r><m:t>{safe}</m:t></m:r></m:oMath>')
-    paragraph._p.append(omath)
+    converted = _latex_to_word_equation_text(equation)
+    for line in [ln.strip() for ln in converted.splitlines() if ln.strip()]:
+        paragraph = doc.add_paragraph()
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        safe = html.escape(line)
+        omath = parse_xml(f'<m:oMath {nsdecls("m") }><m:r><m:t>{safe}</m:t></m:r></m:oMath>')
+        paragraph._p.append(omath)
 
 
 def _add_text_block(doc: Document, block: str) -> None:
@@ -486,3 +557,213 @@ def _add_interview_guide(doc: Document, objectives: list[str], constructs: list[
         "What recommendations would you suggest based on your experience?",
     ]:
         doc.add_paragraph(question, style="List Number")
+
+
+def export_methods_supplement_docx(project: dict[str, Any], chapter_number: int, out_dir: Path) -> Path:
+    """Export a separate supplementary methods chapter for research instruments and data sources.
+
+    This file is intentionally separate from the main Research Methods/Methodology chapter.
+    It helps the student document questionnaire/interview-guide development, validated scale
+    sources, secondary-data sources and appendix materials without overloading Chapter Three.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    profile = project.get("profile", {}) or {}
+    title = project.get("title") or profile.get("title") or "ProjectReady AI"
+    safe_title = _safe_title(title)
+    path = out_dir / f"{safe_title}_supplementary_methods_instrument_data_sources.docx"
+
+    doc = Document()
+    styles = doc.styles
+    styles["Normal"].font.name = "Times New Roman"
+    styles["Normal"].font.size = Pt(12)
+
+    approach = str(profile.get("research_approach") or "").lower()
+    data_type = str(profile.get("data_type") or "").lower()
+    objectives = _profile_objectives(profile)
+    constructs = _profile_constructs(profile, objectives)
+    sources = _profile_source_bank(profile)
+
+    doc.add_heading("Supplementary Methods Chapter", level=0)
+    doc.add_heading("Research Instrument and Data Source Specification", level=1)
+    doc.add_paragraph(f"Study title: {title}")
+    doc.add_paragraph(
+        "This supplementary chapter supports the Research Methods/Methodology chapter. It documents the proposed research "
+        "instrument, scale or item sources, variable measurement decisions, data-source traceability and appendix materials. "
+        "It should be reviewed against supervisor comments, ethical approval conditions and the final institutional format before use."
+    )
+
+    _add_objective_construct_matrix(doc, objectives, constructs)
+
+    include_primary = any(key in data_type for key in ["primary", "survey"]) or any(key in approach for key in ["quantitative", "qualitative", "mixed"])
+    include_qual = "qual" in approach or "mixed" in approach or "qual" in data_type
+    include_secondary = any(key in data_type for key in ["secondary", "econometric", "time-series", "panel"])
+
+    if include_primary or not include_secondary:
+        _add_instrument_development_sources(doc, objectives, constructs, sources)
+        if "quant" in approach or "survey" in data_type or "primary" in data_type or "mixed" in approach:
+            _add_questionnaire(doc, objectives, constructs)
+        if include_qual:
+            _add_interview_guide(doc, objectives, constructs)
+
+    if include_secondary:
+        _add_secondary_data_source_chapter(doc, objectives, constructs, sources)
+
+    _add_appendix_guidance(doc, include_primary=include_primary, include_secondary=include_secondary)
+    _add_supplement_reference_notes(doc, sources)
+
+    doc.save(path)
+    return path
+
+
+def _profile_source_bank(profile: dict[str, Any]) -> list[dict[str, Any]]:
+    sources = profile.get("source_bank") or []
+    retrieved = profile.get("retrieved_sources") or {}
+    if isinstance(retrieved, dict):
+        sources = [*sources, *(retrieved.get("sources") or [])]
+    cleaned: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for src in sources:
+        if not isinstance(src, dict):
+            continue
+        doi = str(src.get("doi") or "").strip().lower()
+        title = re.sub(r"[^a-z0-9]+", "", str(src.get("title") or "").lower())[:90]
+        key = doi or title
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(src)
+    return cleaned[:40]
+
+
+def _match_sources_for_construct(construct: str, sources: list[dict[str, Any]], limit: int = 3) -> list[dict[str, Any]]:
+    terms = {t for t in re.findall(r"[A-Za-z]{4,}", str(construct).lower()) if t not in {"student", "students", "study", "effect", "role", "relationship", "among"}}
+    ranked: list[tuple[int, dict[str, Any]]] = []
+    for src in sources:
+        haystack = " ".join([
+            str(src.get("title") or ""),
+            str(src.get("abstract") or ""),
+            str(src.get("apa_hint") or ""),
+            str(src.get("source") or ""),
+        ]).lower()
+        score = sum(1 for term in terms if term in haystack)
+        if score:
+            ranked.append((score, src))
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    return [src for _, src in ranked[:limit]]
+
+
+def _format_source_hint(src: dict[str, Any]) -> str:
+    hint = src.get("apa_hint") or src.get("reference_entry_hint") or ""
+    if hint:
+        return str(hint)
+    authors = src.get("authors") or []
+    if isinstance(authors, list):
+        author_text = ", ".join(str(a) for a in authors[:3])
+    else:
+        author_text = str(authors or "[Author]")
+    year = src.get("year") or "n.d."
+    title = src.get("title") or "[Title]"
+    source = src.get("source") or src.get("database") or ""
+    doi = src.get("doi") or ""
+    return " ".join(str(x) for x in [author_text, f"({year}).", title + ".", source, f"https://doi.org/{doi}" if doi else ""] if str(x).strip())
+
+
+def _add_objective_construct_matrix(doc: Document, objectives: list[str], constructs: list[str]) -> None:
+    doc.add_heading("Objective, Construct and Measurement Alignment", level=2)
+    doc.add_paragraph("This matrix links the objectives to the constructs or variables that should guide questionnaire items, interview questions or secondary-data indicators.")
+    table = doc.add_table(rows=1, cols=4)
+    table.style = "Table Grid"
+    hdr = table.rows[0].cells
+    for idx, label in enumerate(["Research Objective", "Construct/Variable", "Expected Evidence", "Measurement/Data Note"]):
+        hdr[idx].text = label
+    if not objectives:
+        objectives = ["[insert research objective]"]
+    for i, obj in enumerate(objectives):
+        row = table.add_row().cells
+        _set_cell_text_with_markup(row[0], obj)
+        _set_cell_text_with_markup(row[1], constructs[i % len(constructs)] if constructs else "[insert construct/variable]")
+        _set_cell_text_with_markup(row[2], "[insert questionnaire items, interview probes or secondary-data indicator aligned with this objective]")
+        _set_cell_text_with_markup(row[3], "[state scale, coding, data source, frequency or validation requirement]")
+
+
+def _add_instrument_development_sources(doc: Document, objectives: list[str], constructs: list[str], sources: list[dict[str, Any]]) -> None:
+    doc.add_heading("Instrument Development and Source Traceability", level=2)
+    doc.add_paragraph(
+        "The table below identifies the constructs that should be measured and the source evidence that may support item development. "
+        "Where no suitable source has been retrieved or supplied, the placeholder should be replaced with a validated scale, adapted instrument source or supervisor-approved item-development note."
+    )
+    table = doc.add_table(rows=1, cols=5)
+    table.style = "Table Grid"
+    headers = ["Construct/Variable", "Objective Link", "Proposed Measurement", "Potential Scale/Item Source", "Required Action"]
+    for i, h in enumerate(headers):
+        table.rows[0].cells[i].text = h
+    if not constructs:
+        constructs = ["[insert construct/variable]"]
+    for idx, construct in enumerate(constructs, 1):
+        matched = _match_sources_for_construct(construct, sources)
+        source_text = "; ".join(_format_source_hint(src) for src in matched) if matched else "[insert validated or adapted scale/item source for this construct]"
+        row = table.add_row().cells
+        _set_cell_text_with_markup(row[0], construct)
+        _set_cell_text_with_markup(row[1], objectives[(idx - 1) % len(objectives)] if objectives else "[insert linked objective]")
+        _set_cell_text_with_markup(row[2], "Likert-scale items, index score, observed indicator or interview prompts, depending on design")
+        _set_cell_text_with_markup(row[3], source_text)
+        _set_cell_text_with_markup(row[4], "Adapt items, cite source, conduct expert review, pilot test and report reliability/validity evidence")
+
+
+def _add_secondary_data_source_chapter(doc: Document, objectives: list[str], constructs: list[str], sources: list[dict[str, Any]]) -> None:
+    doc.add_heading("Secondary Data and Variable Source Specification", level=2)
+    doc.add_paragraph(
+        "For secondary-data, econometric, time-series or panel-data studies, this section should document the exact data source, variable construction, frequency, transformation and verification procedure for each variable."
+    )
+    table = doc.add_table(rows=1, cols=8)
+    table.style = "Table Grid"
+    headers = ["Objective", "Variable", "Operational Definition", "Preferred Data Source", "Coverage/Frequency", "Transformation/Coding", "Quality Check", "Appendix Material"]
+    for i, h in enumerate(headers):
+        table.rows[0].cells[i].text = h
+    if not constructs:
+        constructs = ["[insert dependent variable]", "[insert independent variable]", "[insert control variable]"]
+    if not objectives:
+        objectives = ["[insert objective]"]
+    for idx, variable in enumerate(constructs):
+        matched = _match_sources_for_construct(variable, sources, limit=2)
+        source_hint = "; ".join(_format_source_hint(src) for src in matched) if matched else "[insert official data source, database, report or institutional record]"
+        row = table.add_row().cells
+        _set_cell_text_with_markup(row[0], objectives[idx % len(objectives)])
+        _set_cell_text_with_markup(row[1], variable)
+        _set_cell_text_with_markup(row[2], "[define how the variable is measured or computed]")
+        _set_cell_text_with_markup(row[3], source_hint)
+        _set_cell_text_with_markup(row[4], "[insert country/firm/sample coverage and frequency]")
+        _set_cell_text_with_markup(row[5], "[insert log, differencing, scaling, index construction or coding]")
+        _set_cell_text_with_markup(row[6], "[insert missing-data, outlier, unit-root, stationarity or consistency checks]")
+        _set_cell_text_with_markup(row[7], "Data dictionary, extraction log, raw data sample and codebook")
+
+
+def _add_appendix_guidance(doc: Document, include_primary: bool, include_secondary: bool) -> None:
+    doc.add_heading("Appendix Placement Guide", level=2)
+    notes = []
+    if include_primary:
+        notes.extend([
+            "Full questionnaire or interview guide should normally appear in the appendix after ethical approval is obtained.",
+            "Expert review forms, pilot-test feedback and consent scripts may be placed in the appendix where the institution requires them.",
+            "Full item wording, coding scheme and reverse-coded item notes should be retained in the appendix or instrument file.",
+        ])
+    if include_secondary:
+        notes.extend([
+            "Raw data extracts, detailed codebooks, transformation logs and variable construction formulas should normally be placed in the appendix.",
+            "Lengthy diagnostic outputs, robustness checks, correlation matrices and software logs should be summarised in the main chapter and placed fully in the appendix.",
+        ])
+    if not notes:
+        notes.append("Place lengthy technical materials in the appendix and keep the main methodology chapter focused on defensible methodological explanation.")
+    for note in notes:
+        doc.add_paragraph(note, style="List Bullet")
+
+
+def _add_supplement_reference_notes(doc: Document, sources: list[dict[str, Any]]) -> None:
+    doc.add_heading("Potential References and Source Notes", level=2)
+    if not sources:
+        paragraph = doc.add_paragraph()
+        _add_runs_with_markup(paragraph, "[insert APA references for validated instruments, data sources, methodological guidance or official datasets used in this supplementary chapter]")
+        return
+    for src in sources[:20]:
+        paragraph = doc.add_paragraph(style="List Bullet")
+        _add_runs_with_markup(paragraph, _format_source_hint(src))
