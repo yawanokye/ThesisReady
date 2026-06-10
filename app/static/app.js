@@ -49,9 +49,15 @@ function chapterDisplayName(ch) {
     3: "Research Methods/Methodology",
     4: "Results/Data Analysis and Discussion",
     5: "Summary, Conclusion and Recommendation",
-    6: "Others"
+    6: "Others",
+    7: "Supplementary Methods Chapter"
   };
   return exactNames[Number(ch.chapter_number)] || ch.chapter_title || "Others";
+}
+
+function chapterSortKey(ch) {
+  const order = {1: 1, 2: 2, 3: 3, 7: 4, 4: 5, 5: 6, 6: 7};
+  return order[Number(ch.chapter_number)] || 99;
 }
 
 function isResultsChapter() {
@@ -130,12 +136,155 @@ function ensureOtherChapterTemplate() {
       }]
     });
   }
-  template.chapters.sort((a, b) => Number(a.chapter_number) - Number(b.chapter_number));
+  template.chapters.sort((a, b) => chapterSortKey(a) - chapterSortKey(b));
+}
+
+
+function ensureSupplementaryMethodsTemplate() {
+  if (!template || !Array.isArray(template.chapters)) return;
+  const hasSupplement = template.chapters.some(ch => Number(ch.chapter_number) === 7);
+  if (!hasSupplement) {
+    template.chapters.push({
+      chapter_number: 7,
+      chapter_title: "Supplementary Methods Chapter",
+      section_groups: [{
+        group_title: "Supplementary Methods, Instrument and Data-Source Preparation",
+        sections: [
+          {
+            section_id: "ch7_purpose_scope",
+            section_title: "Purpose and Scope of the Supplementary Methods Chapter",
+            default_selected: true,
+            guiding_questions: [
+              "Should this supplementary chapter support a primary survey, qualitative, mixed-method, secondary-data, econometric, time-series or panel-data study?",
+              "What decisions, instruments, data sources, coding notes or appendix materials should this support document prepare?",
+              "Which parts are intended only for the appendix or research preparation, rather than the submission-ready methodology chapter?"
+            ],
+            rules: [
+              "Make clear that this is a supplementary working/support chapter for instrument, measurement, variable, data-source and appendix preparation; it must not replace the main Research Methods/Methodology chapter.",
+              "Use red bracketed placeholders where project-specific details, scale sources, data sources, coding decisions, permissions, or validation evidence are missing."
+            ]
+          },
+          {
+            section_id: "ch7_objective_construct_alignment",
+            section_title: "Objective-to-Construct or Objective-to-Variable Alignment",
+            default_selected: true,
+            guiding_questions: [
+              "List each research objective and the construct, variable, concept, theme or indicator needed to answer it.",
+              "For each objective, what role does each construct or variable play: independent, dependent, mediator, moderator, control, demographic, theme or outcome?",
+              "What analysis or evidence will be needed for each objective?"
+            ],
+            rules: [
+              "Create a clean alignment table linking objectives to constructs/variables, measurement/data needs, proposed analysis and required source evidence.",
+              "Align every instrument section, questionnaire item, interview prompt, data source and analysis requirement with the objectives."
+            ]
+          },
+          {
+            section_id: "ch7_instrument_traceability",
+            section_title: "Instrument Development and Source Traceability",
+            default_selected: true,
+            guiding_questions: [
+              "Which questionnaire scales, interview-guide themes, validated items, published instruments or institutional records should inform measurement?",
+              "Which sources from the project source bank support the constructs, scale items, operational definitions or data-source choices?",
+              "Which constructs still need verified scale/item sources?"
+            ],
+            rules: [
+              "Use the project source bank where available to identify relevant scale, questionnaire, measurement or data-source references.",
+              "Where a questionnaire scale, validated item source or data source is missing, insert a red placeholder such as [insert verified scale source for this construct]."
+            ]
+          },
+          {
+            section_id: "ch7_questionnaire",
+            section_title: "Draft Questionnaire for Primary Survey Studies",
+            default_selected: true,
+            guiding_questions: [
+              "What respondent screening, consent, demographic and study-variable sections should the questionnaire contain?",
+              "What items should be drafted for each construct or variable in the objectives?",
+              "What response scale should be used for each item or section?"
+            ],
+            rules: [
+              "For primary survey or mixed-method studies, draft a complete questionnaire aligned with the objectives and constructs.",
+              "Do not provide only a generic questionnaire structure; draft construct-specific items using the variables and objectives supplied by the user."
+            ]
+          },
+          {
+            section_id: "ch7_interview_guide",
+            section_title: "Draft Interview Guide where Applicable",
+            default_selected: false,
+            guiding_questions: [
+              "Is the study qualitative or mixed-methods, and who will be interviewed?",
+              "What themes, constructs or objectives should the interview guide cover?",
+              "What probes will help obtain deeper explanations without leading respondents?"
+            ],
+            rules: [
+              "For qualitative or mixed-method studies, draft an interview guide aligned with the objectives, constructs, themes and respondent category.",
+              "Include opening script, consent reminder, main questions, probes, closing question and interviewer notes."
+            ]
+          },
+          {
+            section_id: "ch7_data_source_register",
+            section_title: "Variable and Data Source Register for Secondary, Econometric, Time-Series or Panel Studies",
+            default_selected: true,
+            guiding_questions: [
+              "Which variables, indicators, proxies or datasets are needed for each objective or model?",
+              "What is the preferred source for each variable, including institution, database, report, URL, frequency, country/firm coverage and study period?",
+              "What variables still require verified data sources or alternative proxies?"
+            ],
+            rules: [
+              "Create a variable/data-source register for secondary-data, econometric, time-series or panel-data studies.",
+              "Insert red placeholders where the exact data source, period, frequency, unit or access link is missing."
+            ]
+          },
+          {
+            section_id: "ch7_operational_definition_coding",
+            section_title: "Operational Definition, Coding and Transformation Notes",
+            default_selected: true,
+            guiding_questions: [
+              "How should each construct, variable or questionnaire item be coded?",
+              "What transformations are required, such as logs, percentages, index construction, reverse coding, differencing, lagging or standardisation?",
+              "Which assumptions, diagnostics or cleaning steps are needed before analysis?"
+            ],
+            rules: [
+              "Create an operational definition and coding table that links variables/constructs to indicators, codes, scales, transformations, expected direction and analysis use."
+            ]
+          },
+          {
+            section_id: "ch7_validation_quality_checks",
+            section_title: "Validation, Reliability and Quality Checks",
+            default_selected: true,
+            guiding_questions: [
+              "What checks are needed to confirm that the questionnaire, interview guide or dataset is suitable for analysis?",
+              "What reliability, validity, pilot-test, expert-review, diagnostic or robustness checks should be reported later?",
+              "Which outputs should the user obtain before analysis and results writing?"
+            ],
+            rules: [
+              "Include relevant validation, reliability, quality, diagnostic and robustness checks for the selected data type and analytical approach."
+            ]
+          },
+          {
+            section_id: "ch7_appendix_placement",
+            section_title: "Appendix Placement Guide",
+            default_selected: true,
+            guiding_questions: [
+              "Which materials should appear in the main methodology chapter and which should be moved to the appendix?",
+              "Should the full questionnaire, interview guide, coding sheet, raw software output, data dictionary or source register go into the appendix?",
+              "What appendix labels should be used?"
+            ],
+            rules: [
+              "Advise clearly which materials should go to the appendix and which should remain in the main chapter or supplementary chapter."
+            ]
+          }
+        ]
+      }]
+    });
+  }
+  template.chapters.sort((a, b) => chapterSortKey(a) - chapterSortKey(b));
 }
 
 async function loadTemplate() {
   template = await api("/api/templates/default");
   ensureOtherChapterTemplate();
+  ensureSupplementaryMethodsTemplate();
+  template.chapters.sort((a, b) => chapterSortKey(a) - chapterSortKey(b));
   const chapterSelect = $("chapterSelect");
   chapterSelect.innerHTML = "";
   for (const ch of template.chapters) {
@@ -220,7 +369,7 @@ function collectProfile() {
     variables: {
       raw_variables: lines($("variables_constructs") ? $("variables_constructs").value : "")
     },
-    expected_chapters: 6,
+    expected_chapters: 7,
     other_chapter_title: $("otherChapterTitle") ? $("otherChapterTitle").value.trim() : "",
     other_chapter_instructions: $("otherChapterInstructions") ? $("otherChapterInstructions").value.trim() : "",
     objectives: lines($("objectives").value),
