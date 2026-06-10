@@ -281,7 +281,11 @@ def _human_scholarly_style_requirements() -> list[str]:
         "Avoid very short, clipped sentences except where a short sentence is needed for emphasis, transition, or clarity. Prefer well-developed academic sentences that connect evidence, reasoning, and implication.",
         "Vary sentence structure, but avoid overusing sentence frames such as 'This study...', 'The study...', 'The research problem is...', or 'This section...'.",
         "Do not begin a problem statement with wording such as 'The research problem is that...'. Frame the problem analytically, for example through a tension, contradiction, persistent gap, policy concern, empirical inconsistency, or unresolved practical challenge.",
-        "Avoid mechanical, generic, and repetitive AI-style phrasing such as 'in today's world', 'it is important to note', 'this study is very important', 'delve into', 'plays a crucial role', 'it is imperative', and repeated formulaic paragraph openings.",
+        "Avoid mechanical, generic, and repetitive academic-AI phrasing such as 'in today's world', 'it is important to note', 'this study is very important', 'delve into', 'plays a crucial role', 'it is imperative', and repeated formulaic paragraph openings.",
+        "Use a human academic rhythm: combine some concise analytical sentences with longer explanatory sentences, but never pad the text or make it artificially irregular.",
+        "Show scholarly judgement by explaining why evidence matters, why alternatives were not selected, where a limitation exists, and how each point changes the reader's understanding of the study.",
+        "Prefer grounded verbs such as suggests, indicates, implies, supports, complicates, qualifies and raises concern, instead of overconfident phrases such as proves, clearly shows or has a significant impact unless the evidence supports that claim.",
+        "Avoid paragraph templates that repeatedly start with the same phrase. Use transitions that follow the logic of the argument rather than mechanical transitions.",
         "Do not merely list ideas. Build an argument by explaining relationships among concepts, comparing studies, identifying tensions, and showing why the present study is necessary.",
         "Every substantive paragraph should develop one clear idea through a topic sentence, evidence or reasoning, interpretation, and a closing implication linked to the study problem, objective, method, finding, or recommendation.",
         "Use critical synthesis rather than annotated-summary writing, especially in the literature review and discussion chapters.",
@@ -320,6 +324,8 @@ def _student_contribution_requirements(profile: dict[str, Any]) -> dict[str, Any
             "Use the student's project-specific context, evidence anchors, supervisor comments, and preferred style wherever supplied.",
             "If the user has not supplied enough evidence for a confident claim, use a clear red bracketed placeholder instead of writing a generic unsupported claim.",
             "Avoid over-polished, perfectly balanced, template-like prose. Use natural scholarly reasoning, varied sentence structure, and context-specific transitions.",
+            "Where a writing sample is supplied, use it only to infer broad tone, sentence rhythm and level of directness; do not copy wording or imitate personal details.",
+            "Make the draft sound like it has passed through a careful supervisor-student revision process: specific, cautious, evidenced and reflective, not generic or promotional.",
             "Do not add a visible AI-detection or humanisation note to the chapter; the chapter should read as an ordinary academic draft.",
         ],
         "generic_language_to_avoid": [
@@ -481,6 +487,8 @@ def build_drafting_prompt(
             "Follow the human_scholarly_style_requirements and student_contribution_and_style_controls so the writing sounds natural, rigorous, context-specific, evidence-led and carefully supervised rather than generic or mechanical.",
             "Use the student's central argument, local context notes, evidence anchors, supervisor comments, preferred writing style and supplied writing sample as style/context guidance; do not copy the writing sample verbatim unless the user has written it as content to include.",
             "Use an evidence-to-paragraph method: each substantive paragraph should have a purpose, a claim grounded in supplied evidence or source-bank material, interpretation, and a clear link to the objective or chapter argument.",
+            "Before producing a long paragraph, ask internally whether the user supplied enough context, evidence or source support for that paragraph. If not, write a shorter defensible paragraph and insert a precise red placeholder for the missing evidence.",
+            "Make the writing high-quality and human-supervised by adding discipline-specific reasoning, careful qualifications, context-specific transitions and clear links between evidence and the student's own objectives.",
             "Where the user has supplied limited information, avoid creating long polished generic prose. Write a focused draft with red bracketed placeholders asking for the exact missing facts, data, citations, institutional details, result tables, or supervisor decisions.",
             "Respect the selected draft maturity: a structured draft can be more schematic; a supervisor-ready or revised academic draft must be more developed, but still grounded in user-supplied evidence and sources.",
             "Avoid very short sentences except where they are necessary for emphasis, transition, or clarity.",
@@ -783,6 +791,29 @@ def _human_academic_revision_pass(
         return draft
     return draft
 
+
+
+def _call_openai_response_safely(client: Any, model: str, instructions: str, prompt: str) -> str:
+    """Call the OpenAI Responses API without allowing provider/API errors to crash the app.
+
+    Render users were seeing generic Internal Server Error responses when the
+    provider rejected a model name, timed out, or returned a transient error.
+    This helper catches those errors so the route can return a local fallback
+    rather than failing the request.
+    """
+    try:
+        response = client.responses.create(model=model, instructions=instructions, input=prompt)
+        return str(getattr(response, "output_text", "") or "").strip()
+    except Exception:
+        fallback_model = os.getenv("OPENAI_FALLBACK_MODEL", "").strip()
+        if fallback_model and fallback_model != model:
+            try:
+                response = client.responses.create(model=fallback_model, instructions=instructions, input=prompt)
+                return str(getattr(response, "output_text", "") or "").strip()
+            except Exception:
+                return ""
+        return ""
+
 def generate_chapter(
     profile: dict[str, Any],
     chapter_number: int,
@@ -791,17 +822,20 @@ def generate_chapter(
     extra_instructions: str = "",
     use_ai: bool = True,
 ) -> tuple[str, str]:
-    prompt = build_drafting_prompt(profile, chapter_number, selected_section_ids, answers, extra_instructions)
+    try:
+        prompt = build_drafting_prompt(profile, chapter_number, selected_section_ids, answers, extra_instructions)
+    except Exception:
+        return _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)), "local_template_fallback_prompt_error"
     client = _safe_get_openai_client()
     if use_ai and client:
         model = os.getenv("OPENAI_MODEL", "gpt-5.5")
         instructions = (
             "You are ProjectReady AI, an academic project-work drafting and compliance assistant. "
             "You help students draft chapters from selected guidelines. You support learning and compliance. "
-            "Write in a natural, high-standard scholarly voice that sounds like a carefully supervised academic draft built from the student's own evidence, context, supervisor comments and project decisions, not generic AI prose. "
+            "Write in a natural, high-standard scholarly voice that sounds like a carefully supervised academic draft built from the student's own evidence, context, supervisor comments and project decisions, not generic AI prose. The writing should show judgement, local specificity, cautious interpretation and paragraph-level reasoning. "
             "Use the selected academic level only to determine depth; never mention the selected level or say the chapter is written to meet a level, checklist, template, or software requirement. "
             "Avoid generic AI-style phrasing, repetition, filler, overclaiming, template-like prose, and very short choppy sentences except where a short sentence is needed for clarity. "
-            "Build coherent academic arguments with critical synthesis, contextual relevance, and defensible reasoning. Use paragraph-level judgement rather than formulaic section filling. "
+            "Build coherent academic arguments with critical synthesis, contextual relevance, and defensible reasoning. Use paragraph-level judgement rather than formulaic section filling, and avoid perfectly repetitive sentence patterns or generic balanced paragraphs. "
             "Do not begin the problem statement with phrases such as 'The research problem is that'; frame the problem through evidence, contradiction, gap, policy concern, or unresolved practical challenge. "
             "You do not fabricate sources, results, approvals, page numbers, or evidence. "
             "When the user has not provided facts, use clear placeholders rather than inventing content. "
@@ -816,8 +850,7 @@ def generate_chapter(
             "When source-finder results are available in the prompt, review them as an additional evidence bank. Integrate highly_relevant and partly_relevant records only where they directly support the argument; exclude not_relevant records. Add a Source Use Audit after the References section explaining which searched sources were cited or excluded. "
             "Do not fabricate citations, references, statistics, or institutional evidence. Use clear bracketed placeholders only when a credible source, fact, or statistic is not available or has not been supplied."
         )
-        response = client.responses.create(model=model, instructions=instructions, input=prompt)
-        text = getattr(response, "output_text", "").strip()
+        text = _call_openai_response_safely(client, model, instructions, prompt)
         if text:
             polished = _polish_generated_text(text)
             polished = _review_source_integration(

@@ -52,9 +52,31 @@ RULE_HINTS = [
 
 
 def check_chapter(chapter_number: int, selected_section_ids: list[str], draft: str) -> dict[str, Any]:
-    sections = selected_sections(chapter_number, selected_section_ids)
+    """Run a defensive compliance check.
+
+    The checker should never crash the user session merely because a newly-added
+    chapter, custom section, or stale frontend supplied section IDs that are not
+    yet present in the backend template. When that happens, it falls back to
+    chapter-level checks and returns a useful report instead of causing an
+    Internal Server Error.
+    """
+    try:
+        sections = selected_sections(chapter_number, selected_section_ids)
+    except Exception:
+        sections = []
     paragraphs = split_paragraphs(draft)
     items: list[dict[str, Any]] = []
+
+    if not sections:
+        sections = [{
+            "section_id": "chapter_level_review",
+            "section_title": "Chapter-level review",
+            "rules": [
+                "The chapter should follow the selected school format and contain coherent academic sections.",
+                "Substantive claims should be supported by accurate citations, evidence, uploaded results or clear placeholders.",
+                "The chapter should avoid fabricated data, sources, results, approvals and unsupported claims."
+            ],
+        }]
 
     for section in sections:
         section_title = section["section_title"]
