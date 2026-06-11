@@ -1,0 +1,6 @@
+# Constraints for Render stability. Use only if Render still reports dependency conflicts:
+# pip install -r requirements.txt -c constraints.txt
+starlette==0.46.2
+pydantic-core==2.33.2
+httpx==0.28.1
+anyio==4.9.0
