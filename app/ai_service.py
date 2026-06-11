@@ -278,6 +278,10 @@ def _human_scholarly_style_requirements() -> list[str]:
     return [
         "Use the selected academic level only as internal depth guidance. Do not mention the selected level, do not say the writing is produced to meet a level, and do not include meta-commentary about the project being written at a particular standard.",
         "Write in a mature, natural scholarly voice that resembles a carefully supervised student draft: precise, analytical, context-specific, and free from generic AI patterns.",
+        "Use controlled high-burstiness academic prose: vary sentence length, paragraph length, transitions, and rhythm in a natural way, while keeping the argument clear, disciplined and defensible.",
+        "Use high lexical and syntactic variety where it improves meaning: avoid flat, uniform, predictable sentence patterns, but do not make the writing obscure, inflated or artificially complicated.",
+        "Do not make every paragraph look symmetrical. Some paragraphs may be compact and interpretive; others may be longer where evidence, methodological justification or theoretical explanation requires fuller development.",
+        "Maintain scholarly clarity even when the prose is varied. Perplexity in this app means intellectually rich, context-specific and less formulaic writing; it does not mean confusing language, unsupported claims or unnecessary vocabulary.",
         "Avoid very short, clipped sentences except where a short sentence is needed for emphasis, transition, or clarity. Prefer well-developed academic sentences that connect evidence, reasoning, and implication.",
         "Vary sentence structure, but avoid overusing sentence frames such as 'This study...', 'The study...', 'The research problem is...', or 'This section...'.",
         "Do not begin a problem statement with wording such as 'The research problem is that...'. Frame the problem analytically, for example through a tension, contradiction, persistent gap, policy concern, empirical inconsistency, or unresolved practical challenge.",
@@ -324,6 +328,7 @@ def _student_contribution_requirements(profile: dict[str, Any]) -> dict[str, Any
             "Use the student's project-specific context, evidence anchors, supervisor comments, and preferred style wherever supplied.",
             "If the user has not supplied enough evidence for a confident claim, use a clear red bracketed placeholder instead of writing a generic unsupported claim.",
             "Avoid over-polished, perfectly balanced, template-like prose. Use natural scholarly reasoning, varied sentence structure, and context-specific transitions.",
+            "Apply controlled high-burstiness and high-perplexity academic style in practical terms: vary rhythm, vocabulary, sentence openings, and paragraph shape while preserving clarity, evidence, and disciplinary precision.",
             "Where a writing sample is supplied, use it only to infer broad tone, sentence rhythm and level of directness; do not copy wording or imitate personal details.",
             "Make the draft sound like it has passed through a careful supervisor-student revision process: specific, cautious, evidenced and reflective, not generic or promotional.",
             "Do not add a visible AI-detection or humanisation note to the chapter; the chapter should read as an ordinary academic draft.",
@@ -485,6 +490,7 @@ def build_drafting_prompt(
             "Write in formal British English.",
             "Use the selected academic level internally to determine depth and sophistication, but never mention the selected level in the generated chapter text.",
             "Follow the human_scholarly_style_requirements and student_contribution_and_style_controls so the writing sounds natural, rigorous, context-specific, evidence-led and carefully supervised rather than generic or mechanical.",
+            "In all generated chapters, use controlled high-burstiness and high-perplexity scholarly writing: natural variation in sentence length, paragraph shape, vocabulary, transitions and argumentative movement, without sacrificing clarity, evidence, APA accuracy or methodological precision.",
             "Use the student's central argument, local context notes, evidence anchors, supervisor comments, preferred writing style and supplied writing sample as style/context guidance; do not copy the writing sample verbatim unless the user has written it as content to include.",
             "Use an evidence-to-paragraph method: each substantive paragraph should have a purpose, a claim grounded in supplied evidence or source-bank material, interpretation, and a clear link to the objective or chapter argument.",
             "Before producing a long paragraph, ask internally whether the user supplied enough context, evidence or source support for that paragraph. If not, write a shorter defensible paragraph and insert a precise red placeholder for the missing evidence.",
@@ -764,6 +770,7 @@ def _human_academic_revision_pass(
             "Revise rather than restart. Preserve the chapter structure, headings, accurate citations, tables, equations, placeholders and supplied results.",
             "Do not attempt to evade AI detectors and do not mention AI detection. The purpose is academic quality, specificity, and defensible student-supervised writing.",
             "Remove generic filler, repetitive transitions, vague claims, inflated language, and over-polished template-like phrasing.",
+            "Increase natural scholarly variation: vary sentence rhythm, paragraph density, transition choices and analytical movement so the prose reads like careful human academic editing rather than uniform template output.",
             "Strengthen paragraph-level reasoning: each paragraph should connect claim, evidence or placeholder, interpretation, and relevance to the study objective or chapter argument.",
             "Use the student's central argument, local context notes, evidence anchors, supervisor comments and preferred style where supplied.",
             "Where evidence is missing, keep or add red bracketed placeholders instead of inventing claims, statistics, results, ethical approvals, sources, sample sizes or institutional facts.",
@@ -833,6 +840,7 @@ def generate_chapter(
             "You are ProjectReady AI, an academic project-work drafting and compliance assistant. "
             "You help students draft chapters from selected guidelines. You support learning and compliance. "
             "Write in a natural, high-standard scholarly voice that sounds like a carefully supervised academic draft built from the student's own evidence, context, supervisor comments and project decisions, not generic AI prose. The writing should show judgement, local specificity, cautious interpretation and paragraph-level reasoning. "
+            "In every generated output, apply controlled high-burstiness and high-perplexity academic style: vary sentence length, paragraph shape, transitions, vocabulary and argumentative rhythm, while keeping the writing clear, evidence-led, disciplined and suitable for thesis or dissertation work. "
             "Use the selected academic level only to determine depth; never mention the selected level or say the chapter is written to meet a level, checklist, template, or software requirement. "
             "Avoid generic AI-style phrasing, repetition, filler, overclaiming, template-like prose, and very short choppy sentences except where a short sentence is needed for clarity. "
             "Build coherent academic arguments with critical synthesis, contextual relevance, and defensible reasoning. Use paragraph-level judgement rather than formulaic section filling, and avoid perfectly repetitive sentence patterns or generic balanced paragraphs. "
