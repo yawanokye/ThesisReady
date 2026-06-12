@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import random
 from datetime import datetime
 from typing import Any
 
@@ -279,39 +280,46 @@ def _retrieved_sources_for_prompt(profile: dict[str, Any], chapter_number: int |
         ],
     }
 
-def _human_scholarly_style_requirements() -> list[str]:
-    """Return high-standard academic writing rules for natural, polished chapter drafting."""
-    return [
-        "Use the selected academic level only as internal depth guidance. Do not mention the selected level, do not say the writing is produced to meet a level, and do not include meta-commentary about the project being written at a particular standard.",
-        "Write in a mature, natural scholarly voice that resembles a carefully supervised student draft: precise, analytical, context-specific, and free from generic AI patterns.",
-        "Use controlled high-burstiness academic prose: vary sentence length, paragraph length, transitions, and rhythm in a natural way, while keeping the argument clear, disciplined and defensible.",
-        "Use high lexical and syntactic variety where it improves meaning: avoid flat, uniform, predictable sentence patterns, but do not make the writing obscure, inflated or artificially complicated.",
-        "Do not make every paragraph look symmetrical. Some paragraphs may be compact and interpretive; others may be longer where evidence, methodological justification or theoretical explanation requires fuller development.",
-        "Maintain scholarly clarity even when the prose is varied. Perplexity in this app means intellectually rich, context-specific and less formulaic writing; it does not mean confusing language, unsupported claims or unnecessary vocabulary.",
-        "Avoid very short, clipped sentences except where a short sentence is needed for emphasis, transition, or clarity. Prefer well-developed academic sentences that connect evidence, reasoning, and implication.",
-        "Vary sentence structure, but avoid overusing sentence frames such as 'This study...', 'The study...', 'The research problem is...', or 'This section...'.",
-        "Do not begin a problem statement with wording such as 'The research problem is that...'. Frame the problem analytically, for example through a tension, contradiction, persistent gap, policy concern, empirical inconsistency, or unresolved practical challenge.",
-        "Avoid mechanical, generic, and repetitive academic-AI phrasing such as 'in today's world', 'it is important to note', 'this study is very important', 'delve into', 'plays a crucial role', 'it is imperative', and repeated formulaic paragraph openings.",
-        "Use a human academic rhythm: combine some concise analytical sentences with longer explanatory sentences, but never pad the text or make it artificially irregular.",
-        "Show scholarly judgement by explaining why evidence matters, why alternatives were not selected, where a limitation exists, and how each point changes the reader's understanding of the study.",
-        "Prefer grounded verbs such as suggests, indicates, implies, supports, complicates, qualifies and raises concern, instead of overconfident phrases such as proves, clearly shows or has a significant impact unless the evidence supports that claim.",
-        "Avoid paragraph templates that repeatedly start with the same phrase. Use transitions that follow the logic of the argument rather than mechanical transitions.",
-        "Do not merely list ideas. Build an argument by explaining relationships among concepts, comparing studies, identifying tensions, and showing why the present study is necessary.",
-        "Every substantive paragraph should develop one clear idea through a topic sentence, evidence or reasoning, interpretation, and a closing implication linked to the study problem, objective, method, finding, or recommendation.",
-        "Use critical synthesis rather than annotated-summary writing, especially in the literature review and discussion chapters.",
-        "Integrate theory, empirical evidence, context, methodology, and findings in a way that sounds like a carefully supervised academic draft, not a template.",
-        "Maintain discipline-appropriate terminology, but avoid unnecessary verbosity, inflated claims, and promotional language.",
-        "Use signposting only where it helps the reader. Do not overuse headings or repeated introductory sentences.",
-        "Write in third-person academic style unless the student's institution requires otherwise.",
-        "Keep the work defensible: do not overstate contribution, causality, generalisability, or policy implications beyond the evidence supplied.",
-        "Incorporate appropriate levels of epistemic humility (hedging) by using qualifiers like 'largely,' 'primarily,' 'appears to,' or 'tends to coexist' when addressing complex human behaviors or correlations, avoiding treating tentative data as absolute laws.",
-        "Match structural pacing to conceptual weight: spend more analytical real estate unpacking contested, complex, or novel ideas, while using concise summaries for widely accepted foundational theories.",
-        "Group and synthesize literature by thematic agreement or methodological alignment rather than listing studies chronologically or mechanically, clustering parenthetical citations (e.g., Smith, 2020; Jones, 2021) to show conceptual mapping.",
-        "Inject deliberate ideational friction so arguments do not progress too linearly; introduce a theoretical tension, methodological drawback, or empirical counterpoint within sections, and actively resolve it to justify the study’s direction.",
-        "Prefer authentic, shorthand disciplinary vernacular over hyper-formal, multi-syllabic descriptions, using the precise phrases a practicing researcher in that specific field uses when speaking to a peer.",
-        "Maintain a subtle, implicit thread back to the core research objective by ensuring every major theoretical or empirical explanation terminates in a sentence that justifies its relevance to the specific problem being investigated."
-    ]
-
+def _human_scholarly_style_requirements() -> dict[str, list[str]]:
+    """
+    Returns segregated high-standard anti-AI academic writing requirements.
+    Structured by objective to maximize frontier model adherence and prevent context dilution.
+    """
+    return {
+        "syntactic_disruption": [
+            "Use controlled high-burstiness academic prose: vary sentence length, paragraph length, transitions, and rhythm in a natural way, while keeping the argument clear, disciplined and defensible.",
+            "Use high lexical and syntactic variety where it improves meaning: avoid flat, uniform, predictable sentence patterns, but do not make the writing obscure, inflated or artificially complicated.",
+            "Do not make every paragraph look symmetrical. Some paragraphs may be compact and interpretive; others may be longer where evidence, methodological justification or theoretical explanation requires fuller development.",
+            "Introduce intentional syntactic asymmetry: follow long, multi-clause analytical sentences immediately with a blunt, single-sentence conceptual anchor (3-7 words) to simulate natural human drafting pacing.",
+            "Break the default 'Symmetry-by-Default' clause structure. Occasionally allow a sentence to use an unequal balance of independent and dependent clauses, or end with a prepositional phrase, to reflect natural drafting friction.",
+            "Use a human academic rhythm: combine some concise analytical sentences with longer explanatory sentences, but never pad the text or make it artificially irregular."
+        ],
+        "argumentation_and_flow": [
+            "Write in a mature, natural scholarly voice that resembles a carefully supervised student draft: precise, analytical, context-specific, and free from generic AI patterns.",
+            "Vary sentence structure, but avoid overusing sentence frames such as 'This study...', 'The study...', 'The research problem is...', or 'This section...'.",
+            "Do not begin a problem statement with wording such as 'The research problem is that...'. Frame the problem analytically, for example through a tension, contradiction, persistent gap, policy concern, empirical inconsistency, or unresolved practical challenge.",
+            "Show scholarly judgement by explaining why evidence matters, why alternatives were not selected, where a limitation exists, and how each point changes the reader's understanding of the study.",
+            "Prefer grounded verbs such as suggests, indicates, implies, supports, complicates, qualifies and raises concern, instead of overconfident phrases such as proves, clearly shows or has a significant impact unless the evidence supports that claim.",
+            "Avoid paragraph templates that repeatedly start with the same phrase. Use transitions that follow the logic of the argument rather than mechanical transitions.",
+            "Do not merely list ideas. Build an argument by explaining relationships among concepts, comparing studies, identifying tensions, and showing why the present study is necessary.",
+            "Every substantive paragraph should develop one clear idea through a topic sentence, evidence or reasoning, interpretation, and a closing implication linked to the study problem, objective, method, finding, or recommendation.",
+            "Inject deliberate ideational friction so arguments do not progress too linearly; introduce a theoretical tension, methodological drawback, or empirical counterpoint within sections, and actively resolve it to justify the study’s direction.",
+            "Maintain a subtle, implicit thread back to the core research objective by ensuring every major theoretical or empirical explanation terminates in a sentence that justifies its relevance to the specific problem being investigated.",
+            "Use critical synthesis rather than annotated-summary writing, especially in the literature review and discussion chapters.",
+            "Integrate theory, empirical evidence, context, methodology, and findings in a way that sounds like a carefully supervised academic draft, not a template."
+        ],
+        "vocabulary_and_citations": [
+            "Group and synthesize literature by thematic agreement or methodological alignment rather than listing studies chronologically or mechanically, clustering parenthetical citations to show conceptual mapping.",
+            "Vary citation mechanics: shift between narrative citations ('Smith argues...') and heavy parenthetical citations data-dumps at the end of clauses to mimic real research flows.",
+            "Prefer authentic, shorthand disciplinary vernacular over hyper-formal, multi-syllabic descriptions, using the precise phrases a practicing researcher in that specific field uses when speaking to a peer.",
+            "Maintain discipline-appropriate terminology, but avoid unnecessary verbosity, inflated claims, and promotional language.",
+            "Use signposting only where it helps the reader. Do not overuse headings or repeated introductory sentences.",
+            "Write in third-person academic style unless the student's institution requires otherwise.",
+            "Keep the work defensible: do not overstate contribution, causality, generalisability, or policy implications beyond the evidence supplied.",
+            "Replace robotic transition words (e.g., 'furthermore', 'moreover', 'in addition') with conditional clause connections (e.g., 'this holds true only if', 'under these specific parameters', 'consequently', 'yielding a situation where').",
+            "Strictly replace highly probable AI filler tokens ('delve', 'testament', 'tapestry', 'landscape', 'crucial', 'imperative', 'it is important to note', \"in today's world\") with direct, grounded verbs and noun structures (e.g., 'examine', 'demonstrates', 'environment', 'central', 'necessary')."
+        ]
+    }
 
 
 
