@@ -298,6 +298,12 @@ def _human_scholarly_style_requirements() -> list[str]:
         "Use signposting only where it helps the reader. Do not overuse headings or repeated introductory sentences.",
         "Write in third-person academic style unless the student's institution requires otherwise.",
         "Keep the work defensible: do not overstate contribution, causality, generalisability, or policy implications beyond the evidence supplied.",
+        "Incorporate appropriate levels of epistemic humility (hedging) by using qualifiers like 'largely,' 'primarily,' 'appears to,' or 'tends to coexist' when addressing complex human behaviors or correlations, avoiding treating tentative data as absolute laws.",
+        "Match structural pacing to conceptual weight: spend more analytical real estate unpacking contested, complex, or novel ideas, while using concise summaries for widely accepted foundational theories.",
+        "Group and synthesize literature by thematic agreement or methodological alignment rather than listing studies chronologically or mechanically, clustering parenthetical citations (e.g., Smith, 2020; Jones, 2021) to show conceptual mapping.",
+        "Inject deliberate ideational friction so arguments do not progress too linearly; introduce a theoretical tension, methodological drawback, or empirical counterpoint within sections, and actively resolve it to justify the study’s direction.",
+        "Prefer authentic, shorthand disciplinary vernacular over hyper-formal, multi-syllabic descriptions, using the precise phrases a practicing researcher in that specific field uses when speaking to a peer.",
+        "Maintain a subtle, implicit thread back to the core research objective by ensuring every major theoretical or empirical explanation terminates in a sentence that justifies its relevance to the specific problem being investigated."
     ]
 
 
