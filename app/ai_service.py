@@ -270,6 +270,12 @@ def _retrieved_sources_for_prompt(profile: dict[str, Any], chapter_number: int |
             "Where retrieved sources are insufficient for a claim, use a bracketed placeholder rather than inventing or forcing a citation.",
             "If any source search results are attached, end the chapter with a short Source Use Audit after the References section. The audit should list cited sources and relevant-but-not-cited sources with reasons. It should also state that irrelevant sources were excluded.",
             "Do not invent page numbers, quotations, findings, or reference-list details not present in the metadata or supplied by the student.",
+            "Introduce controlled stylistic asymmetries: occasionally allow an analytical sentence to end with a preposition or a slightly awkward, dense noun-adjunct if it reflects natural human drafting friction.",
+            "Break uniform topical flow by inserting localized, highly specific empirical exceptions or messy real-world counter-examples mid-argument, rather than smoothly transitioning from point to point.",
+            "Avoid mathematical paragraph balancing. Force the system to follow a long, three-sentence complex clause immediately with a blunt, single-sentence conceptual anchor.",
+            "Deliberately suppress the use of high-probability academic pairings (e.g., if the model wants to write 'intricately linked', force it to use 'tied together' or 'interact directly').",
+            "Inject micro-level cognitive backtracking, where a sentence subtly re-evaluates or restricts the scope of the assertion made in the immediately preceding sentence, mimicking a student correcting their own draft's overreach."
+
         ],
     }
 
