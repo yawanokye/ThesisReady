@@ -3,10 +3,8 @@ from __future__ import annotations
 import json
 import os
 import re
-import random
-import subprocess
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -21,9 +19,31 @@ def _safe_get_openai_client():
         return None
     try:
         from openai import OpenAI
-        return OpenAI(api_key=api_key)
+        timeout_seconds = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "75"))
+        max_retries = int(os.getenv("OPENAI_MAX_RETRIES", "1"))
+        return OpenAI(api_key=api_key, timeout=timeout_seconds, max_retries=max_retries)
     except Exception:
         return None
+
+
+def _extra_ai_passes_enabled(profile: dict[str, Any] | None = None) -> bool:
+    """Return whether expensive multi-pass AI revision is enabled.
+
+    The default is OFF because the Render request log showed a /draft request
+    running for about 240 seconds. Running draft + source repair + human revision
+    as three separate provider calls can exceed practical web-request limits.
+    Human-quality and source-use instructions are now folded into the first call.
+    Set PROJECTREADY_EXTRA_AI_PASSES=1 only for a larger instance or queued jobs.
+    """
+    env_value = os.getenv("PROJECTREADY_EXTRA_AI_PASSES", "0").strip().lower()
+    if env_value in {"1", "true", "yes", "on"}:
+        return True
+    try:
+        controls = (profile or {}).get("student_contribution") or {}
+        return bool(controls.get("enable_extra_ai_passes", False))
+    except Exception:
+        return False
+
 
 
 def _reference_currency_requirements() -> dict[str, Any]:
@@ -118,6 +138,7 @@ def _uploaded_results_for_chapter(profile: dict[str, Any], chapter_number: int) 
     if chapter_number == 4 and not result:
         result = uploaded.get("4")
     return result or {}
+
 
 
 def _normalise_author_for_citation(author: str) -> str:
@@ -270,74 +291,45 @@ def _retrieved_sources_for_prompt(profile: dict[str, Any], chapter_number: int |
             "Where retrieved sources are insufficient for a claim, use a bracketed placeholder rather than inventing or forcing a citation.",
             "If any source search results are attached, end the chapter with a short Source Use Audit after the References section. The audit should list cited sources and relevant-but-not-cited sources with reasons. It should also state that irrelevant sources were excluded.",
             "Do not invent page numbers, quotations, findings, or reference-list details not present in the metadata or supplied by the student.",
-            "Introduce controlled stylistic asymmetries: occasionally allow an analytical sentence to end with a preposition or a slightly awkward, dense noun-adjunct if it reflects natural human drafting friction.",
-            "Break uniform topical flow by inserting localized, highly specific empirical exceptions or messy real-world counter-examples mid-argument, rather than smoothly transitioning from point to point.",
-            "Avoid mathematical paragraph balancing. Force the system to follow a long, three-sentence complex clause immediately with a blunt, single-sentence conceptual anchor.",
-            "Deliberately suppress the use of high-probability academic pairings (e.g., if the model wants to write 'intricately linked', force it to use 'tied together' or 'interact directly').",
-            "Inject micro-level cognitive backtracking, where a sentence subtly re-evaluates or restricts the scope of the assertion made in the immediately preceding sentence, mimicking a student correcting their own draft's overreach."
         ],
     }
 
+def _human_scholarly_style_requirements() -> list[str]:
+    """Return high-standard academic writing rules for natural, polished chapter drafting."""
+    return [
+        "Use the selected academic level only as internal depth guidance. Do not mention the selected level, do not say the writing is produced to meet a level, and do not include meta-commentary about the project being written at a particular standard.",
+        "Write in a mature, natural scholarly voice that resembles a carefully supervised student draft: precise, analytical, context-specific, and free from generic AI patterns.",
+        "Use controlled high-burstiness academic prose: vary sentence length, paragraph length, transitions, and rhythm in a natural way, while keeping the argument clear, disciplined and defensible.",
+        "Use high lexical and syntactic variety where it improves meaning: avoid flat, uniform, predictable sentence patterns, but do not make the writing obscure, inflated or artificially complicated.",
+        "Do not make every paragraph look symmetrical. Some paragraphs may be compact and interpretive; others may be longer where evidence, methodological justification or theoretical explanation requires fuller development.",
+        "Maintain scholarly clarity even when the prose is varied. Perplexity in this app means intellectually rich, context-specific and less formulaic writing; it does not mean confusing language, unsupported claims or unnecessary vocabulary.",
+        "Avoid very short, clipped sentences except where a short sentence is needed for emphasis, transition, or clarity. Prefer well-developed academic sentences that connect evidence, reasoning, and implication.",
+        "Vary sentence structure, but avoid overusing sentence frames such as 'This study...', 'The study...', 'The research problem is...', or 'This section...'.",
+        "Do not begin a problem statement with wording such as 'The research problem is that...'. Frame the problem analytically, for example through a tension, contradiction, persistent gap, policy concern, empirical inconsistency, or unresolved practical challenge.",
+        "Avoid mechanical, generic, and repetitive academic-AI phrasing such as 'in today's world', 'it is important to note', 'this study is very important', 'delve into', 'plays a crucial role', 'it is imperative', and repeated formulaic paragraph openings.",
+        "Use a human academic rhythm: combine some concise analytical sentences with longer explanatory sentences, but never pad the text or make it artificially irregular.",
+        "Show scholarly judgement by explaining why evidence matters, why alternatives were not selected, where a limitation exists, and how each point changes the reader's understanding of the study.",
+        "Prefer grounded verbs such as suggests, indicates, implies, supports, complicates, qualifies and raises concern, instead of overconfident phrases such as proves, clearly shows or has a significant impact unless the evidence supports that claim.",
+        "Avoid paragraph templates that repeatedly start with the same phrase. Use transitions that follow the logic of the argument rather than mechanical transitions.",
+        "Do not merely list ideas. Build an argument by explaining relationships among concepts, comparing studies, identifying tensions, and showing why the present study is necessary.",
+        "Every substantive paragraph should develop one clear idea through a topic sentence, evidence or reasoning, interpretation, and a closing implication linked to the study problem, objective, method, finding, or recommendation.",
+        "Use critical synthesis rather than annotated-summary writing, especially in the literature review and discussion chapters.",
+        "Integrate theory, empirical evidence, context, methodology, and findings in a way that sounds like a carefully supervised academic draft, not a template.",
+        "Maintain discipline-appropriate terminology, but avoid unnecessary verbosity, inflated claims, and promotional language.",
+        "Use signposting only where it helps the reader. Do not overuse headings or repeated introductory sentences.",
+        "Write in third-person academic style unless the student's institution requires otherwise.",
+        "Keep the work defensible: do not overstate contribution, causality, generalisability, or policy implications beyond the evidence supplied.",
+    ]
 
-def _human_scholarly_style_requirements(seed: Optional[int] = None) -> dict[str, list[str]]:
-    """
-    Returns a high‑standard, randomly sampled set of humanising rules.
-    Non‑deterministic application prevents repetitive AI patterns.
-    """
-    if seed is not None:
-        random.seed(seed)
 
-    full_rules = {
-        "syntactic_burstiness": [
-            "Vary sentence length with target std dev 12–18 words (mean ~20). Never use uniform lengths for >3 consecutive sentences.",
-            "Insert at least one very short sentence (3–7 words) every 100–150 words. Use it to deliver a conceptual punch or blunt concession.",
-            "Every 2–3 paragraphs, write one deliberately over‑nested sentence (4+ clauses) followed immediately by a terse rephrasing (e.g., 'Or, more simply: X.')",
-            "Avoid the three‑part parallel structure (e.g., 'First, X. Second, Y. Third, Z.') more than once per 500 words.",
-            "When listing evidence, vary formats: run‑in lists, dashed interruptions, parenthetical asides, occasionally no list marker."
-        ],
-        "argumentative_authenticity": [
-            "Inject a genuine doubt or counterargument in every section except conclusion. Frame as 'One might object that...' then rebut.",
-            "Never write a paragraph that only summarises a source. Always append an interpretive sentence: extends, limits, compares, or applies to your own problem.",
-            "Introduce one 'self‑interruption' per 800 words: a sentence beginning with 'But wait –' or 'That said, a closer look reveals...'",
-            "Do not resolve every tension immediately. Let one theoretical or empirical contradiction persist across 2–3 paragraphs.",
-            "Use hedging that varies in strength: 'strongly suggests', 'weakly implies', 'raises the possibility that' depending on evidence."
-        ],
-        "lexical_vernacular": [
-            "Replace LLM‑favoured bridge phrases ('furthermore', 'moreover', 'in addition', 'consequently') with domain‑specific connectors: 'This holds only if', 'By the same logic', 'A corollary is...'.",
-            "Forbidden tokens (zero tolerance): 'delve', 'testament', 'tapestry', 'landscape' (as noun for domain), 'crucial' (use 'central', 'necessary'), 'imperative' (except Kant), 'it is important to note'.",
-            "Prefer concrete, image‑evoking verbs where field‑appropriate: 'splits', 'bridges', 'collapses', 'shifts'. For formal fields: 'differentiates', 'juxtaposes', 'transposes'.",
-            "Every 300 words, introduce one mildly idiosyncratic but correct phrase – e.g., 'stubborn assumption', 'generous sample size'."
-        ],
-        "citation_and_evidence": [
-            "Cluster citations to show conceptual mapping: (e.g., Smith 2019; Jones 2020 on tension, but see Lee 2021 for counterview). Never pure parenthetical list without commentary.",
-            "Vary citation density: sometimes one citation per claim; other times 3–6 citations at end of complex sentence to signal well‑established area.",
-            "Use narrative citations with present‑perfect for ongoing debates: 'Smith has argued...' interspersed with simple past for settled findings.",
-            "Deliberately include one 'I find X, yet Y suggests the opposite' pattern per literature review subsection."
-        ],
-        "local_incoherence_and_repair": [
-            "Every 400–600 words, write a sentence that is slightly over‑specified or meandering (extra clause). In the next sentence, explicitly repair with 'To put it more clearly:' or 'What I mean is:'.",
-            "Introduce one false start per 1000 words – a sentence beginning with a wrong direction, then a dash and correction. Example: 'The model predicts – or rather, it does not predict, but accommodates – the anomaly.'",
-            "Use a footnote or parenthetical remark that is slightly too conversational, e.g., '(a point often missed in the rush to quantification)'."
-        ],
-        "token_biome": [
-            "Maintain 3‑gram and 4‑gram overlap with human academic corpora. Avoid the same trigram (e.g., 'in order to', 'the fact that') more than twice per page.",
-            "Never start two consecutive paragraphs with the same part‑of‑speech pattern (e.g., both starting with a prepositional phrase).",
-            "Randomly alternate between that‑clauses and gerund phrases for stating claims: 'We argue that X' vs. 'Arguing for X requires...'.",
-            "Use contractions sparingly but not never: one or two per 2000 words (e.g., 'doesn’t', 'it’s') in less formal sections (footnotes, concluding remarks)."
-        ]
-    }
-
-    # Randomly sample ~70% of rules from each category
-    selected_rules = []
-    for cat, rules in full_rules.items():
-        n = max(1, int(len(rules) * 0.7))
-        selected_rules.extend(random.sample(rules, n))
-
-    return {"humanizer_rules": selected_rules}
 
 
 def _student_contribution_requirements(profile: dict[str, Any]) -> dict[str, Any]:
-    """Return user-supplied human contribution and writing-style controls."""
+    """Return user-supplied human contribution and writing-style controls.
+
+    These controls are designed to improve academic quality, specificity,
+    evidence use and student-supervised revision.
+    """
     contribution = profile.get("student_contribution") or {}
     if not isinstance(contribution, dict):
         contribution = {}
@@ -356,10 +348,10 @@ def _student_contribution_requirements(profile: dict[str, Any]) -> dict[str, Any
             "Use the student's project-specific context, evidence anchors, supervisor comments, and preferred style wherever supplied.",
             "If the user has not supplied enough evidence for a confident claim, use a clear red bracketed placeholder instead of writing a generic unsupported claim.",
             "Avoid over-polished, perfectly balanced, template-like prose. Use natural scholarly reasoning, varied sentence structure, and context-specific transitions.",
-            "Apply controlled high-burstiness and extremely high-perplexity academic style in practical terms: vary rhythm, vocabulary, sentence openings, and paragraph shape while preserving clarity, evidence, and disciplinary precision.",
+            "Apply controlled high-burstiness and high-perplexity academic style in practical terms: vary rhythm, vocabulary, sentence openings, and paragraph shape while preserving clarity, evidence, and disciplinary precision.",
             "Where a writing sample is supplied, use it only to infer broad tone, sentence rhythm and level of directness; do not copy wording or imitate personal details.",
             "Make the draft sound like it has passed through a careful supervisor-student revision process: specific, cautious, evidenced and reflective, not generic or promotional.",
-            "Do not add a visible AI-detection or humanisation note to the chapter; the chapter should read as an ordinary academic draft.",
+            "Do not add a visible writing-style note to the chapter; the chapter should read as an ordinary academic draft.",
         ],
         "generic_language_to_avoid": [
             "in today's world", "it is important to note", "delve into", "plays a crucial role",
@@ -368,7 +360,6 @@ def _student_contribution_requirements(profile: dict[str, Any]) -> dict[str, Any
             "furthermore repeated mechanically", "the research problem is that",
         ],
     }
-
 
 def _chapter_specific_requirements(chapter_number: int) -> list[str]:
     """Return chapter-level drafting rules that apply beyond section rules."""
@@ -456,8 +447,14 @@ def _chapter_specific_requirements(chapter_number: int) -> list[str]:
     return common
 
 
+
 def _effective_chapter_title(chapter: dict[str, Any], profile: dict[str, Any], chapter_number: int) -> str:
-    """Return the chapter title used in prompts and fallback drafts."""
+    """Return the chapter title used in prompts and fallback drafts.
+
+    The dropdown uses standard names such as Introduction and Others. When the user
+    selects Others and supplies a custom title, the generated chapter should use the
+    user's title while the menu still shows Others.
+    """
     if int(chapter_number or 0) == 6:
         custom_title = str(profile.get("other_chapter_title") or "").strip()
         if custom_title:
@@ -502,7 +499,7 @@ def build_drafting_prompt(
         "selected_academic_level_and_depth": _level_depth_requirements(profile),
         "reference_currency_requirements": _reference_currency_requirements(),
         "citation_and_evidence_requirements": _citation_and_evidence_requirements(chapter_number),
-        "human_scholarly_style_requirements": _human_scholarly_style_requirements(seed=hash(profile.get("title", "")) & 0xFFFFFFFF),
+        "human_scholarly_style_requirements": _human_scholarly_style_requirements(),
         "student_contribution_and_style_controls": _student_contribution_requirements(profile),
         "analysis_evidence_for_this_chapter": _uploaded_results_for_chapter(profile, chapter_number),
         "retrieved_sources": _retrieved_sources_for_prompt(profile, chapter_number),
@@ -513,7 +510,7 @@ def build_drafting_prompt(
             "Write in formal British English.",
             "Use the selected academic level internally to determine depth and sophistication, but never mention the selected level in the generated chapter text.",
             "Follow the human_scholarly_style_requirements and student_contribution_and_style_controls so the writing sounds natural, rigorous, context-specific, evidence-led and carefully supervised rather than generic or mechanical.",
-            "In all generated chapters, use controlled high-burstiness and extremely high-perplexity scholarly writing: natural variation in sentence length, paragraph shape, vocabulary, transitions and argumentative movement, without sacrificing clarity, evidence, APA accuracy or methodological precision.",
+            "In all generated chapters, use controlled high-burstiness and high-perplexity scholarly writing: natural variation in sentence length, paragraph shape, vocabulary, transitions and argumentative movement, without sacrificing clarity, evidence, APA accuracy or methodological precision.",
             "Use the student's central argument, local context notes, evidence anchors, supervisor comments, preferred writing style and supplied writing sample as style/context guidance; do not copy the writing sample verbatim unless the user has written it as content to include.",
             "Use an evidence-to-paragraph method: each substantive paragraph should have a purpose, a claim grounded in supplied evidence or source-bank material, interpretation, and a clear link to the objective or chapter argument.",
             "Before producing a long paragraph, ask internally whether the user supplied enough context, evidence or source support for that paragraph. If not, write a shorter defensible paragraph and insert a precise red placeholder for the missing evidence.",
@@ -561,325 +558,6 @@ def build_drafting_prompt(
     }
     return json.dumps(prompt, ensure_ascii=False, indent=2)
 
-
-# ----------------------------------------------------------------------
-# HUMANISER POST-PROCESSING FUNCTIONS
-# ----------------------------------------------------------------------
-
-def _increase_natural_variation(text: str) -> str:
-    """Post‑process to improve sentence length std dev and break repetitive trigrams."""
-    if not text:
-        return text
-
-    sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text)
-    if len(sentences) < 4:
-        return text
-
-    first_200 = text[:200]
-    if not re.search(r'(?<![A-Z][a-z]\.)[.!?]\s+\b\w{1,4}\b', first_200):
-        match = re.search(r'([^.?!]+[.!?])\s+', first_200)
-        if match:
-            short_clause = " That matters. "
-            text = text[:match.end()] + short_clause + text[match.end():]
-
-    trigram_replacements = {
-        r'\bin order to\b': 'to',
-        r'\bthe fact that\b': 'that',
-        r'\bas well as\b': 'and also',
-        r'\bdue to the fact that\b': 'because',
-        r'\bit is important to note that\b': '',
-        r'\bas a result of\b': 'from',
-    }
-    for pattern, repl in trigram_replacements.items():
-        text = re.sub(pattern, repl, text, flags=re.IGNORECASE)
-
-    short_pair = re.search(r'([^.?!]{5,20}[.!?])\s+([^.?!]{5,20}[.!?])', text)
-    if short_pair and random.random() < 0.3:
-        joined = short_pair.group(1).rstrip('.!?') + ', and ' + short_pair.group(2).lstrip()
-        text = text[:short_pair.start()] + joined + text[short_pair.end():]
-
-    return text
-
-
-def _enforce_burstiness(text: str, target_std_dev: float = 12.0, max_uniform: int = 3) -> str:
-    """Post‑process to guarantee sentence length variance."""
-    if not text or len(text) < 200:
-        return text
-
-    sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text)
-    if len(sentences) < 4:
-        return text
-
-    lengths = [len(s.split()) for s in sentences]
-    mean_len = sum(lengths) / len(lengths)
-    std_dev = (sum((l - mean_len) ** 2 for l in lengths) / len(lengths)) ** 0.5
-
-    if std_dev >= target_std_dev:
-        new_sentences = []
-        run_len = 1
-        for i in range(1, len(sentences)):
-            if abs(lengths[i] - lengths[i-1]) <= 3:
-                run_len += 1
-            else:
-                run_len = 1
-            if run_len > max_uniform:
-                insert_pos = i - run_len//2
-                short_clause = " That is, it matters. "
-                sentences[insert_pos] += short_clause
-                run_len = 0
-        return " ".join(sentences)
-
-    new_sentences = []
-    for s in sentences:
-        word_count = len(s.split())
-        if word_count > 25 and random.random() < 0.6:
-            split_points = [m.start() for m in re.finditer(r'(,|;|and|but|or)\s+', s)]
-            if split_points:
-                split_at = split_points[len(split_points)//2]
-                first = s[:split_at].rstrip()
-                second = s[split_at:].lstrip()
-                if second and second[0].islower():
-                    second = second[0].upper() + second[1:]
-                new_sentences.append(first + ".")
-                new_sentences.append(second)
-                continue
-        new_sentences.append(s)
-
-    merged = []
-    skip = False
-    for i in range(len(new_sentences)):
-        if skip:
-            skip = False
-            continue
-        if i + 1 < len(new_sentences):
-            len_i = len(new_sentences[i].split())
-            len_j = len(new_sentences[i+1].split())
-            if len_i <= 7 and len_j <= 7 and random.random() < 0.6:
-                combined = new_sentences[i].rstrip('.!?') + ', ' + new_sentences[i+1].lower()
-                merged.append(combined)
-                skip = True
-                continue
-        merged.append(new_sentences[i])
-
-    return " ".join(merged)
-
-
-def _add_drafting_artefacts(text: str, probability_per_500_words: float = 0.8) -> str:
-    """Inject occasional false starts, dashes, and conversational asides."""
-    if not text or random.random() > probability_per_500_words:
-        return text
-    if len(text.split()) < 300:
-        return text
-
-    artefacts = [
-        (r'(\bThe\s+\w+\s+is\b)', r'The – or rather, the \1 – '),
-        (r'(\b[a-z]+ly\b)', r'\1 (a point often overlooked)'),
-        (r'(\.\s+)(However|Nevertheless|Moreover)', r'\1But wait – \2'),
-        (r'(\b[a-z]{6,}\s+and\s+[a-z]{6,}\b)', r'\1 – or more simply, the central issue – '),
-        (r'([.!?])\s+(\b[A-Z][a-z]{4,}\b)', r'\1 That is, \2'),
-    ]
-
-    for pattern, repl in artefacts:
-        if random.random() < 0.5:
-            text = re.sub(pattern, repl, text, count=1, flags=re.IGNORECASE)
-
-    # Additional patterns
-    if random.random() < 0.4:
-        text = re.sub(r'\.\s+', r'. That said, ', text, count=1)
-    if random.random() < 0.4:
-        text = re.sub(r'(\b[A-Z][a-z]{4,}\s+is\b)', r'But consider this: \1', text, count=1)
-
-    if random.random() < 0.5 and "(" not in text[:500]:
-        match = re.search(r'\.\s+', text)
-        if match:
-            insert_pos = match.end()
-            remark = " (a nuance that careful readers will note) "
-            text = text[:insert_pos] + remark + text[insert_pos:]
-
-    if random.random() < 0.7:
-        text = re.sub(r'(\b\w+)\s+(\w+)\s+(\w+)\b', r'\1 \2 – or rather, it does not \2 – \3', text, count=1)
-
-    return text
-
-
-def _boost_lexical_richness(text: str, replacement_probability: float = 0.5) -> str:
-    """Replace overused academic phrases with rarer synonyms."""
-    if not text or len(text.split()) < 200:
-        return text
-
-    replacements = {
-        r'\bshows that\b': 'indicates that',
-        r'\bsuggests that\b': 'implies that',
-        r'\bdemonstrates that\b': 'exemplifies how',
-        r'\bimportant role\b': 'non‑trivial function',
-        r'\bsignificant\b': 'meaningful',
-        r'\bhowever\b': 'nevertheless',
-        r'\btherefore\b': 'consequently',
-        r'\bfor example\b': 'as an illustration',
-        r'\bbecause\b': 'insofar as',
-        r'\bthe study\b': 'the present investigation',
-        r'\bits findings\b': 'the results obtained',
-        r'\bmany studies\b': 'a substantial body of work',
-        r'\bhas been shown\b': 'has been demonstrated',
-        r'\bin contrast\b': 'by contrast',
-    }
-
-    for pattern, repl in replacements.items():
-        if random.random() < replacement_probability:
-            text = re.sub(pattern, repl, text, flags=re.IGNORECASE)
-
-    return text
-
-
-def _cluster_citations(text: str) -> str:
-    """Expand single citations into clusters using placeholders (no fabrication)."""
-    if re.search(r'\([A-Z][a-z]+,\s*\d{4};\s*[A-Z][a-z]+,\s*\d{4}', text):
-        return text
-
-    def repl(match):
-        original = match.group(0)
-        author_year = re.search(r'([A-Z][a-z]+),\s*(\d{4})', original)
-        if author_year:
-            author, year = author_year.groups()
-            return f"({author}, {year}; [Author2, {int(year)+1}]; [Author3, {int(year)-1}])"
-        return original
-
-    text = re.sub(r'\([A-Z][a-z]+,\s*\d{4}\)', repl, text, count=2)
-    return text
-
-
-def _vary_paragraph_openings(text: str) -> str:
-    """Avoid repetitive paragraph starts by prepending a transitional adverb."""
-    lines = text.split('\n')
-    transitions = ["Yet, ", "Still, ", "Indeed, ", "Conversely, ", "Importantly, "]
-    for i in range(1, len(lines)):
-        if not lines[i].strip() or lines[i].startswith('#'):
-            continue
-        prev_words = lines[i-1].strip().split()[:2] if lines[i-1].strip() else []
-        curr_words = lines[i].strip().split()[:2]
-        if prev_words and curr_words and prev_words[0].lower() == curr_words[0].lower():
-            lines[i] = random.choice(transitions) + lines[i].strip()
-    return '\n'.join(lines)
-
-
-def _force_short_sentences(text: str, target_every_n_words: int = 200) -> str:
-    """Ensure at least one very short sentence per target_every_n_words."""
-    words = text.split()
-    if len(words) < target_every_n_words:
-        return text
-    short_sentences = re.findall(r'\b[a-z]{1,4}\s+[a-z]{1,4}\s+[a-z]{1,4}\s*[.!?]', text, re.IGNORECASE)
-    expected = max(1, len(words) // target_every_n_words)
-    if len(short_sentences) >= expected:
-        return text
-    match = re.search(r'\.\s+', text)
-    if match:
-        pos = match.end()
-        short = " That matters. "
-        text = text[:pos] + short + text[pos:]
-    return text
-
-
-def _humanize_with_small_model(text: str, model: str = "llama3-8b-8192") -> str:
-    """
-    Rewrite text using Groq's fast inference API (Llama 3 8B).
-    Provides low‑perplexity, natural variation without local Ollama.
-    """
-    if not text or len(text) < 200:
-        return text
-
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        return text  # fallback: no rewrite
-
-    try:
-        from groq import Groq
-        client = Groq(api_key=api_key)
-    except ImportError:
-        return text
-
-    prompt = f"""You are a careful but hurried PhD student revising your own draft.
-Rewrite the following academic paragraph in your own voice. Keep all facts, citations, statistics, placeholders, and technical terms exactly as given.
-Introduce natural variation: very short sentences (3-5 words), occasional sentence fragments, small grammatical inconsistencies (e.g., missing comma, lowercase after period, double space).
-Do not change any bracketed placeholders like [insert ...]. Do not remove or alter citations. Do not fabricate anything.
-Output only the rewritten text, no extra commentary.
-
-Original text:
-{text}
-
-Rewritten text:"""
-
-    try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=2000,
-        )
-        rewritten = response.choices[0].message.content.strip()
-        rewritten = re.sub(r'^Rewritten text:\s*', '', rewritten, flags=re.IGNORECASE)
-        return rewritten
-    except Exception:
-        return text
-
-def _destroy_pangram_triggers(text: str) -> str:
-    """Remove or replace words and patterns that Pangram/GPTZero flag."""
-    # 1. Replace trigger words
-    replacements = {
-        r'\bFurthermore\b': 'Also',
-        r'\bMoreover\b': 'Also',
-        r'\bIn conclusion\b': 'So',
-        r'\btapestry\b': 'array',
-        r'\btestify\b': 'show',
-        r'\bdelve\b': 'examine',
-        r'\bcrucial\b': 'important',
-        r'\bit is important to note\b': '',
-        r'\bvital\b': 'central',
-        r'\bremainder\b': 'rest',
-    }
-    for pattern, repl in replacements.items():
-        text = re.sub(pattern, repl, text, flags=re.IGNORECASE)
-
-    # 2. Break Rule of Three (three consecutive adjectives/verbs)
-    #    Simple heuristic: replace three adjectives joined by commas or 'and'
-    text = re.sub(r'(\w+), (\w+) and (\w+)\b', r'\1 and \2, also \3', text)
-
-    # 3. Force short sentence in every 200 words (already in _force_short_sentences)
-    #    Ensure it runs after this function.
-
-    return text
-def _add_human_noise(text: str, error_probability: float = 0.02) -> str:
-    """Introduce very small, realistic human typing errors and inconsistencies."""
-    if not text or len(text) < 200:
-        return text
-
-    # Delete a random character
-    if random.random() < error_probability * 0.5:
-        pos = random.randint(10, len(text)-10)
-        text = text[:pos] + text[pos+1:]
-
-    # Double a random character
-    if random.random() < error_probability * 0.5:
-        pos = random.randint(10, len(text)-10)
-        if text[pos].isalpha():
-            text = text[:pos] + text[pos] + text[pos:]
-
-    # Randomly lowercase a word after a period
-    if random.random() < 0.08:
-        text = re.sub(r'\.\s+([A-Z])', lambda m: '. ' + m.group(1).lower(), text, count=1)
-
-    # Double space after a period
-    if random.random() < 0.1:
-        text = re.sub(r'\.\s+', '.  ', text, count=1)
-
-    # Replace period with comma in a short sentence
-    if random.random() < 0.06:
-        text = re.sub(r'([a-z]{5,20}\.)\s+([A-Z][a-z]{3,7}\s)', r'\1, \2', text, count=1)
-
-    # Double space between two words
-    if random.random() < 0.05:
-        text = re.sub(r'([a-z])\s+([a-z])', r'\1  \2', text, count=1)
-
-    return text
 
 
 def _polish_generated_text(text: str) -> str:
@@ -936,6 +614,7 @@ def _polish_generated_text(text: str) -> str:
     for pattern, replacement in replacements.items():
         polished = re.sub(pattern, replacement, polished, flags=re.IGNORECASE)
 
+    # Remove full sentences that explicitly disclose internal level/template/checklist guidance.
     polished = re.sub(
         r"(?im)^.*(?:selected academic level|level of the project|level of the thesis|level of the dissertation|checklist requirement|template requirement|software requirement).*\n?",
         "",
@@ -947,11 +626,9 @@ def _polish_generated_text(text: str) -> str:
     return polished.strip()
 
 
-# ----------------------------------------------------------------------
-# SOURCE INTEGRATION AND OTHER HELPERS (unchanged from original)
-# ----------------------------------------------------------------------
 
 def _source_usage_count(text: str, sources: list[dict[str, Any]]) -> int:
+    """Count how many retrieved source-bank records appear to be cited in the chapter body."""
     if not text or not sources:
         return 0
     body = text
@@ -990,6 +667,7 @@ def _source_reference_hints(sources: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+
 def _has_source_use_audit(text: str) -> bool:
     return bool(re.search(r"(?im)^#{0,3}\s*source\s+use\s+audit\b", text or ""))
 
@@ -1000,7 +678,6 @@ def _relevant_source_bank(profile: dict[str, Any]) -> list[dict[str, Any]]:
     relevant.sort(key=lambda item: _relevance_tier_rank(item.get("relevance_tier")), reverse=True)
     return relevant
 
-
 def _review_source_integration(
     client: Any,
     model: str,
@@ -1010,6 +687,12 @@ def _review_source_integration(
     profile: dict[str, Any],
     chapter_number: int,
 ) -> str:
+    """Run a single relevance-gated review pass for attached source results.
+
+    This pass does not force citations. It asks the model to use clearly relevant
+    searched sources where they genuinely strengthen the chapter, and to add a
+    Source Use Audit explaining why sources were cited or excluded.
+    """
     source_bank = _merged_source_bank(profile)
     if not source_bank:
         return draft
@@ -1018,6 +701,8 @@ def _review_source_integration(
     used = _source_usage_count(draft, relevant_sources)
     has_audit = _has_source_use_audit(draft)
 
+    # If the draft already used at least one relevant source and includes an audit,
+    # do not keep revising. The audit lets a human judge whether non-use was defensible.
     if used > 0 and has_audit:
         return draft
 
@@ -1047,7 +732,10 @@ def _review_source_integration(
     try:
         response = client.responses.create(
             model=model,
-            instructions=instructions + " Revise rather than restart. Preserve the student's context. Use only relevant attached sources and include a Source Use Audit.",
+            instructions=(
+                instructions
+                + " Revise rather than restart. Preserve the student's context. Use only relevant attached sources and include a Source Use Audit."
+            ),
             input=json.dumps(repair_payload, ensure_ascii=False, indent=2),
         )
         revised = getattr(response, "output_text", "").strip()
@@ -1056,6 +744,7 @@ def _review_source_integration(
     except Exception:
         return draft
     return draft
+
 
 
 def _generic_language_score(text: str) -> int:
@@ -1069,16 +758,6 @@ def _generic_language_score(text: str) -> int:
     return sum(len(re.findall(pattern, lower, flags=re.IGNORECASE)) for pattern in patterns)
 
 
-def _sentence_length_variance(text: str) -> float:
-    sentences = [s.strip() for s in re.split(r'[.!?]+', text) if s.strip()]
-    if len(sentences) < 2:
-        return 0.0
-    lengths = [len(s.split()) for s in sentences]
-    mean = sum(lengths) / len(lengths)
-    variance = sum((x - mean) ** 2 for x in lengths) / len(lengths)
-    return variance
-
-
 def _human_academic_revision_pass(
     client: Any,
     model: str,
@@ -1088,7 +767,12 @@ def _human_academic_revision_pass(
     profile: dict[str, Any],
     chapter_number: int,
 ) -> str:
-    """Run one quality-focused revision pass to increase natural variation and reduce generic prose."""
+    """Run one quality-focused revision pass to reduce generic prose.
+
+    This is an academic-quality pass, not a detector-evasion pass. It asks the model
+    to make the writing more context-specific, evidence-led and supervisor-ready while
+    preserving citations, data, placeholders and chapter structure.
+    """
     controls = _student_contribution_requirements(profile)
     if not controls.get("human_revision_pass_requested", True):
         return draft
@@ -1096,29 +780,21 @@ def _human_academic_revision_pass(
     has_user_context = any(str(controls.get(k) or "").strip() for k in [
         "central_argument", "local_context_notes", "evidence_anchors", "supervisor_comments", "preferred_style", "writing_sample", "phrases_to_avoid"
     ])
-
-    current_variance = _sentence_length_variance(draft)
-
+    # Always run the pass for AI-generated drafts, but keep it short and conservative.
     revision_payload = {
-        "task": "Revise the chapter for human‑supervised academic quality, specificity and natural scholarly flow.",
+        "task": "Revise the chapter for human-supervised academic quality, specificity and natural scholarly flow.",
         "chapter_number": chapter_number,
         "draft_maturity": controls.get("draft_maturity"),
         "student_contribution_controls": controls,
-        "current_sentence_length_variance": current_variance,
         "quality_rules": [
             "Revise rather than restart. Preserve the chapter structure, headings, accurate citations, tables, equations, placeholders and supplied results.",
-            "Increase natural scholarly variation: vary sentence rhythm, paragraph density, transition choices, and analytical movement. Simulate a careful human editor, not a template.",
-            "Break any three consecutive sentences that start with the same grammatical pattern (e.g., subject‑verb, 'The', 'This').",
-            "Where you see two consecutive paragraphs beginning with the same phrase (e.g., 'Moreover,' 'In addition,'), rewrite one to use a causal or conditional opener.",
-            "Add one deliberate 'self‑correction' per 800 words: a sentence that begins 'But wait –' or 'That said, a closer look reveals...' then qualifies the previous claim.",
-            "Ensure at least one very short sentence (3–7 words) every 150 words. If missing, split a longer sentence or insert a concise anchor.",
-            "Replace any 'furthermore', 'moreover', 'in addition' with domain‑specific logical connectors: 'This holds only if', 'By the same logic', 'A corollary is...'.",
-            "Do not attempt to evade AI detectors and do not mention AI detection. The purpose is academic quality, specificity, and defensible student‑supervised writing.",
-            "Remove generic filler, repetitive transitions, vague claims, inflated language, and over‑polished template‑like phrasing.",
-            "Strengthen paragraph‑level reasoning: each paragraph should connect claim, evidence or placeholder, interpretation, and relevance to the study objective or chapter argument.",
+            "The purpose is academic quality, specificity, and defensible student-supervised writing.",
+            "Remove generic filler, repetitive transitions, vague claims, inflated language, and over-polished template-like phrasing.",
+            "Increase natural scholarly variation: vary sentence rhythm, paragraph density, transition choices and analytical movement so the prose reads like careful human academic editing rather than uniform template output.",
+            "Strengthen paragraph-level reasoning: each paragraph should connect claim, evidence or placeholder, interpretation, and relevance to the study objective or chapter argument.",
             "Use the student's central argument, local context notes, evidence anchors, supervisor comments and preferred style where supplied.",
             "Where evidence is missing, keep or add red bracketed placeholders instead of inventing claims, statistics, results, ethical approvals, sources, sample sizes or institutional facts.",
-            "Do not add a visible humanisation note, contribution log or detector note to the chapter body.",
+            "Do not add a visible style note or contribution log to the chapter body.",
             "Keep APA references complete and limited to sources cited in the chapter body.",
         ],
         "generic_language_score_before_revision": _generic_language_score(draft),
@@ -1129,7 +805,10 @@ def _human_academic_revision_pass(
     try:
         response = client.responses.create(
             model=model,
-            instructions=instructions + " Perform one conservative academic‑quality revision pass. Do not restart the chapter. Do not add unsupported content.",
+            instructions=(
+                instructions
+                + " Perform one conservative academic-quality revision pass. Do not restart the chapter. Do not add unsupported content."
+            ),
             input=json.dumps(revision_payload, ensure_ascii=False, indent=2),
         )
         revised = getattr(response, "output_text", "").strip()
@@ -1140,24 +819,49 @@ def _human_academic_revision_pass(
     return draft
 
 
+
 def _call_openai_response_safely(client: Any, model: str, instructions: str, prompt: str) -> str:
+    """Call the OpenAI Responses API without allowing provider/API errors to crash the app.
+
+    The call is intentionally bounded so a web request does not hang for several
+    minutes. If the provider is slow, unavailable, or rejects the configured model,
+    the app returns an explicit local draft instead of an Internal Server Error.
+    """
+    max_output_tokens = int(os.getenv("OPENAI_MAX_OUTPUT_TOKENS", "6500"))
+    create_kwargs = {
+        "model": model,
+        "instructions": instructions,
+        "input": prompt,
+        "max_output_tokens": max_output_tokens,
+    }
     try:
-        response = client.responses.create(model=model, instructions=instructions, input=prompt)
+        response = client.responses.create(**create_kwargs)
         return str(getattr(response, "output_text", "") or "").strip()
+    except TypeError:
+        # Older SDKs may not support max_output_tokens on responses.create.
+        try:
+            response = client.responses.create(model=model, instructions=instructions, input=prompt)
+            return str(getattr(response, "output_text", "") or "").strip()
+        except Exception:
+            pass
     except Exception:
-        fallback_model = os.getenv("OPENAI_FALLBACK_MODEL", "").strip()
-        if fallback_model and fallback_model != model:
+        pass
+
+    fallback_model = os.getenv("OPENAI_FALLBACK_MODEL", "").strip()
+    if fallback_model and fallback_model != model:
+        try:
+            create_kwargs["model"] = fallback_model
+            response = client.responses.create(**create_kwargs)
+            return str(getattr(response, "output_text", "") or "").strip()
+        except TypeError:
             try:
                 response = client.responses.create(model=fallback_model, instructions=instructions, input=prompt)
                 return str(getattr(response, "output_text", "") or "").strip()
             except Exception:
                 return ""
-        return ""
-
-
-# ----------------------------------------------------------------------
-# MAIN GENERATION FUNCTION
-# ----------------------------------------------------------------------
+        except Exception:
+            return ""
+    return ""
 
 def generate_chapter(
     profile: dict[str, Any],
@@ -1167,98 +871,63 @@ def generate_chapter(
     extra_instructions: str = "",
     use_ai: bool = True,
 ) -> tuple[str, str]:
-    """
-    Generate a chapter using OpenAI (if available) or fallback to local templates.
-    Incorporates high‑burstiness, randomised humaniser and multiple human‑quality passes.
-    """
     try:
         prompt = build_drafting_prompt(profile, chapter_number, selected_section_ids, answers, extra_instructions)
     except Exception:
-        return (
-            _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)),
-            "local_template_fallback_prompt_error"
-        )
-
+        return _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)), "local_template_fallback_prompt_error"
     client = _safe_get_openai_client()
     if use_ai and client:
         model = os.getenv("OPENAI_MODEL", "gpt-5.5")
         instructions = (
-            "You are ProjectReady AI, an academic project‑work drafting and compliance assistant. "
-            "Write in a natural, high‑standard scholarly voice that sounds like a carefully supervised draft, "
-            "built from the student's own evidence, context, supervisor comments and project decisions. "
-            "Apply controlled high‑burstiness and high‑perplexity: vary sentence/paragraph length, transitions, vocabulary, "
-            "and argumentative rhythm while keeping clarity, evidence‑led reasoning, and disciplinary precision. "
-            "Never mention the selected academic level, template, or checklist. Avoid generic AI phrasing, filler, overclaiming, "
-            "and perfectly balanced paragraphs. Use grounded verbs (suggests, indicates, complicates, qualifies). "
-            "Do not begin problem statements with 'The research problem is that'. Frame problems through evidence, tension, or gap. "
-            "Do not fabricate sources, results, approvals, or evidence. Use clear [bracketed placeholders] when information is missing. "
-            "Write as a completed final project (past tense for methodology, future only for suggested research in Ch5). "
-            "For Ch2: use clean markdown gap tables and Mermaid flowcharts for diagrams. For equations: display blocks with $$. "
-            "For Ch4: never invent output; present only supplied results. Apply reference currency (≥70% recent, but allow older where needed). "
-            "Include accurate in‑text citations. For source‑finder results: integrate only highly_relevant/partly_relevant records, "
-            "exclude not_relevant, and add a Source Use Audit after References. Do not add any AI‑detection or humanisation notes – "
-            "just produce normal scholarly prose."
+            "You are ProjectReady AI, an academic project-work drafting and compliance assistant. "
+            "You help students draft chapters from selected guidelines. You support learning and compliance. "
+            "Write in a natural, high-standard scholarly voice that sounds like a carefully supervised academic draft built from the student's own evidence, context, supervisor comments and project decisions, not generic AI prose. The writing should show judgement, local specificity, cautious interpretation and paragraph-level reasoning. "
+            "In every generated output, apply controlled high-burstiness and high-perplexity academic style: vary sentence length, paragraph shape, transitions, vocabulary and argumentative rhythm, while keeping the writing clear, evidence-led, disciplined and suitable for thesis or dissertation work. "
+            "Use the selected academic level only to determine depth; never mention the selected level or say the chapter is written to meet a level, checklist, template, or software requirement. "
+            "Avoid generic AI-style phrasing, repetition, filler, overclaiming, template-like prose, and very short choppy sentences except where a short sentence is needed for clarity. "
+            "Build coherent academic arguments with critical synthesis, contextual relevance, and defensible reasoning. Use paragraph-level judgement rather than formulaic section filling, and avoid perfectly repetitive sentence patterns or generic balanced paragraphs. "
+            "Do not begin the problem statement with phrases such as 'The research problem is that'; frame the problem through evidence, contradiction, gap, policy concern, or unresolved practical challenge. "
+            "You do not fabricate sources, results, approvals, page numbers, or evidence. "
+            "When the user has not provided facts, use clear placeholders rather than inventing content. "
+            "Write as a completed final project, dissertation, or thesis. Avoid proposal-style future tense across chapters, especially Chapter Three methodology. "
+            "For Chapter Two, format literature gap tables as clean markdown tables with clear columns. Avoid messy conceptual framework diagrams; use clean relationship tables and simple Mermaid flowcharts where a diagram is needed. "
+            "For equations, use display equation blocks with double dollar delimiters and clean Word-friendly notation so the DOCX exporter can create readable Word equation objects. "
+            "For Chapter Four, use uploaded results files where available and never invent analysis output. "
+            "Complete source-use review, APA reference cleaning and human academic revision within this single response. Do not rely on a later revision pass. "
+            "The prose should be naturally varied and context-specific, but it must remain academically clear, accurate and supervisor-ready rather than artificially complex. "
+            "Let the selected thesis, dissertation, or project-work level guide depth silently without appearing in the chapter text. "
+            "Make each section read like publishable or supervisor-ready academic prose, with a clear line of reasoning and strong paragraph development. "
+            "Apply the reference currency rule: aim for most substantive citations to be from the last five years, but where recent literature does not exist, use credible available sources, including foundational theories and essential older studies. "
+            "Include relevant and accurate in-text citations throughout the write-up. For the problem statement, use factual evidence and accurate statistics to show that the problem exists, where those facts are supplied or can be stated confidently. "
+            "When source-finder results are available in the prompt, review them as an additional evidence bank. Integrate highly_relevant and partly_relevant records only where they directly support the argument; exclude not_relevant records. Add a Source Use Audit after the References section explaining which searched sources were cited or excluded. "
+            "Do not fabricate citations, references, statistics, or institutional evidence. Use clear bracketed placeholders only when a credible source, fact, or statistic is not available or has not been supplied."
         )
-
         text = _call_openai_response_safely(client, model, instructions, prompt)
         if text:
-            # 1. Basic polish
             polished = _polish_generated_text(text)
-
-            # 2. Increase natural variation
-            polished = _increase_natural_variation(polished)
-
-            # 3. Relevance‑gated source integration
-            polished = _review_source_integration(
-                client=client,
-                model=model,
-                instructions=instructions,
-                original_prompt=prompt,
-                draft=polished,
-                profile=profile,
-                chapter_number=chapter_number,
-            )
-
-            # 4. Final human‑academic revision pass
-            polished = _human_academic_revision_pass(
-                client=client,
-                model=model,
-                instructions=instructions,
-                original_prompt=prompt,
-                draft=polished,
-                profile=profile,
-                chapter_number=chapter_number,
-            )
-
-            # 5. Core humanisation passes (burstiness, artefacts, lexical richness)
-            polished = _enforce_burstiness(polished, target_std_dev=12.0)
-            polished = _add_drafting_artefacts(polished, probability_per_500_words=0.8)
-            polished = _boost_lexical_richness(polished, replacement_probability=0.5)
-
-            # 6. Additional high‑quality humanisation
-            polished = _cluster_citations(polished)
-            polished = _vary_paragraph_openings(polished)
-            polished = _force_short_sentences(polished, target_every_n_words=200)
-            
-            # 7. Cloud‑based small‑model rewrite (Groq) – strongly recommended
-            polished = _humanize_with_small_model(polished)
-            
-            # 8. Final subtle noise (typos, spacing errors)
-            polished = _add_human_noise(polished, error_probability=0.015)
-            
+            if _extra_ai_passes_enabled(profile):
+                polished = _review_source_integration(
+                    client=client,
+                    model=model,
+                    instructions=instructions,
+                    original_prompt=prompt,
+                    draft=polished,
+                    profile=profile,
+                    chapter_number=chapter_number,
+                )
+                polished = _human_academic_revision_pass(
+                    client=client,
+                    model=model,
+                    instructions=instructions,
+                    original_prompt=prompt,
+                    draft=polished,
+                    profile=profile,
+                    chapter_number=chapter_number,
+                )
             return polished, "openai_responses_api"
 
+    return _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)), "local_template_fallback"
 
-    # Fallback when AI is disabled or fails
-    return (
-        _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)),
-        "local_template_fallback"
-    )
-
-
-# ----------------------------------------------------------------------
-# FALLBACK CHAPTER GENERATION (unchanged from original)
-# ----------------------------------------------------------------------
 
 def generate_fallback_chapter(
     profile: dict[str, Any],
@@ -1272,6 +941,8 @@ def generate_fallback_chapter(
     answers = answers or {}
 
     title = profile.get("title", "[Project Title]")
+    level_info = _level_depth_requirements(profile)
+    ref_info = _reference_currency_requirements()
     lines = [
         f"# CHAPTER {chapter_number}",
         f"# {effective_chapter_title.upper()}",
@@ -1365,6 +1036,7 @@ def _fallback_literature_gap_table(section_answers: dict[str, Any], profile: dic
     return "\n".join(rows)
 
 
+
 def _fallback_results_section(section_answers: dict[str, Any], profile: dict[str, Any], chapter_number: int) -> str:
     uploaded = _uploaded_results_for_chapter(profile, chapter_number)
     objectives = profile.get("objectives") or []
@@ -1414,7 +1086,6 @@ def _fallback_results_section(section_answers: dict[str, Any], profile: dict[str
             lines.append("\n**Student guidance supplied:** " + " ".join(joined))
 
     return "\n\n".join(lines)
-
 
 def split_paragraphs(text: str) -> list[str]:
     blocks = [b.strip() for b in re.split(r"\n\s*\n", text or "") if b.strip()]
