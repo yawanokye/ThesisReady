@@ -619,7 +619,7 @@ def _enforce_burstiness(text: str, target_std_dev: float = 14.0, max_uniform: in
     Post‑process to guarantee sentence length variance.
     Splits over‑long sentences, merges very short consecutive ones, and breaks uniform runs.
     """
-    if not text:
+    if not text or len(text) < 200:
         return text
 
     # Split into sentences (simple heuristic)
@@ -649,6 +649,43 @@ def _enforce_burstiness(text: str, target_std_dev: float = 14.0, max_uniform: in
                 run_len = 0
         text = " ".join(sentences)
         return text
+
+    # Need to increase variance: split some long sentences and merge short ones
+    new_sentences = []
+    for s in sentences:
+        word_count = len(s.split())
+        if word_count > 30 and random.random() < 0.4:
+            # Split at a conjunction or comma
+            split_points = [m.start() for m in re.finditer(r'(,|;|and|but|or)\s+', s)]
+            if split_points:
+                split_at = split_points[len(split_points)//2]
+                first = s[:split_at].rstrip()
+                second = s[split_at:].lstrip()
+                if second and second[0].islower():
+                    second = second[0].upper() + second[1:]
+                new_sentences.append(first + ".")
+                new_sentences.append(second)
+                continue
+        new_sentences.append(s)
+
+    # Merge short adjacent sentences
+    merged = []
+    skip = False
+    for i in range(len(new_sentences)):
+        if skip:
+            skip = False
+            continue
+        if i + 1 < len(new_sentences):
+            len_i = len(new_sentences[i].split())
+            len_j = len(new_sentences[i+1].split())
+            if len_i <= 7 and len_j <= 7 and random.random() < 0.5:
+                combined = new_sentences[i].rstrip('.!?') + ', ' + new_sentences[i+1].lower()
+                merged.append(combined)
+                skip = True
+                continue
+        merged.append(new_sentences[i])
+
+    return " ".join(merged)
 
     # Need to increase variance: split some long sentences and merge short ones
     new_sentences = []
@@ -697,6 +734,10 @@ def _add_drafting_artefacts(text: str, probability_per_500_words: float = 0.6) -
     if not text or random.random() > probability_per_500_words:
         return text
 
+    # Only apply to longer texts (>300 words) to avoid over‑processing short sections
+    if len(text.split()) < 300:
+        return text
+
     # Patterns to randomly apply
     artefacts = [
         # False start with dash correction
@@ -707,25 +748,36 @@ def _add_drafting_artefacts(text: str, probability_per_500_words: float = 0.6) -
         (r'(\.\s+)(However|Nevertheless|Moreover)', r'\1But wait – \2'),
         # Over‑specified then simplified
         (r'(\b[a-z]{6,}\s+and\s+[a-z]{6,}\b)', r'\1 – or more simply, the central issue – '),
+        # Insert "That is, ..." after a complex statement
+        (r'([.!?])\s+(\b[A-Z][a-z]{4,}\b)', r'\1 That is, \2'),
     ]
 
     for pattern, repl in artefacts:
         if random.random() < 0.3:
             text = re.sub(pattern, repl, text, count=1, flags=re.IGNORECASE)
 
-    # Also add one footnote-like parenthetical remark
+    # Add one footnote‑like parenthetical remark (if none exists in first 500 chars)
     if random.random() < 0.4 and "(" not in text[:500]:
-        # Insert after first period
         match = re.search(r'\.\s+', text)
         if match:
             insert_pos = match.end()
             remark = " (a nuance that careful readers will note) "
             text = text[:insert_pos] + remark + text[insert_pos:]
 
+    # Add a self‑correction with dash (e.g., "the model predicts – or rather, it does not predict – the anomaly")
+    if random.random() < 0.5:
+        text = re.sub(r'(\b\w+)\s+(\w+)\s+(\w+)\b', r'\1 \2 – or rather, it does not \2 – \3', text, count=1)
+
     return text
 
-def _boost_lexical_richness(text: str) -> str:
-    """Replace overused academic phrases with rarer but correct alternatives."""
+def _boost_lexical_richness(text: str, replacement_probability: float = 0.3) -> str:
+    """
+    Replace overused academic phrases with rarer but correct synonyms.
+    Only replaces a subset to avoid unnatural over‑substitution.
+    """
+    if not text or len(text.split()) < 200:
+        return text
+
     replacements = {
         r'\bshows that\b': 'indicates that',
         r'\bsuggests that\b': 'implies that',
@@ -738,10 +790,16 @@ def _boost_lexical_richness(text: str) -> str:
         r'\bbecause\b': 'insofar as',
         r'\bthe study\b': 'the present investigation',
         r'\bits findings\b': 'the results obtained',
+        r'\bmany studies\b': 'a substantial body of work',
+        r'\bhas been shown\b': 'has been demonstrated',
+        r'\bin contrast\b': 'by contrast',
     }
+
+    # Apply each replacement with given probability
     for pattern, repl in replacements.items():
-        if random.random() < 0.25:  # only replace a subset
+        if random.random() < replacement_probability:
             text = re.sub(pattern, repl, text, flags=re.IGNORECASE)
+
     return text
     
 def _polish_generated_text(text: str) -> str:
@@ -1083,10 +1141,10 @@ def generate_chapter(
         if text:
             # 1. Basic polish (phrase replacement, remove meta‑comments)
             polished = _polish_generated_text(text)
-
+        
             # 2. Increase natural variation (short sentences, break trigrams, join pairs)
             polished = _increase_natural_variation(polished)
-
+        
             # 3. Relevance‑gated source integration (adds Source Use Audit)
             polished = _review_source_integration(
                 client=client,
@@ -1097,7 +1155,7 @@ def generate_chapter(
                 profile=profile,
                 chapter_number=chapter_number,
             )
-
+        
             # 4. Final human‑academic revision pass (improves burstiness, self‑correction)
             polished = _human_academic_revision_pass(
                 client=client,
@@ -1108,12 +1166,14 @@ def generate_chapter(
                 profile=profile,
                 chapter_number=chapter_number,
             )
+        
             # ========== NEW HIGHER HUMAN‑LIKE QUALITY PASSES ==========
-            if len(polished.split()) > 500:
-                polished = _enforce_burstiness(polished, target_std_dev=14.0)      # new
-                polished = _add_drafting_artefacts(polished, probability_per_500_words=0.5)  # new
-                polished = _boost_lexical_richness(polished)                       # new
-    # ===========================================================
+            if len(polished.split()) > 500:   # only for longer chapters
+                polished = _enforce_burstiness(polished, target_std_dev=14.0)
+                polished = _add_drafting_artefacts(polished, probability_per_500_words=0.5)
+                polished = _boost_lexical_richness(polished, replacement_probability=0.3)
+            # ===========================================================
+        
             return polished, "openai_responses_api"
 
     # Fallback when AI is disabled or fails
