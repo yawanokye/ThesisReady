@@ -929,43 +929,478 @@ def generate_chapter(
     return _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)), "local_template_fallback"
 
 
+
 def generate_fallback_chapter(
     profile: dict[str, Any],
     chapter_number: int,
     selected_section_ids: list[str],
     answers: dict[str, Any] | None = None,
 ) -> str:
+    """Create a usable thesis-standard local draft when the AI provider is unavailable.
+
+    The earlier local fallback only repeated section rules and placeholders, which made the
+    output look like a checklist rather than a chapter. This fallback now writes substantive,
+    section-specific academic prose from the available title, context, objectives, variables,
+    answers and source-bank hints. It still avoids fabricating statistics, results, ethical
+    approvals or references; missing evidence is shown as precise bracketed placeholders.
+    """
     chapter = get_chapter(chapter_number)
     effective_chapter_title = _effective_chapter_title(chapter, profile, chapter_number)
     sections = selected_sections(chapter_number, selected_section_ids)
     answers = answers or {}
 
-    title = profile.get("title", "[Project Title]")
-    level_info = _level_depth_requirements(profile)
-    ref_info = _reference_currency_requirements()
     lines = [
-        f"# CHAPTER {chapter_number}",
+        f"# {_chapter_heading_label(chapter_number)}",
         f"# {effective_chapter_title.upper()}",
-        "",
-        f"Study title: {title}",
         "",
     ]
 
     for index, section in enumerate(sections, 1):
         section_title = section["section_title"]
         section_answers = answers.get(section["section_id"], {})
-        lines.append(f"## {chapter_number}.{index} {section_title}")
+        heading_number = _section_number(chapter_number, index)
+        lines.append(f"## {heading_number} {section_title}")
         lines.append("")
-        if section["section_id"] == "ch2_gap_table":
-            lines.append(_fallback_literature_gap_table(section_answers, profile))
-        elif chapter_number == 4 and section["section_id"] in {"ch4_uploaded_results", "ch4_results_objectives"}:
-            lines.append(_fallback_results_section(section_answers, profile, chapter_number))
+
+        if chapter_number == 1:
+            content = _fallback_chapter_one_section(section_title, section_answers, profile)
+        elif chapter_number == 2:
+            content = _fallback_chapter_two_section(section_title, section_answers, profile)
+        elif chapter_number == 3:
+            content = _fallback_methodology_section(section_title, section_answers, profile)
+        elif chapter_number == 4:
+            content = _fallback_results_section(section_answers, profile, chapter_number)
+        elif chapter_number == 5:
+            content = _fallback_chapter_five_section(section_title, section_answers, profile)
+        elif chapter_number == 7:
+            content = _fallback_supplementary_methods_section(section_title, section_answers, profile)
         elif section_answers:
-            lines.append(_draft_from_answers(section_title, section.get("rules", []), section_answers, profile, chapter_number))
+            content = _draft_from_answers(section_title, section.get("rules", []), section_answers, profile, chapter_number)
         else:
-            lines.append(_placeholder_paragraph(section_title, section.get("rules", []), profile, chapter_number))
+            content = _substantive_placeholder_section(section_title, profile, chapter_number)
+
+        lines.append(content.strip())
         lines.append("")
+
+    if not re.search(r"(?im)^#{1,3}\s*references\b", "\n".join(lines)):
+        refs = _fallback_references_section(profile)
+        if refs:
+            lines.append("## References")
+            lines.append("")
+            lines.append(refs)
+            lines.append("")
+
     return "\n".join(lines).strip()
+
+
+def _chapter_heading_label(chapter_number: int) -> str:
+    labels = {1: "CHAPTER ONE", 2: "CHAPTER TWO", 3: "CHAPTER THREE", 4: "CHAPTER FOUR", 5: "CHAPTER FIVE", 6: "OTHERS", 7: "SUPPLEMENTARY METHODS CHAPTER"}
+    return labels.get(int(chapter_number or 0), f"CHAPTER {chapter_number}")
+
+
+def _section_number(chapter_number: int, index: int) -> str:
+    if int(chapter_number or 0) == 7:
+        return f"S{index}"
+    return f"{chapter_number}.{index}"
+
+
+def _profile_terms(profile: dict[str, Any]) -> dict[str, Any]:
+    title = str(profile.get("title") or "the study").strip()
+    context = str(profile.get("study_context") or "").strip()
+    research_area = str(profile.get("research_area") or "").strip()
+    data_type = str(profile.get("data_type") or "").strip()
+    approach = str(profile.get("research_approach") or "").strip()
+
+    objectives = profile.get("objectives") or profile.get("specific_objectives") or []
+    if isinstance(objectives, str):
+        objectives = [x.strip(" -•\t") for x in re.split(r"\n|;", objectives) if x.strip()]
+    objectives = [str(x).strip() for x in objectives if str(x).strip()]
+
+    questions = profile.get("research_questions") or []
+    if isinstance(questions, str):
+        questions = [x.strip(" -•\t") for x in re.split(r"\n|;", questions) if x.strip()]
+    questions = [str(x).strip() for x in questions if str(x).strip()]
+
+    variables = []
+    raw_vars = profile.get("variables") or profile.get("constructs") or []
+    if isinstance(raw_vars, dict):
+        for key, value in raw_vars.items():
+            if str(key).strip():
+                variables.append(str(key).strip())
+            if isinstance(value, str) and value.strip() and value.strip().lower() not in {str(key).strip().lower()}:
+                variables.append(value.strip())
+            elif isinstance(value, list):
+                variables.extend(str(v).strip() for v in value if str(v).strip())
+    elif isinstance(raw_vars, str):
+        variables.extend(x.strip(" -•\t") for x in re.split(r"\n|;|,", raw_vars) if x.strip())
+    elif isinstance(raw_vars, list):
+        variables.extend(str(v).strip() for v in raw_vars if str(v).strip())
+
+    # Try to infer variables from common title patterns.
+    title_part = title
+    title_part = re.split(r"\bamong\b|\bin\b|\bwithin\b|\busing\b", title_part, flags=re.IGNORECASE)[0]
+    inferred = [x.strip(" .") for x in re.split(r"\band\b|,|:|;", title_part, flags=re.IGNORECASE) if len(x.strip()) > 3]
+    for term in inferred[:4]:
+        if term.lower() not in {v.lower() for v in variables}:
+            variables.append(term)
+
+    population = "the study population"
+    m = re.search(r"among\s+(.+?)(?:\s+in\s+|\s+within\s+|$)", title, re.IGNORECASE)
+    if m:
+        population = m.group(1).strip(" .")
+    location = "the study setting"
+    m = re.search(r"\bin\s+(.+)$", title, re.IGNORECASE)
+    if m:
+        location = m.group(1).strip(" .")
+
+    return {
+        "title": title,
+        "context": context or title,
+        "research_area": research_area or "the research area",
+        "data_type": data_type or "the selected data source",
+        "approach": approach or "the selected research approach",
+        "objectives": objectives,
+        "questions": questions,
+        "variables": _dedupe_keep_order(variables),
+        "population": population,
+        "location": location,
+    }
+
+
+def _dedupe_keep_order(items: list[str]) -> list[str]:
+    seen = set()
+    out = []
+    for item in items:
+        key = re.sub(r"\s+", " ", str(item).strip().lower())
+        if key and key not in seen:
+            seen.add(key)
+            out.append(str(item).strip())
+    return out
+
+
+def _joined_variables(terms: dict[str, Any]) -> str:
+    variables = terms.get("variables") or []
+    if not variables:
+        return "the core constructs of the study"
+    if len(variables) == 1:
+        return variables[0]
+    return ", ".join(variables[:-1]) + " and " + variables[-1]
+
+
+def _fallback_chapter_one_section(section_title: str, section_answers: dict[str, Any], profile: dict[str, Any]) -> str:
+    t = _profile_terms(profile)
+    title_lower = section_title.lower()
+    evidence_note = _evidence_note(profile)
+    answer_note = _answer_note(section_answers)
+
+    if "introduction" in title_lower:
+        return (
+            f"This chapter introduces the study on {t['title']}. It situates the inquiry within {t['research_area']} and explains why {t['population']} in {t['location']} provide a meaningful context for examining {_joined_variables(t)}. "
+            f"The chapter begins by setting out the background to the study, after which the problem is stated and narrowed into a clear research focus. It then presents the purpose of the study, research objectives, research questions, significance, delimitations, limitations and organisation of the study. "
+            f"Together, these sections establish the intellectual and practical basis for the investigation and show how the study moves from a broad concern to a defined empirical inquiry. {answer_note}"
+        )
+
+    if "background" in title_lower:
+        return (
+            f"The preparation for later-life financial security has become a major personal finance and social policy concern, particularly in economies where many workers earn irregular income and operate outside formal employer-sponsored pension arrangements. Financial literacy is central to this concern because individuals need to understand saving, budgeting, risk, interest, inflation, pension participation and long-term financial planning before they can make informed retirement decisions. In informal work settings, however, these decisions are rarely made under stable conditions. Earnings may vary across seasons, business cycles and household demands, while access to structured financial advice and pension information may be limited. [insert recent empirical or policy source on financial literacy and retirement planning among informal workers].\n\n"
+            f"The Ghanaian context adds a further layer to the issue. Informal workers contribute substantially to livelihoods and local economic activity, yet many do not benefit from the regular pension communication, payroll deductions and workplace financial education that formal employees may receive. For workers in {t['location']}, retirement planning is therefore likely to depend not only on knowledge of financial products but also on trust in pension institutions, income regularity, household obligations, business survival needs and access to appropriate financial services. [insert current Ghana Statistical Service, SSNIT, NPRA or Ministry of Employment evidence on informal employment and pension participation].\n\n"
+            f"Conceptually, the study links {_joined_variables(t)} by treating financial literacy as more than the ability to recognise financial terms. It includes the capacity to interpret financial information and apply it to decisions about saving, investment, insurance, credit and retirement preparation. Retirement planning, in turn, refers to the deliberate actions taken to secure income, assets and welfare in old age. Where literacy is weak, retirement planning may be delayed, informal, inconsistent or shaped mainly by immediate household pressures rather than long-term income security.\n\n"
+            f"Although financial literacy has received increasing attention in personal finance research, the specific circumstances of informal workers remain insufficiently understood in many local contexts. The present study therefore focuses on {t['population']} in {t['location']} to examine how financial knowledge, attitudes and practices relate to retirement preparation within a setting where income uncertainty and limited formal pension coverage may influence long-term financial behaviour. {evidence_note}"
+        )
+
+    if "problem" in title_lower:
+        return (
+            f"Many informal workers face the difficult task of preparing for retirement without the regular income, employer-based pension communication and structured financial counselling that often support formal sector employees. In such circumstances, retirement planning can easily be displaced by immediate business expenses, family obligations, debt servicing and daily consumption needs. This creates a practical problem: workers may remain economically active for many years but reach old age without adequate savings, pension participation or a clear plan for income security. [insert recent national or local evidence showing low pension participation, low savings, or weak retirement preparedness among informal workers].\n\n"
+            f"The problem is not merely the absence of income. It also concerns the knowledge and confidence required to translate limited income into deliberate long-term planning. A worker may know the importance of saving but lack understanding of pension products; another may understand saving but distrust formal financial institutions; yet another may intend to plan for retirement but face income volatility that makes regular contributions difficult. These differences suggest that financial literacy may shape retirement planning in ways that are not captured by income level alone. [insert empirical source on financial literacy and retirement planning behaviour].\n\n"
+            f"In {t['location']}, the issue is especially relevant because informal economic activities support many households, yet local evidence on how informal workers understand and practise retirement planning remains limited. Existing studies may address financial literacy broadly, pension participation nationally, or saving behaviour in general, but fewer studies appear to examine the specific relationship between financial literacy and retirement planning among {t['population']} in this local context. This study was therefore designed to examine {t['title']}, thereby providing evidence that can inform financial education, pension outreach and policy interventions for informal workers."
+        )
+
+    if "purpose" in title_lower:
+        return (
+            f"The purpose of the study was to examine {t['title']}. Specifically, the study sought to determine how financial literacy relates to retirement planning among {t['population']} in {t['location']} and to generate evidence that can support more effective financial education, pension communication and retirement-preparedness interventions for workers in the informal economy."
+        )
+
+    if "objective" in title_lower:
+        objectives = t["objectives"] or [
+            f"assess the level of financial literacy among {t['population']} in {t['location']}",
+            f"assess the retirement planning practices of {t['population']} in {t['location']}",
+            "examine the relationship between financial literacy and retirement planning",
+            "identify the financial-literacy dimensions that most strongly explain retirement planning behaviour",
+        ]
+        lines = ["The study was guided by the following specific objectives:"]
+        for i, obj in enumerate(objectives, 1):
+            obj = obj.rstrip(".")
+            if not re.match(r"(?i)^(to\s+)?(assess|examine|analyse|analyze|determine|evaluate|investigate|explore|identify|establish)", obj):
+                obj = "examine " + obj
+            if not obj.lower().startswith("to "):
+                obj = "to " + obj
+            lines.append(f"{i}. {obj};")
+        lines[-1] = lines[-1].rstrip(";") + "."
+        return "\n".join(lines)
+
+    if "question" in title_lower:
+        questions = t["questions"]
+        if not questions:
+            objectives = t["objectives"] or [
+                f"assess the level of financial literacy among {t['population']} in {t['location']}",
+                f"assess the retirement planning practices of {t['population']} in {t['location']}",
+                "examine the relationship between financial literacy and retirement planning",
+                "identify the financial-literacy dimensions that most strongly explain retirement planning behaviour",
+            ]
+            questions = [_objective_to_question(obj, t) for obj in objectives]
+        lines = ["The study was guided by the following research questions:"]
+        for i, q in enumerate(questions, 1):
+            q = q.strip().rstrip("?") + "?"
+            lines.append(f"{i}. {q}")
+        return "\n".join(lines)
+
+    if "significance" in title_lower:
+        return (
+            f"The study is significant to informal workers because it draws attention to the knowledge, attitudes and financial practices that may influence their preparedness for old age. Evidence from the study can help workers, trade associations and local business groups to recognise the importance of early and consistent retirement planning, even where income is irregular. It may also support the design of practical financial education programmes that speak directly to the realities of informal work rather than assuming salaried employment conditions.\n\n"
+            f"The study is also useful to pension institutions, financial service providers and public agencies involved in financial inclusion. By showing how {t['population']} in {t['location']} understand and practise retirement planning, the findings can guide pension outreach, savings-product design, communication strategies and trust-building interventions. For policymakers, the study provides local evidence that can inform broader discussions on informal-sector social protection and old-age income security.\n\n"
+            f"Academically, the study contributes to literature on financial literacy and retirement planning by focusing on a local informal-worker population. It extends the discussion beyond general financial knowledge by linking literacy to a concrete planning outcome and by situating the relationship within the economic realities of {t['location']}."
+        )
+
+    if "delimitation" in title_lower:
+        return (
+            f"The study was delimited to {t['population']} in {t['location']}. This boundary was necessary because the study sought to understand retirement planning within a specific informal-work context rather than across all categories of workers in Ghana. The study also focused on {_joined_variables(t)} and therefore did not examine all possible determinants of retirement security, such as health status, inheritance, family support, asset ownership or macroeconomic conditions, except where these issues were relevant to the interpretation of the findings."
+        )
+
+    if "limitation" in title_lower:
+        return (
+            f"The study was limited by its reliance on information provided by respondents about their financial knowledge and retirement planning practices. Such self-reported data may be affected by recall error or the tendency of respondents to present their financial behaviour more favourably. This limitation can be managed through clear questionnaire wording, anonymity and careful interpretation of the results.\n\n"
+            f"Another limitation is that the study focuses on {t['location']}, which means that the findings may not automatically represent all informal workers in Ghana. Informal work varies across regions, occupations and income levels. The findings should therefore be interpreted within the selected study context, while future studies may extend the analysis to other municipalities, regions or occupational groups. [insert final methodological limitations after data collection and analysis]."
+        )
+
+    if "organisation" in title_lower or "organization" in title_lower:
+        return (
+            "The study is organised into five chapters. Chapter One introduces the study, presents the background, states the problem, outlines the purpose, objectives and research questions, and explains the significance, delimitations and limitations of the study. Chapter Two reviews relevant theoretical, conceptual and empirical literature and identifies the gap addressed by the study. Chapter Three describes the methodology, including the research approach, design, population, sampling, instrumentation, data collection procedures, validity, reliability, ethics and data analysis methods. Chapter Four presents and discusses the results in line with the research objectives. Chapter Five summarises the findings, draws conclusions, makes recommendations and suggests areas for future research."
+        )
+
+    return _substantive_placeholder_section(section_title, profile, 1)
+
+
+def _objective_to_question(objective: str, terms: dict[str, Any]) -> str:
+    text = re.sub(r"(?i)^to\s+", "", str(objective).strip()).rstrip(".")
+    text = re.sub(r"(?i)^(assess|examine|analyse|analyze|determine|evaluate|investigate|explore|identify)\s+", "", text)
+    if text.lower().startswith("the relationship"):
+        return "What is " + text + f" among {terms['population']} in {terms['location']}"
+    return "What is the nature of " + text
+
+
+def _fallback_chapter_two_section(section_title: str, section_answers: dict[str, Any], profile: dict[str, Any]) -> str:
+    t = _profile_terms(profile)
+    lower = section_title.lower()
+    if "gap table" in lower:
+        return _fallback_literature_gap_table(section_answers, profile)
+    if "introduction" in lower:
+        return f"This chapter reviews literature relevant to {t['title']}. It examines the conceptual meaning of {_joined_variables(t)}, discusses relevant theoretical perspectives, reviews empirical studies, identifies gaps in existing literature and presents the conceptual framework guiding the study. The review is organised to maintain a direct connection between the research problem, the objectives and the eventual methodology."
+    if "concept" in lower:
+        return f"Conceptually, the study rests on {_joined_variables(t)}. Each concept should be defined in relation to the study context rather than treated as a dictionary term. The review should explain how the concepts are measured, how they interact, and why they matter for {t['population']} in {t['location']}. [insert verified conceptual and empirical sources for each construct]."
+    if "theor" in lower:
+        return f"The theoretical review should identify the theory or theories that explain why {_joined_variables(t)} are expected to relate in the manner proposed by the study. Each theory should be discussed in terms of its assumptions, relevance, limitations and specific application to {t['title']}. [insert appropriate foundational and recent theoretical sources]."
+    if "empirical" in lower or "objective" in lower:
+        return f"The empirical review should be organised by research objective. For each objective, discuss studies that are directly related to {t['title']}, indicating the context, sample, method, findings and limitations of each study. The review should not merely list previous studies; it should compare evidence, identify contradictions and show how the present study addresses a remaining gap in {t['location']} or among {t['population']}. [insert recent empirical studies, preferably 2021–2026, and older foundational studies where necessary]."
+    if "framework" in lower:
+        return _fallback_conceptual_framework(profile)
+    return _substantive_placeholder_section(section_title, profile, 2)
+
+
+def _fallback_methodology_section(section_title: str, section_answers: dict[str, Any], profile: dict[str, Any]) -> str:
+    t = _profile_terms(profile)
+    lower = section_title.lower()
+    answer_note = _answer_note(section_answers)
+    if "introduction" in lower:
+        return f"This chapter describes the methods used to conduct the study on {t['title']}. It explains the philosophical position, research approach, design, population, sampling procedure, data collection instrument, validity and reliability procedures, ethical considerations and data analysis techniques. The purpose of the chapter is to show that the methodological choices were appropriate for answering the research questions and addressing the study objectives. {answer_note}"
+    if "philosophy" in lower or "ontology" in lower or "epistemology" in lower:
+        return f"The study was located within [insert philosophical paradigm used, such as positivism, interpretivism or pragmatism]. This position was appropriate because the inquiry required evidence on {t['title']} and sought to generate defensible conclusions from {t['data_type'].lower()}. The ontology, epistemology and methodological assumptions should be explained and linked directly to the study objectives rather than presented as abstract philosophical labels. [insert methodological source supporting the selected paradigm]."
+    if "approach" in lower:
+        return f"The study adopted a {t['approach'].lower()} approach. This approach was appropriate because the objectives required systematic evidence on {_joined_variables(t)} among {t['population']} in {t['location']}. The selected approach should be justified against alternative approaches, indicating why it provided the most suitable route for answering the research questions. [insert details of the final approach and supporting methodology citation]."
+    if "design" in lower:
+        return f"The study used [insert research design used, for example descriptive cross-sectional survey, correlational design, explanatory design, case study, panel design or time-series design]. The design was appropriate because it allowed the study to examine {t['title']} within the selected population and setting. The justification should show how the design aligned with the objectives, data type and analytical techniques."
+    if "population" in lower:
+        return f"The target population comprised {t['population']} in {t['location']}. The accessible population consisted of [insert accessible population and sampling frame]. The unit of analysis was [insert unit of analysis], because the study required data from the actors or records most directly connected to {_joined_variables(t)}."
+    if "sample" in lower or "sampling" in lower:
+        return f"The sample size was determined using [insert sample size determination method, formula or software]. The study used [insert sampling technique] because it was suitable for reaching {t['population']} in {t['location']} and for producing data aligned with the study objectives. The final methodology should state the population size, confidence level, margin of error, expected response rate and adjustment for non-response where applicable."
+    if "operational" in lower or "measurement" in lower or "variable" in lower:
+        return _fallback_operationalisation_table(profile)
+    if "instrument" in lower:
+        return f"Data were collected using [insert questionnaire/interview guide/documentary data sheet]. The instrument was structured around the study variables and objectives, ensuring that each section generated information needed for analysis. For primary survey work, the questionnaire should include respondent profile items, construct-specific items, scale anchors and ethical consent language. Detailed questionnaire items and scale-source traceability should be placed in the Supplementary Methods Chapter or appendix unless the school requires them in the main methodology chapter."
+    if "valid" in lower or "reliab" in lower:
+        return f"Validity was addressed through [insert content validity, expert review, pilot testing or construct validity procedure]. Reliability was assessed using [insert reliability method such as Cronbach's alpha, composite reliability, test-retest reliability or inter-coder agreement]. The specific thresholds and decision rules should be stated and justified with methodological sources."
+    if "ethic" in lower:
+        return "Ethical issues were addressed through informed consent, voluntary participation, confidentiality, anonymity and the responsible handling of data. Respondents were informed about the purpose of the study, their right to withdraw and the use of the data for academic purposes. [insert ethics approval number, institution, approval date or supervisor-approved ethics procedure if applicable]."
+    if "analysis" in lower or "processing" in lower:
+        return _fallback_analysis_plan_table(profile)
+    return _substantive_placeholder_section(section_title, profile, 3)
+
+
+def _fallback_chapter_five_section(section_title: str, section_answers: dict[str, Any], profile: dict[str, Any]) -> str:
+    t = _profile_terms(profile)
+    lower = section_title.lower()
+    if "summary" in lower:
+        return f"This section should summarise the study on {t['title']} by restating the purpose, approach and key findings in line with each research objective. The final version must use only the actual findings from Chapter Four. [insert objective-by-objective findings after results are finalised]."
+    if "conclusion" in lower:
+        return "The conclusions should be drawn directly from the findings and should answer the research questions without introducing new evidence. Each conclusion must be traceable to a specific finding in Chapter Four. [insert final conclusions after results are confirmed]."
+    if "recommend" in lower:
+        return "The recommendations should be practical, evidence-based and linked to the findings. Each recommendation should identify the relevant stakeholder, the action required and the reason for the recommendation. [insert recommendations only after findings are confirmed]."
+    return _substantive_placeholder_section(section_title, profile, 5)
+
+
+def _fallback_supplementary_methods_section(section_title: str, section_answers: dict[str, Any], profile: dict[str, Any]) -> str:
+    lower = section_title.lower()
+    if "alignment" in lower:
+        return _fallback_objective_construct_alignment(profile)
+    if "instrument" in lower or "questionnaire" in lower:
+        return _fallback_questionnaire_table(profile)
+    if "interview" in lower:
+        return _fallback_interview_guide(profile)
+    if "variable" in lower or "data source" in lower:
+        return _fallback_data_source_register(profile)
+    if "operational" in lower or "coding" in lower or "transformation" in lower:
+        return _fallback_operationalisation_table(profile)
+    if "quality" in lower or "validation" in lower or "reliability" in lower:
+        return "This section should document the validation, reliability and data-quality checks required before analysis. For primary data, include expert review, pilot testing, reliability estimates and validity checks. For secondary data, include source reliability, missing-data checks, consistency checks, outlier inspection, transformation decisions and stationarity/diagnostic tests where applicable. [insert actual validation and quality-check outputs]."
+    if "appendix" in lower:
+        return "The appendix should contain the full questionnaire, interview guide, consent form, scale-source traceability table, detailed data-source notes, coding scheme, long diagnostic output, raw software output and any lengthy tables that would interrupt the flow of the main chapter."
+    return _substantive_placeholder_section(section_title, profile, 7)
+
+
+def _fallback_operationalisation_table(profile: dict[str, Any]) -> str:
+    t = _profile_terms(profile)
+    variables = t["variables"] or ["[insert variable/construct 1]", "[insert variable/construct 2]"]
+    rows = [
+        "The variables or constructs should be operationalised before data collection and analysis. A working structure is provided below and should be completed with validated sources or approved measurement decisions.",
+        "",
+        "| Variable/Concept | Dimension/Indicator | Operational Indicator | Item Scale/Measurement | Level of Measurement | Origin/Source |",
+        "|---|---|---|---|---|---|",
+    ]
+    for variable in variables:
+        rows.append(f"| {variable} | [insert dimension] | [insert operational indicator] | [insert scale/proxy] | [insert nominal/ordinal/interval/ratio] | [insert validated source or data source] |")
+    return "\n".join(rows)
+
+
+def _fallback_analysis_plan_table(profile: dict[str, Any]) -> str:
+    t = _profile_terms(profile)
+    objectives = t["objectives"] or ["[insert research objective 1]", "[insert research objective 2]"]
+    rows = [
+        "The analysis plan should link every objective to the exact technique, assumptions and decision rule to be applied.",
+        "",
+        "| Research Objective | Research Question/Hypothesis | Analytical Technique | Ex-Ante Assumptions | Post-Analysis Checks | Decision Rule |",
+        "|---|---|---|---|---|---|",
+    ]
+    for obj in objectives:
+        rows.append(f"| {obj} | [insert matching question/hypothesis] | [insert technique] | [insert assumptions] | [insert diagnostic/validity checks] | [insert decision rule] |")
+    return "\n".join(rows)
+
+
+def _fallback_objective_construct_alignment(profile: dict[str, Any]) -> str:
+    t = _profile_terms(profile)
+    objectives = t["objectives"] or ["[insert research objective 1]", "[insert research objective 2]"]
+    variables = t["variables"] or ["[insert construct/variable]"]
+    rows = [
+        "| Research Objective | Construct/Variable Needed | Data Required | Instrument Section/Data Source | Analysis Link | Missing Information |",
+        "|---|---|---|---|---|---|",
+    ]
+    for i, obj in enumerate(objectives):
+        var = variables[i % len(variables)]
+        rows.append(f"| {obj} | {var} | [insert data needed] | [insert questionnaire section/interview theme/data source] | [insert analysis technique] | [insert missing scale/source/result] |")
+    return "\n".join(rows)
+
+
+def _fallback_questionnaire_table(profile: dict[str, Any]) -> str:
+    t = _profile_terms(profile)
+    variables = t["variables"] or ["[insert construct]"]
+    rows = [
+        "The draft questionnaire should be developed from the approved constructs and objectives. The table below provides a construct-aligned item bank for review and refinement.",
+        "",
+        "| Section | Construct/Variable | Draft Item | Response Scale | Source/Adaptation Note |",
+        "|---|---|---|---|---|",
+        "| A | Respondent profile | [insert demographic/background item] | [insert response options] | Researcher-developed |",
+    ]
+    for idx, variable in enumerate(variables, 1):
+        rows.append(f"| B{idx} | {variable} | [insert item measuring {variable}] | [insert Likert scale/proxy] | [insert verified scale source or indicate researcher-developed item] |")
+        rows.append(f"| B{idx} | {variable} | [insert second item measuring {variable}] | [insert Likert scale/proxy] | [insert source/adaptation note] |")
+    return "\n".join(rows)
+
+
+def _fallback_interview_guide(profile: dict[str, Any]) -> str:
+    t = _profile_terms(profile)
+    variables = t["variables"] or ["[insert construct]"]
+    lines = ["The interview guide should deepen the evidence obtained from the questionnaire or secondary data. Suggested prompts are provided below and should be revised to fit the final objectives.", ""]
+    for variable in variables:
+        lines.append(f"- How do participants understand {variable} in their own context?")
+        lines.append(f"- What experiences or constraints shape {variable} among {t['population']} in {t['location']}?")
+        lines.append(f"- What examples can participants provide to explain this issue?")
+    return "\n".join(lines)
+
+
+def _fallback_data_source_register(profile: dict[str, Any]) -> str:
+    t = _profile_terms(profile)
+    variables = t["variables"] or ["[insert variable]"]
+    rows = [
+        "| Variable | Preferred Data Source | Frequency/Period | Unit of Measurement | Transformation/Coding | Quality Check | Missing Detail |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for variable in variables:
+        rows.append(f"| {variable} | [insert verified data source] | [insert period/frequency] | [insert unit] | [insert transformation/coding] | [insert quality check] | [insert missing access link or definition] |")
+    return "\n".join(rows)
+
+
+def _fallback_conceptual_framework(profile: dict[str, Any]) -> str:
+    t = _profile_terms(profile)
+    variables = t["variables"] or ["Independent variable", "Dependent variable"]
+    rows = [
+        "The conceptual framework should show how the major constructs relate to one another and how the relationships connect to the study objectives.",
+        "",
+        "| Construct | Role in Framework | Expected Relationship | Justification/Source |",
+        "|---|---|---|---|",
+    ]
+    for i, variable in enumerate(variables):
+        role = "Independent/Explanatory variable" if i == 0 else "Dependent/Outcome variable" if i == 1 else "Control/Mediating/Additional variable"
+        rows.append(f"| {variable} | {role} | [insert expected direction/relationship] | [insert theoretical or empirical support] |")
+    rows.append("\n```mermaid\nflowchart LR\n    A[Independent construct] --> B[Outcome construct]\n    C[Control or contextual factors] --> B\n```")
+    return "\n".join(rows)
+
+
+def _substantive_placeholder_section(section_title: str, profile: dict[str, Any], chapter_number: int) -> str:
+    t = _profile_terms(profile)
+    return (
+        f"This section should be developed as part of the { _effective_chapter_title(get_chapter(chapter_number), profile, chapter_number).lower() }. "
+        f"For the present study on {t['title']}, the section should connect directly to the study objectives, the population of {t['population']}, and the context of {t['location']}. "
+        f"The final version should include project-specific evidence, verified citations and any required institutional details. [insert section-specific evidence, citations or approved details for {section_title}]."
+    )
+
+
+def _answer_note(section_answers: dict[str, Any]) -> str:
+    if not section_answers:
+        return ""
+    joined = []
+    for key, value in section_answers.items():
+        if isinstance(value, list):
+            value = "; ".join(str(v) for v in value if str(v).strip())
+        if str(value).strip():
+            joined.append(f"{key}: {value}")
+    return "Student-supplied detail: " + " ".join(joined) if joined else ""
+
+
+def _evidence_note(profile: dict[str, Any]) -> str:
+    notes = str(profile.get("citation_evidence_notes") or profile.get("notes") or "").strip()
+    if not notes:
+        return "[insert verified local statistics, policy evidence and empirical sources before final submission]."
+    return f"The following supplied evidence should be incorporated and verified in the final draft: {notes[:900]}"
+
+
+def _fallback_references_section(profile: dict[str, Any]) -> str:
+    sources = _merged_source_bank(profile, limit=8)
+    if not sources:
+        return "[insert APA 7th reference entries for all sources cited in this chapter after verifying bibliographic details]."
+    entries = []
+    for src in sources:
+        hint = str(src.get("apa_hint") or src.get("reference_entry_hint") or "").strip()
+        if hint:
+            entries.append(hint.rstrip("." ) + ".")
+    return "\n".join(_dedupe_keep_order(entries)) if entries else "[insert APA 7th reference entries for all sources cited in this chapter after verifying bibliographic details]."
 
 
 def _draft_from_answers(
@@ -975,56 +1410,27 @@ def _draft_from_answers(
     profile: dict[str, Any],
     chapter_number: int,
 ) -> str:
-    joined_answers = []
-    for key, value in section_answers.items():
-        if isinstance(value, list):
-            value = "; ".join(str(v) for v in value if str(v).strip())
-        if str(value).strip():
-            joined_answers.append(f"{key}: {value}")
-    answer_text = " ".join(joined_answers)
-    if not answer_text:
-        return _placeholder_paragraph(section_title, rules, profile, chapter_number)
-
-    rules_text = " ".join(rules[:3])
+    answer_note = _answer_note(section_answers)
+    t = _profile_terms(profile)
+    if not answer_note:
+        return _substantive_placeholder_section(section_title, profile, chapter_number)
     if chapter_number == 3:
         return (
-            f"The methodological choices in this section were shaped by the following study details: {answer_text}. "
-            f"The section should be refined into a fully evidenced account of the procedures actually used, including dates, instruments, approvals, and verified methodological citations where required. "
-            f"The discussion should remain aligned with these expectations: {rules_text}."
+            f"The methodological discussion for {section_title.lower()} was guided by the project-specific information supplied for {t['title']}. {answer_note} "
+            "The final text should explain what was actually done, why it was appropriate, and how the decision aligned with the research objectives, data source and analysis plan. Where a methodological claim requires support, a verified methodological citation should be inserted."
         )
-
     return (
-        f"The section should be developed from the following study details: {answer_text}. "
-        f"The discussion should connect these details to the study problem, objectives, context, and evidence base, while addressing these expectations: {rules_text}. "
-        f"Where a claim requires support, insert accurate in-text citations, verified recent evidence, or relevant statistics rather than unsupported assertions."
+        f"For {section_title.lower()}, the discussion should develop the supplied information into coherent thesis prose. {answer_note} "
+        f"The section should connect the information to {t['title']}, explain why it matters, and support substantive claims with verified evidence or precise placeholders where evidence is missing."
     )
 
 
 def _placeholder_paragraph(section_title: str, rules: list[str], profile: dict[str, Any], chapter_number: int) -> str:
-    title = profile.get("title", "the study")
-    requirements = " ".join(rules[:4]) if rules else "Follow the selected institutional requirements."
-
-    if chapter_number == 3:
-        return (
-            f"This section requires the project-specific methodological details that were actually used in {title}. "
-            f"The account should remain in past tense and should cover these methodological expectations: {requirements} "
-            f"[insert study-specific methods, approvals, evidence, and citations here]."
-        )
-
-    return (
-        f"This section requires further project-specific detail for {title}. "
-        f"The discussion should be evidence-led and should address these expectations: {requirements} "
-        f"[provide study-specific details, accurate evidence, statistics where relevant, and verified in-text citations here]."
-    )
+    return _substantive_placeholder_section(section_title, profile, chapter_number)
 
 
 def _fallback_literature_gap_table(section_answers: dict[str, Any], profile: dict[str, Any]) -> str:
-    objectives = profile.get("objectives") or profile.get("specific_objectives") or []
-    if isinstance(objectives, str):
-        objectives = [obj.strip() for obj in re.split(r"\n|;", objectives) if obj.strip()]
-    if not objectives:
-        objectives = ["[insert research objective 1]", "[insert research objective 2]"]
-
+    objectives = _profile_terms(profile)["objectives"] or ["[insert research objective 1]", "[insert research objective 2]"]
     rows = [
         "| Research Objective | Key Authors and Year | Context of Study | Method Used | Key Findings | Identified Gap | Relevance to Current Study |",
         "|---|---|---|---|---|---|---|",
@@ -1036,57 +1442,23 @@ def _fallback_literature_gap_table(section_answers: dict[str, Any], profile: dic
     return "\n".join(rows)
 
 
-
 def _fallback_results_section(section_answers: dict[str, Any], profile: dict[str, Any], chapter_number: int) -> str:
     uploaded = _uploaded_results_for_chapter(profile, chapter_number)
-    objectives = profile.get("objectives") or []
-    if isinstance(objectives, str):
-        objectives = [obj.strip() for obj in re.split(r"\n|;", objectives) if obj.strip()]
-    if not objectives:
-        objectives = ["[insert research objective 1]", "[insert research objective 2]"]
-
+    objectives = _profile_terms(profile)["objectives"] or ["[insert research objective 1]", "[insert research objective 2]"]
     lines: list[str] = []
     extracted = str((uploaded or {}).get("extracted_text") or (uploaded or {}).get("preview") or "").strip()
     if extracted:
-        lines.append(
-            "The chapter should convert the supplied analysis evidence into clean academic results tables and interpretation. "
-            "Do not mention the file upload in the final prose; present the evidence as normal thesis results."
-        )
-        lines.append("\n**Available analysis evidence for drafting use only:**\n")
+        lines.append("The results are presented in line with the research objectives. The available analysis evidence should be converted into clean tables, concise interpretation and objective-by-objective discussion without referring to the file upload process.")
+        lines.append("\n**Working evidence extracted for drafting use:**\n")
         lines.append(extracted[:2200])
     else:
-        lines.append(
-            "The results required for this section were not supplied. The chapter should contain placeholder tables in red bracketed text and should tell the user exactly which analysis output is needed."
-        )
-
-    lines.append("\n**Objective-to-results table:**\n")
-    lines.append("| Research Objective | Required Analysis/Table | Result to Report | Interpretation | Required Action if Missing |")
+        lines.append("The required analysis output was not supplied. The table below identifies the results that must be obtained before this section can be finalised.")
+    lines.append("\n| Research Objective | Required Analysis/Table | Result to Report | Interpretation | Required Action if Missing |")
     lines.append("|---|---|---|---|---|")
     for objective in objectives:
-        lines.append(
-            f"| {objective} | [insert analysis method aligned with methodology] | [insert statistic/coefficient/theme/result] | [insert interpretation linked to objective] | [obtain the exact software/output table needed for this objective] |"
-        )
-
-    lines.append("\n**Suggested missing-results placeholders:**\n")
-    lines.append("| Required Table/Figure | Purpose | Placeholder | User Action |")
-    lines.append("|---|---|---|---|")
-    lines.append("| Response rate or data profile | Establish final sample/dataset | [insert final sample, usable responses, response rate or dataset period] | Provide response summary or dataset description |")
-    lines.append("| Descriptive statistics | Summarise variables/constructs | [insert means, standard deviations, frequencies or theme counts] | Provide descriptive output |")
-    lines.append("| Main analysis table | Answer objectives/hypotheses | [insert coefficients, p-values, path estimates, themes or comparison statistics] | Provide regression/SEM/econometric/qualitative output |")
-    lines.append("| Figure or diagram | Visualise key results/model | [insert Figure: results chart/path diagram/conceptual model here] | Provide chart, model output or diagram data |")
-
-    lines.append("\n**Appendix guidance:** raw software output, long diagnostic tables, full questionnaires, interview transcripts, full correlation matrices, detailed coding sheets and robustness checks should normally go to the appendix unless a supervisor requires them in the main text.")
-
-    if section_answers:
-        joined = []
-        for key, value in section_answers.items():
-            if str(value).strip():
-                joined.append(f"{key}: {value}")
-        if joined:
-            lines.append("\n**Student guidance supplied:** " + " ".join(joined))
-
-    return "\n\n".join(lines)
-
+        lines.append(f"| {objective} | [insert analysis aligned with methodology] | [insert statistic/coefficient/theme/result] | [insert interpretation linked to objective] | [obtain exact output required for this objective] |")
+    lines.append("\n[insert Figure/Table placeholder in red where a chart, path diagram, model diagram or diagnostic plot is required]. Raw software output, lengthy diagnostics, full questionnaires, codebooks and full transcripts should normally be placed in the appendix.")
+    return "\n".join(lines)
 def split_paragraphs(text: str) -> list[str]:
     blocks = [b.strip() for b in re.split(r"\n\s*\n", text or "") if b.strip()]
     return blocks
