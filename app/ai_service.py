@@ -611,7 +611,139 @@ def _increase_natural_variation(text: str) -> str:
         text = text[:short_pair.start()] + joined + text[short_pair.end():]
 
     return text
+import random
+import re
 
+def _enforce_burstiness(text: str, target_std_dev: float = 14.0, max_uniform: int = 3) -> str:
+    """
+    Post‑process to guarantee sentence length variance.
+    Splits over‑long sentences, merges very short consecutive ones, and breaks uniform runs.
+    """
+    if not text:
+        return text
+
+    # Split into sentences (simple heuristic)
+    sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text)
+    if len(sentences) < 4:
+        return text
+
+    lengths = [len(s.split()) for s in sentences]
+    mean_len = sum(lengths) / len(lengths)
+    std_dev = (sum((l - mean_len) ** 2 for l in lengths) / len(lengths)) ** 0.5
+
+    # If already above target, just break uniform runs
+    if std_dev >= target_std_dev:
+        # Break any run of >max_uniform sentences with similar length
+        new_sentences = []
+        run_len = 1
+        for i in range(1, len(sentences)):
+            if abs(lengths[i] - lengths[i-1]) <= 3:
+                run_len += 1
+            else:
+                run_len = 1
+            if run_len > max_uniform:
+                # Insert a short clause in the middle of the run
+                insert_pos = i - run_len//2
+                short_clause = " That is, it matters. "
+                sentences[insert_pos] += short_clause
+                run_len = 0
+        text = " ".join(sentences)
+        return text
+
+    # Need to increase variance: split some long sentences and merge short ones
+    new_sentences = []
+    for s in sentences:
+        word_count = len(s.split())
+        if word_count > 30 and random.random() < 0.4:
+            # Split at a conjunction or comma
+            split_points = [m.start() for m in re.finditer(r'(,|;|and|but|or)\s+', s)]
+            if split_points:
+                split_at = split_points[len(split_points)//2]
+                first = s[:split_at].rstrip()
+                second = s[split_at:].lstrip()
+                # Capitalise second if needed
+                if second and second[0].islower():
+                    second = second[0].upper() + second[1:]
+                new_sentences.append(first + ".")
+                new_sentences.append(second)
+                continue
+        # Merge very short consecutive sentences (<5 words each)
+        new_sentences.append(s)
+
+    # Merge short adjacent sentences
+    merged = []
+    skip = False
+    for i in range(len(new_sentences)):
+        if skip:
+            skip = False
+            continue
+        if i + 1 < len(new_sentences):
+            len_i = len(new_sentences[i].split())
+            len_j = len(new_sentences[i+1].split())
+            if len_i <= 7 and len_j <= 7 and random.random() < 0.5:
+                combined = new_sentences[i].rstrip('.!?') + ', ' + new_sentences[i+1].lower()
+                merged.append(combined)
+                skip = True
+                continue
+        merged.append(new_sentences[i])
+
+    return " ".join(merged)
+
+def _add_drafting_artefacts(text: str, probability_per_500_words: float = 0.6) -> str:
+    """
+    Inject occasional false starts, dashes, and conversational asides.
+    Mimics a student editing while writing.
+    """
+    if not text or random.random() > probability_per_500_words:
+        return text
+
+    # Patterns to randomly apply
+    artefacts = [
+        # False start with dash correction
+        (r'(\bThe\s+\w+\s+is\b)', r'The – or rather, the \1 – '),
+        # Conversational aside in parentheses
+        (r'(\b[a-z]+ly\b)', r'\1 (a point often overlooked)'),
+        # Self‑interruption with "But wait –"
+        (r'(\.\s+)(However|Nevertheless|Moreover)', r'\1But wait – \2'),
+        # Over‑specified then simplified
+        (r'(\b[a-z]{6,}\s+and\s+[a-z]{6,}\b)', r'\1 – or more simply, the central issue – '),
+    ]
+
+    for pattern, repl in artefacts:
+        if random.random() < 0.3:
+            text = re.sub(pattern, repl, text, count=1, flags=re.IGNORECASE)
+
+    # Also add one footnote-like parenthetical remark
+    if random.random() < 0.4 and "(" not in text[:500]:
+        # Insert after first period
+        match = re.search(r'\.\s+', text)
+        if match:
+            insert_pos = match.end()
+            remark = " (a nuance that careful readers will note) "
+            text = text[:insert_pos] + remark + text[insert_pos:]
+
+    return text
+
+def _boost_lexical_richness(text: str) -> str:
+    """Replace overused academic phrases with rarer but correct alternatives."""
+    replacements = {
+        r'\bshows that\b': 'indicates that',
+        r'\bsuggests that\b': 'implies that',
+        r'\bdemonstrates that\b': 'exemplifies how',
+        r'\bimportant role\b': 'non‑trivial function',
+        r'\bsignificant\b': 'meaningful',
+        r'\bhowever\b': 'nevertheless',
+        r'\btherefore\b': 'consequently',
+        r'\bfor example\b': 'as an illustration',
+        r'\bbecause\b': 'insofar as',
+        r'\bthe study\b': 'the present investigation',
+        r'\bits findings\b': 'the results obtained',
+    }
+    for pattern, repl in replacements.items():
+        if random.random() < 0.25:  # only replace a subset
+            text = re.sub(pattern, repl, text, flags=re.IGNORECASE)
+    return text
+    
 def _polish_generated_text(text: str) -> str:
     """Lightly remove common proposal/meta phrases that weaken scholarly output."""
     if not text:
@@ -976,7 +1108,12 @@ def generate_chapter(
                 profile=profile,
                 chapter_number=chapter_number,
             )
-
+            # ========== NEW HIGHER HUMAN‑LIKE QUALITY PASSES ==========
+            if len(polished.split()) > 500:
+                polished = _enforce_burstiness(polished, target_std_dev=14.0)      # new
+                polished = _add_drafting_artefacts(polished, probability_per_500_words=0.5)  # new
+                polished = _boost_lexical_richness(polished)                       # new
+    # ===========================================================
             return polished, "openai_responses_api"
 
     # Fallback when AI is disabled or fails
