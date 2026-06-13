@@ -821,7 +821,32 @@ Rewritten text:"""
     except Exception:
         return text
 
+def _destroy_pangram_triggers(text: str) -> str:
+    """Remove or replace words and patterns that Pangram/GPTZero flag."""
+    # 1. Replace trigger words
+    replacements = {
+        r'\bFurthermore\b': 'Also',
+        r'\bMoreover\b': 'Also',
+        r'\bIn conclusion\b': 'So',
+        r'\btapestry\b': 'array',
+        r'\btestify\b': 'show',
+        r'\bdelve\b': 'examine',
+        r'\bcrucial\b': 'important',
+        r'\bit is important to note\b': '',
+        r'\bvital\b': 'central',
+        r'\bremainder\b': 'rest',
+    }
+    for pattern, repl in replacements.items():
+        text = re.sub(pattern, repl, text, flags=re.IGNORECASE)
 
+    # 2. Break Rule of Three (three consecutive adjectives/verbs)
+    #    Simple heuristic: replace three adjectives joined by commas or 'and'
+    text = re.sub(r'(\w+), (\w+) and (\w+)\b', r'\1 and \2, also \3', text)
+
+    # 3. Force short sentence in every 200 words (already in _force_short_sentences)
+    #    Ensure it runs after this function.
+
+    return text
 def _add_human_noise(text: str, error_probability: float = 0.02) -> str:
     """Introduce very small, realistic human typing errors and inconsistencies."""
     if not text or len(text) < 200:
@@ -1214,15 +1239,15 @@ def generate_chapter(
             polished = _cluster_citations(polished)
             polished = _vary_paragraph_openings(polished)
             polished = _force_short_sentences(polished, target_every_n_words=200)
-
+            
             # 7. Cloud‑based small‑model rewrite (Groq) – strongly recommended
-            #    (falls back to no rewrite if GROQ_API_KEY not set)
-           
-
+            polished = _humanize_with_small_model(polished)
+            
             # 8. Final subtle noise (typos, spacing errors)
             polished = _add_human_noise(polished, error_probability=0.015)
-
+            
             return polished, "openai_responses_api"
+
 
     # Fallback when AI is disabled or fails
     return (
