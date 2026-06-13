@@ -159,14 +159,30 @@ def draft_chapter(project_id: str, payload: DraftRequest):
         project["profile"]["other_chapter_instructions"] = other_instructions
         extra_instructions = (extra_instructions + "\n\n" + f"Other chapter title: {other_title}\nUser-specified chapter requirements: {other_instructions}").strip()
 
-    draft, source = generate_chapter(
-        profile=project["profile"],
-        chapter_number=payload.chapter_number,
-        selected_section_ids=payload.selected_section_ids,
-        answers=payload.answers,
-        extra_instructions=extra_instructions,
-        use_ai=payload.use_ai,
-    )
+    generation_warning = ""
+    try:
+        draft, source = generate_chapter(
+            profile=project["profile"],
+            chapter_number=payload.chapter_number,
+            selected_section_ids=payload.selected_section_ids,
+            answers=payload.answers,
+            extra_instructions=extra_instructions,
+            use_ai=payload.use_ai,
+        )
+    except Exception as exc:
+        # Never let a provider timeout, stale frontend payload, custom chapter, or
+        # unexpected section ID produce a generic Internal Server Error. Return a
+        # usable local draft and surface a clear warning to the frontend.
+        generation_warning = f"AI generation could not complete safely; a structured local fallback was returned. Details: {str(exc)[:180]}"
+        draft, source = generate_chapter(
+            profile=project["profile"],
+            chapter_number=payload.chapter_number,
+            selected_section_ids=payload.selected_section_ids,
+            answers=payload.answers,
+            extra_instructions=extra_instructions,
+            use_ai=False,
+        )
+        source = source + "_after_error"
 
     drafts = project.get("drafts", {})
     drafts[str(payload.chapter_number)] = draft
@@ -189,6 +205,7 @@ def draft_chapter(project_id: str, payload: DraftRequest):
         "chapter_title": chapter.get("chapter_title"),
         "draft": draft,
         "source": source,
+        "warning": generation_warning,
     }
 
 
