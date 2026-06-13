@@ -200,6 +200,12 @@ def draft_chapter(project_id: str, payload: DraftRequest):
         )
         conn.commit()
 
+    if not generation_warning and str(source).startswith("local_template_fallback"):
+        generation_warning = (
+            "The AI provider did not return a full chapter, so ProjectReady AI produced an expanded local thesis draft. "
+            "For the strongest supervisor-ready output, confirm the API key/model, add project-specific evidence, and regenerate with AI enabled."
+        )
+
     return {
         "chapter_number": payload.chapter_number,
         "chapter_title": chapter.get("chapter_title"),
