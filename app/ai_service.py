@@ -1217,7 +1217,7 @@ def generate_chapter(
 
             # 7. Cloud‑based small‑model rewrite (Groq) – strongly recommended
             #    (falls back to no rewrite if GROQ_API_KEY not set)
-            polished = _humanize_with_small_model(polished)
+           
 
             # 8. Final subtle noise (typos, spacing errors)
             polished = _add_human_noise(polished, error_probability=0.015)
