@@ -524,6 +524,9 @@ async function generateDraft() {
   $("draftOutput").value = result.draft;
   renderDraftPreview(result.draft);
   showDraftQualityHint(result.draft);
+  if (result.warning) {
+    $("draftStatus").textContent = result.warning + " Review and complete the placeholders before export.";
+  }
   $("downloadDraftBtn").disabled = false;
 }
 
