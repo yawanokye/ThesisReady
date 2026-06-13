@@ -5,7 +5,7 @@ import os
 import re
 import random
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 from dotenv import load_dotenv
 
@@ -23,7 +23,6 @@ def _safe_get_openai_client():
         return OpenAI(api_key=api_key)
     except Exception:
         return None
-
 
 
 def _reference_currency_requirements() -> dict[str, Any]:
@@ -118,7 +117,6 @@ def _uploaded_results_for_chapter(profile: dict[str, Any], chapter_number: int) 
     if chapter_number == 4 and not result:
         result = uploaded.get("4")
     return result or {}
-
 
 
 def _normalise_author_for_citation(author: str) -> str:
@@ -276,9 +274,9 @@ def _retrieved_sources_for_prompt(profile: dict[str, Any], chapter_number: int |
             "Avoid mathematical paragraph balancing. Force the system to follow a long, three-sentence complex clause immediately with a blunt, single-sentence conceptual anchor.",
             "Deliberately suppress the use of high-probability academic pairings (e.g., if the model wants to write 'intricately linked', force it to use 'tied together' or 'interact directly').",
             "Inject micro-level cognitive backtracking, where a sentence subtly re-evaluates or restricts the scope of the assertion made in the immediately preceding sentence, mimicking a student correcting their own draft's overreach."
-
         ],
     }
+
 
 def _human_scholarly_style_requirements(seed: Optional[int] = None) -> dict[str, list[str]]:
     """
@@ -334,7 +332,6 @@ def _human_scholarly_style_requirements(seed: Optional[int] = None) -> dict[str,
         n = max(1, int(len(rules) * 0.7))
         selected_rules.extend(random.sample(rules, n))
 
-    # Return in the original structure expected by build_drafting_prompt
     return {"humanizer_rules": selected_rules}
 
 
@@ -375,6 +372,7 @@ def _student_contribution_requirements(profile: dict[str, Any]) -> dict[str, Any
             "furthermore repeated mechanically", "the research problem is that",
         ],
     }
+
 
 def _chapter_specific_requirements(chapter_number: int) -> list[str]:
     """Return chapter-level drafting rules that apply beyond section rules."""
@@ -460,7 +458,6 @@ def _chapter_specific_requirements(chapter_number: int) -> list[str]:
         ]
 
     return common
-
 
 
 def _effective_chapter_title(chapter: dict[str, Any], profile: dict[str, Any], chapter_number: int) -> str:
@@ -573,6 +570,7 @@ def build_drafting_prompt(
     }
     return json.dumps(prompt, ensure_ascii=False, indent=2)
 
+
 def _increase_natural_variation(text: str) -> str:
     """Post‑process to improve sentence length std dev and break repetitive trigrams."""
     if not text:
@@ -586,10 +584,9 @@ def _increase_natural_variation(text: str) -> str:
     # 2. Ensure at least one very short sentence (3–7 words) in the first 200 characters
     first_200 = text[:200]
     if not re.search(r'(?<![A-Z][a-z]\.)[.!?]\s+\b\w{1,4}\b', first_200):
-        # Insert a short clarifying sentence after the first period.
         match = re.search(r'([^.?!]+[.!?])\s+', first_200)
         if match:
-            short_clause = " That is, it matters. "
+            short_clause = " That matters. "
             text = text[:match.end()] + short_clause + text[match.end():]
 
     # 3. Replace common trigrams with natural alternatives
@@ -611,10 +608,9 @@ def _increase_natural_variation(text: str) -> str:
         text = text[:short_pair.start()] + joined + text[short_pair.end():]
 
     return text
-import random
-import re
 
-def _enforce_burstiness(text: str, target_std_dev: float = 14.0, max_uniform: int = 3) -> str:
+
+def _enforce_burstiness(text: str, target_std_dev: float = 12.0, max_uniform: int = 3) -> str:
     """
     Post‑process to guarantee sentence length variance.
     Splits over‑long sentences, merges very short consecutive ones, and breaks uniform runs.
@@ -622,7 +618,6 @@ def _enforce_burstiness(text: str, target_std_dev: float = 14.0, max_uniform: in
     if not text or len(text) < 200:
         return text
 
-    # Split into sentences (simple heuristic)
     sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text)
     if len(sentences) < 4:
         return text
@@ -633,7 +628,6 @@ def _enforce_burstiness(text: str, target_std_dev: float = 14.0, max_uniform: in
 
     # If already above target, just break uniform runs
     if std_dev >= target_std_dev:
-        # Break any run of >max_uniform sentences with similar length
         new_sentences = []
         run_len = 1
         for i in range(1, len(sentences)):
@@ -642,20 +636,17 @@ def _enforce_burstiness(text: str, target_std_dev: float = 14.0, max_uniform: in
             else:
                 run_len = 1
             if run_len > max_uniform:
-                # Insert a short clause in the middle of the run
                 insert_pos = i - run_len//2
                 short_clause = " That is, it matters. "
                 sentences[insert_pos] += short_clause
                 run_len = 0
-        text = " ".join(sentences)
-        return text
+        return " ".join(sentences)
 
-    # Need to increase variance: split some long sentences and merge short ones
+    # Increase variance: split long sentences and merge short adjacent ones
     new_sentences = []
     for s in sentences:
         word_count = len(s.split())
-        if word_count > 30 and random.random() < 0.4:
-            # Split at a conjunction or comma
+        if word_count > 25 and random.random() < 0.6:   # more aggressive than before
             split_points = [m.start() for m in re.finditer(r'(,|;|and|but|or)\s+', s)]
             if split_points:
                 split_at = split_points[len(split_points)//2]
@@ -678,7 +669,7 @@ def _enforce_burstiness(text: str, target_std_dev: float = 14.0, max_uniform: in
         if i + 1 < len(new_sentences):
             len_i = len(new_sentences[i].split())
             len_j = len(new_sentences[i+1].split())
-            if len_i <= 7 and len_j <= 7 and random.random() < 0.5:
+            if len_i <= 7 and len_j <= 7 and random.random() < 0.6:
                 combined = new_sentences[i].rstrip('.!?') + ', ' + new_sentences[i+1].lower()
                 merged.append(combined)
                 skip = True
@@ -687,46 +678,8 @@ def _enforce_burstiness(text: str, target_std_dev: float = 14.0, max_uniform: in
 
     return " ".join(merged)
 
-    # Need to increase variance: split some long sentences and merge short ones
-    new_sentences = []
-    for s in sentences:
-        word_count = len(s.split())
-        if word_count > 30 and random.random() < 0.4:
-            # Split at a conjunction or comma
-            split_points = [m.start() for m in re.finditer(r'(,|;|and|but|or)\s+', s)]
-            if split_points:
-                split_at = split_points[len(split_points)//2]
-                first = s[:split_at].rstrip()
-                second = s[split_at:].lstrip()
-                # Capitalise second if needed
-                if second and second[0].islower():
-                    second = second[0].upper() + second[1:]
-                new_sentences.append(first + ".")
-                new_sentences.append(second)
-                continue
-        # Merge very short consecutive sentences (<5 words each)
-        new_sentences.append(s)
 
-    # Merge short adjacent sentences
-    merged = []
-    skip = False
-    for i in range(len(new_sentences)):
-        if skip:
-            skip = False
-            continue
-        if i + 1 < len(new_sentences):
-            len_i = len(new_sentences[i].split())
-            len_j = len(new_sentences[i+1].split())
-            if len_i <= 7 and len_j <= 7 and random.random() < 0.5:
-                combined = new_sentences[i].rstrip('.!?') + ', ' + new_sentences[i+1].lower()
-                merged.append(combined)
-                skip = True
-                continue
-        merged.append(new_sentences[i])
-
-    return " ".join(merged)
-
-def _add_drafting_artefacts(text: str, probability_per_500_words: float = 0.6) -> str:
+def _add_drafting_artefacts(text: str, probability_per_500_words: float = 0.8) -> str:
     """
     Inject occasional false starts, dashes, and conversational asides.
     Mimics a student editing while writing.
@@ -734,46 +687,37 @@ def _add_drafting_artefacts(text: str, probability_per_500_words: float = 0.6) -
     if not text or random.random() > probability_per_500_words:
         return text
 
-    # Only apply to longer texts (>300 words) to avoid over‑processing short sections
     if len(text.split()) < 300:
         return text
 
-    # Patterns to randomly apply
     artefacts = [
-        # False start with dash correction
         (r'(\bThe\s+\w+\s+is\b)', r'The – or rather, the \1 – '),
-        # Conversational aside in parentheses
         (r'(\b[a-z]+ly\b)', r'\1 (a point often overlooked)'),
-        # Self‑interruption with "But wait –"
         (r'(\.\s+)(However|Nevertheless|Moreover)', r'\1But wait – \2'),
-        # Over‑specified then simplified
         (r'(\b[a-z]{6,}\s+and\s+[a-z]{6,}\b)', r'\1 – or more simply, the central issue – '),
-        # Insert "That is, ..." after a complex statement
         (r'([.!?])\s+(\b[A-Z][a-z]{4,}\b)', r'\1 That is, \2'),
     ]
 
     for pattern, repl in artefacts:
-        if random.random() < 0.3:
+        if random.random() < 0.5:   # higher chance
             text = re.sub(pattern, repl, text, count=1, flags=re.IGNORECASE)
 
-    # Add one footnote‑like parenthetical remark (if none exists in first 500 chars)
-    if random.random() < 0.4 and "(" not in text[:500]:
+    if random.random() < 0.5 and "(" not in text[:500]:
         match = re.search(r'\.\s+', text)
         if match:
             insert_pos = match.end()
             remark = " (a nuance that careful readers will note) "
             text = text[:insert_pos] + remark + text[insert_pos:]
 
-    # Add a self‑correction with dash (e.g., "the model predicts – or rather, it does not predict – the anomaly")
-    if random.random() < 0.5:
+    if random.random() < 0.7:
         text = re.sub(r'(\b\w+)\s+(\w+)\s+(\w+)\b', r'\1 \2 – or rather, it does not \2 – \3', text, count=1)
 
     return text
 
-def _boost_lexical_richness(text: str, replacement_probability: float = 0.3) -> str:
+
+def _boost_lexical_richness(text: str, replacement_probability: float = 0.5) -> str:
     """
     Replace overused academic phrases with rarer but correct synonyms.
-    Only replaces a subset to avoid unnatural over‑substitution.
     """
     if not text or len(text.split()) < 200:
         return text
@@ -795,13 +739,13 @@ def _boost_lexical_richness(text: str, replacement_probability: float = 0.3) -> 
         r'\bin contrast\b': 'by contrast',
     }
 
-    # Apply each replacement with given probability
     for pattern, repl in replacements.items():
         if random.random() < replacement_probability:
             text = re.sub(pattern, repl, text, flags=re.IGNORECASE)
 
     return text
-    
+
+
 def _polish_generated_text(text: str) -> str:
     """Lightly remove common proposal/meta phrases that weaken scholarly output."""
     if not text:
@@ -856,7 +800,6 @@ def _polish_generated_text(text: str) -> str:
     for pattern, replacement in replacements.items():
         polished = re.sub(pattern, replacement, polished, flags=re.IGNORECASE)
 
-    # Remove full sentences that explicitly disclose internal level/template/checklist guidance.
     polished = re.sub(
         r"(?im)^.*(?:selected academic level|level of the project|level of the thesis|level of the dissertation|checklist requirement|template requirement|software requirement).*\n?",
         "",
@@ -866,7 +809,6 @@ def _polish_generated_text(text: str) -> str:
     polished = re.sub(r"[ \t]{2,}", " ", polished)
     polished = re.sub(r"\n{3,}", "\n\n", polished)
     return polished.strip()
-
 
 
 def _source_usage_count(text: str, sources: list[dict[str, Any]]) -> int:
@@ -909,7 +851,6 @@ def _source_reference_hints(sources: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-
 def _has_source_use_audit(text: str) -> bool:
     return bool(re.search(r"(?im)^#{0,3}\s*source\s+use\s+audit\b", text or ""))
 
@@ -920,6 +861,7 @@ def _relevant_source_bank(profile: dict[str, Any]) -> list[dict[str, Any]]:
     relevant.sort(key=lambda item: _relevance_tier_rank(item.get("relevance_tier")), reverse=True)
     return relevant
 
+
 def _review_source_integration(
     client: Any,
     model: str,
@@ -929,12 +871,7 @@ def _review_source_integration(
     profile: dict[str, Any],
     chapter_number: int,
 ) -> str:
-    """Run a single relevance-gated review pass for attached source results.
-
-    This pass does not force citations. It asks the model to use clearly relevant
-    searched sources where they genuinely strengthen the chapter, and to add a
-    Source Use Audit explaining why sources were cited or excluded.
-    """
+    """Run a single relevance-gated review pass for attached source results."""
     source_bank = _merged_source_bank(profile)
     if not source_bank:
         return draft
@@ -943,8 +880,6 @@ def _review_source_integration(
     used = _source_usage_count(draft, relevant_sources)
     has_audit = _has_source_use_audit(draft)
 
-    # If the draft already used at least one relevant source and includes an audit,
-    # do not keep revising. The audit lets a human judge whether non-use was defensible.
     if used > 0 and has_audit:
         return draft
 
@@ -974,10 +909,7 @@ def _review_source_integration(
     try:
         response = client.responses.create(
             model=model,
-            instructions=(
-                instructions
-                + " Revise rather than restart. Preserve the student's context. Use only relevant attached sources and include a Source Use Audit."
-            ),
+            instructions=instructions + " Revise rather than restart. Preserve the student's context. Use only relevant attached sources and include a Source Use Audit.",
             input=json.dumps(repair_payload, ensure_ascii=False, indent=2),
         )
         revised = getattr(response, "output_text", "").strip()
@@ -986,7 +918,6 @@ def _review_source_integration(
     except Exception:
         return draft
     return draft
-
 
 
 def _generic_language_score(text: str) -> int:
@@ -999,8 +930,8 @@ def _generic_language_score(text: str) -> int:
     lower = text or ""
     return sum(len(re.findall(pattern, lower, flags=re.IGNORECASE)) for pattern in patterns)
 
+
 def _sentence_length_variance(text: str) -> float:
-    """Return variance of sentence lengths (in words) as a simple measure of burstiness."""
     sentences = [s.strip() for s in re.split(r'[.!?]+', text) if s.strip()]
     if len(sentences) < 2:
         return 0.0
@@ -1008,7 +939,8 @@ def _sentence_length_variance(text: str) -> float:
     mean = sum(lengths) / len(lengths)
     variance = sum((x - mean) ** 2 for x in lengths) / len(lengths)
     return variance
-    
+
+
 def _human_academic_revision_pass(
     client: Any,
     model: str,
@@ -1059,10 +991,7 @@ def _human_academic_revision_pass(
     try:
         response = client.responses.create(
             model=model,
-            instructions=(
-                instructions
-                + " Perform one conservative academic‑quality revision pass. Do not restart the chapter. Do not add unsupported content."
-            ),
+            instructions=instructions + " Perform one conservative academic‑quality revision pass. Do not restart the chapter. Do not add unsupported content.",
             input=json.dumps(revision_payload, ensure_ascii=False, indent=2),
         )
         revised = getattr(response, "output_text", "").strip()
@@ -1073,15 +1002,8 @@ def _human_academic_revision_pass(
     return draft
 
 
-
 def _call_openai_response_safely(client: Any, model: str, instructions: str, prompt: str) -> str:
-    """Call the OpenAI Responses API without allowing provider/API errors to crash the app.
-
-    Render users were seeing generic Internal Server Error responses when the
-    provider rejected a model name, timed out, or returned a transient error.
-    This helper catches those errors so the route can return a local fallback
-    rather than failing the request.
-    """
+    """Call the OpenAI Responses API without allowing provider/API errors to crash the app."""
     try:
         response = client.responses.create(model=model, instructions=instructions, input=prompt)
         return str(getattr(response, "output_text", "") or "").strip()
@@ -1095,6 +1017,7 @@ def _call_openai_response_safely(client: Any, model: str, instructions: str, pro
                 return ""
         return ""
 
+
 def generate_chapter(
     profile: dict[str, Any],
     chapter_number: int,
@@ -1105,12 +1028,11 @@ def generate_chapter(
 ) -> tuple[str, str]:
     """
     Generate a chapter using OpenAI (if available) or fallback to local templates.
-    Incorporates high‑burstiness, randomise‑style humaniser and two revision passes.
+    Incorporates high‑burstiness, randomised humaniser and three additional human‑quality passes.
     """
     try:
         prompt = build_drafting_prompt(profile, chapter_number, selected_section_ids, answers, extra_instructions)
     except Exception:
-        # Fallback to local template if prompt construction fails
         return (
             _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)),
             "local_template_fallback_prompt_error"
@@ -1139,13 +1061,13 @@ def generate_chapter(
 
         text = _call_openai_response_safely(client, model, instructions, prompt)
         if text:
-            # 1. Basic polish (phrase replacement, remove meta‑comments)
+            # 1. Basic polish
             polished = _polish_generated_text(text)
-        
-            # 2. Increase natural variation (short sentences, break trigrams, join pairs)
+
+            # 2. Increase natural variation
             polished = _increase_natural_variation(polished)
-        
-            # 3. Relevance‑gated source integration (adds Source Use Audit)
+
+            # 3. Relevance‑gated source integration
             polished = _review_source_integration(
                 client=client,
                 model=model,
@@ -1155,8 +1077,8 @@ def generate_chapter(
                 profile=profile,
                 chapter_number=chapter_number,
             )
-        
-            # 4. Final human‑academic revision pass (improves burstiness, self‑correction)
+
+            # 4. Final human‑academic revision pass
             polished = _human_academic_revision_pass(
                 client=client,
                 model=model,
@@ -1166,14 +1088,12 @@ def generate_chapter(
                 profile=profile,
                 chapter_number=chapter_number,
             )
-        
-            # ========== NEW HIGHER HUMAN‑LIKE QUALITY PASSES ==========
-            if len(polished.split()) > 500:   # only for longer chapters
-                polished = _enforce_burstiness(polished, target_std_dev=14.0)
-                polished = _add_drafting_artefacts(polished, probability_per_500_words=0.5)
-                polished = _boost_lexical_richness(polished, replacement_probability=0.3)
-            # ===========================================================
-        
+
+            # 5. Extra human‑like quality passes (always applied)
+            polished = _enforce_burstiness(polished, target_std_dev=12.0)
+            polished = _add_drafting_artefacts(polished, probability_per_500_words=0.8)
+            polished = _boost_lexical_richness(polished, replacement_probability=0.5)
+
             return polished, "openai_responses_api"
 
     # Fallback when AI is disabled or fails
@@ -1181,6 +1101,7 @@ def generate_chapter(
         _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)),
         "local_template_fallback"
     )
+
 
 def generate_fallback_chapter(
     profile: dict[str, Any],
@@ -1194,8 +1115,6 @@ def generate_fallback_chapter(
     answers = answers or {}
 
     title = profile.get("title", "[Project Title]")
-    level_info = _level_depth_requirements(profile)
-    ref_info = _reference_currency_requirements()
     lines = [
         f"# CHAPTER {chapter_number}",
         f"# {effective_chapter_title.upper()}",
@@ -1289,7 +1208,6 @@ def _fallback_literature_gap_table(section_answers: dict[str, Any], profile: dic
     return "\n".join(rows)
 
 
-
 def _fallback_results_section(section_answers: dict[str, Any], profile: dict[str, Any], chapter_number: int) -> str:
     uploaded = _uploaded_results_for_chapter(profile, chapter_number)
     objectives = profile.get("objectives") or []
@@ -1339,6 +1257,7 @@ def _fallback_results_section(section_answers: dict[str, Any], profile: dict[str
             lines.append("\n**Student guidance supplied:** " + " ".join(joined))
 
     return "\n\n".join(lines)
+
 
 def split_paragraphs(text: str) -> list[str]:
     blocks = [b.strip() for b in re.split(r"\n\s*\n", text or "") if b.strip()]
