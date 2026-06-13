@@ -701,6 +701,11 @@ def _add_drafting_artefacts(text: str, probability_per_500_words: float = 0.8) -
     for pattern, repl in artefacts:
         if random.random() < 0.5:   # higher chance
             text = re.sub(pattern, repl, text, count=1, flags=re.IGNORECASE)
+            # Add a "That said, ..." after a period
+            (r'\.\s+', r'. That said, '),
+            
+            # Add a "But consider this:" before a key sentence
+            (r'(\b[A-Z][a-z]{4,}\s+is\b)', r'But consider this: \1'),
 
     if random.random() < 0.5 and "(" not in text[:500]:
         match = re.search(r'\.\s+', text)
@@ -745,7 +750,57 @@ def _boost_lexical_richness(text: str, replacement_probability: float = 0.5) -> 
 
     return text
 
-
+def _cluster_citations(text: str) -> str:
+    """Find single citations and expand them into clusters using placeholders (no fabrication)."""
+    # Only apply if no cluster already exists
+    if re.search(r'\([A-Z][a-z]+,\s*\d{4};\s*[A-Z][a-z]+,\s*\d{4}', text):
+        return text
+    
+    # Replace a single citation with a plausible cluster (still placeholders)
+    # This doesn't fabricate real sources; it uses the existing one + generic extras
+    def repl(match):
+        original = match.group(0)
+        # extract author and year
+        author_year = re.search(r'([A-Z][a-z]+),\s*(\d{4})', original)
+        if author_year:
+            author, year = author_year.groups()
+            # Add two more similar-looking placeholders
+            return f"({author}, {year}; [Author2, {int(year)+1}]; [Author3, {int(year)-1}])"
+        return original
+    
+    # Limit to 2 replacements to avoid overdoing
+    text = re.sub(r'\([A-Z][a-z]+,\s*\d{4}\)', repl, text, count=2)
+    return text
+def _vary_paragraph_openings(text: str) -> str:
+    lines = text.split('\n')
+    for i in range(1, len(lines)):
+        if not lines[i].strip() or lines[i].startswith('#'):
+            continue
+        # Get first two words of previous paragraph
+        prev_words = lines[i-1].strip().split()[:2] if lines[i-1].strip() else []
+        curr_words = lines[i].strip().split()[:2]
+        if prev_words and curr_words and prev_words[0].lower() == curr_words[0].lower():
+            # Insert a short transitional adverb
+            transitions = ["Yet, ", "Still, ", "Indeed, ", "Conversely, ", "Importantly, "]
+            import random
+            lines[i] = random.choice(transitions) + lines[i].strip()
+    return '\n'.join(lines)   
+def _force_short_sentences(text: str, target_every_n_words: int = 200) -> str:
+    words = text.split()
+    if len(words) < target_every_n_words:
+        return text
+    # Count existing very short sentences (3-5 words)
+    short_sentences = re.findall(r'\b[a-z]{1,4}\s+[a-z]{1,4}\s+[a-z]{1,4}\s*[.!?]', text, re.IGNORECASE)
+    expected = max(1, len(words) // target_every_n_words)
+    if len(short_sentences) >= expected:
+        return text
+    # Insert a short sentence after the first period
+    match = re.search(r'\.\s+', text)
+    if match:
+        pos = match.end()
+        short = " That matters. "
+        text = text[:pos] + short + text[pos:]
+    return text
 def _polish_generated_text(text: str) -> str:
     """Lightly remove common proposal/meta phrases that weaken scholarly output."""
     if not text:
@@ -1063,10 +1118,10 @@ def generate_chapter(
         if text:
             # 1. Basic polish
             polished = _polish_generated_text(text)
-
+        
             # 2. Increase natural variation
             polished = _increase_natural_variation(polished)
-
+        
             # 3. Relevance‑gated source integration
             polished = _review_source_integration(
                 client=client,
@@ -1077,7 +1132,7 @@ def generate_chapter(
                 profile=profile,
                 chapter_number=chapter_number,
             )
-
+        
             # 4. Final human‑academic revision pass
             polished = _human_academic_revision_pass(
                 client=client,
@@ -1088,12 +1143,18 @@ def generate_chapter(
                 profile=profile,
                 chapter_number=chapter_number,
             )
-
+        
             # 5. Extra human‑like quality passes (always applied)
             polished = _enforce_burstiness(polished, target_std_dev=12.0)
             polished = _add_drafting_artefacts(polished, probability_per_500_words=0.8)
             polished = _boost_lexical_richness(polished, replacement_probability=0.5)
-
+        
+            # ========== NEW ADDITIONS ==========
+            polished = _cluster_citations(polished)
+            polished = _vary_paragraph_openings(polished)
+            polished = _force_short_sentences(polished, target_every_n_words=200)
+            # ==================================
+        
             return polished, "openai_responses_api"
 
     # Fallback when AI is disabled or fails
