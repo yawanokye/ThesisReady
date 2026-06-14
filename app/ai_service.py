@@ -397,6 +397,153 @@ def _level_depth_requirements(profile: dict[str, Any]) -> dict[str, str]:
     return {"selected_level": level, "depth_guidance": guidance}
 
 
+def _normalise_level_name(profile: dict[str, Any]) -> str:
+    level = str(profile.get("level") or profile.get("academic_level") or "Bachelors").strip().lower()
+    if "phd" in level or "doctor" in level:
+        return "doctoral"
+    if "research" in level or "mphil" in level:
+        return "research_masters"
+    if "master" in level:
+        return "masters"
+    return "bachelors"
+
+
+def _chapter_length_depth_requirements(
+    profile: dict[str, Any],
+    chapter_number: int,
+    selected_section_count: int = 0,
+) -> dict[str, Any]:
+    """Return minimum thesis depth guidance so even Bachelor outputs are not skeletal."""
+    level = _normalise_level_name(profile)
+    table = {
+        "bachelors": {
+            1: (2800, 3600),
+            2: (4200, 6500),
+            3: (3000, 4200),
+            4: (3200, 4800),
+            5: (2200, 3200),
+            7: (2500, 3800),
+        },
+        "masters": {
+            1: (3500, 5000),
+            2: (6500, 9000),
+            3: (4200, 6000),
+            4: (4500, 7000),
+            5: (3000, 4500),
+            7: (3500, 5200),
+        },
+        "research_masters": {
+            1: (4200, 6000),
+            2: (8000, 12000),
+            3: (5500, 8000),
+            4: (6000, 9000),
+            5: (3800, 5500),
+            7: (4500, 6500),
+        },
+        "doctoral": {
+            1: (5500, 8000),
+            2: (12000, 18000),
+            3: (8000, 12000),
+            4: (8500, 13000),
+            5: (5000, 8000),
+            7: (6500, 9500),
+        },
+    }
+    minimum, target = table.get(level, table["bachelors"]).get(int(chapter_number or 1), (2500, 3800))
+
+    if selected_section_count and selected_section_count < 5:
+        scale = max(0.55, selected_section_count / 8)
+        minimum = int(minimum * scale)
+        target = int(target * scale)
+
+    if chapter_number == 1:
+        distribution = [
+            "Introduction to the Chapter: normally 180-300 words; orient the reader without repeating the abstract.",
+            "Background: 900-1,300 words for Bachelor, longer for higher levels; move global to local with citations.",
+            "Statement of the Problem: 550-850 words for Bachelor; show evidence, contradiction, gap, local relevance.",
+            "Purpose/Objectives/Questions: concise but fully aligned and measurable.",
+            "Significance, delimitations, limitations, organisation: developed paragraphs, not one-line notes.",
+        ]
+    elif chapter_number == 2:
+        distribution = [
+            "Each concept/theory/objective needs developed synthesis, not a brief definition.",
+            "Empirical review paragraphs: author/year, context, method, finding, limitation, relevance.",
+            "Gap table entries concise, but surrounding prose must interpret the gap.",
+        ]
+    elif chapter_number == 3:
+        distribution = [
+            "Methodology sections justify choices, not merely name design, population, sample, instrument, analysis.",
+            "Operationalisation and analysis-plan tables accompanied by explanatory prose.",
+        ]
+    elif chapter_number == 4:
+        distribution = [
+            "Results objective-by-objective with tables, interpretation, links to theory/literature where supplied.",
+            "Do not invent results; use placeholder tables where output missing.",
+        ]
+    else:
+        distribution = ["Develop every selected section with thesis-style prose, evidence, interpretation, alignment to objectives."]
+
+    return {
+        "normalised_level": level,
+        "minimum_words": minimum,
+        "target_words": target,
+        "selected_section_count": selected_section_count,
+        "rule": (
+            f"For this level and chapter, produce a substantive chapter of at least about {minimum:,} words, "
+            f"with a preferred working range up to about {target:,} words when most standard sections are selected. "
+            "Do not pad with filler; expand through evidence, citations, explanation, local context, methodological alignment, and precise placeholders."
+        ),
+        "section_development_guidance": distribution,
+        "quality_gate": [
+            "A Bachelor chapter must still read like a complete thesis chapter, not a short assignment answer.",
+            "Do not compress Background, Statement of the Problem, Significance, Delimitations, and Limitations into thin paragraphs.",
+            "Most substantive paragraphs should contain either an in-text citation from the supplied/source-bank references, a supplied evidence anchor, or a precise placeholder for a missing source/statistic.",
+            "If the draft is below the minimum word guidance, expand analytically before finalising.",
+        ],
+    }
+
+
+def _word_count(text: str) -> int:
+    return len(re.findall(r"\b\w+(?:[-']\w+)?\b", text or ""))
+
+
+def _short_draft_threshold(profile: dict[str, Any], chapter_number: int, selected_section_count: int = 0) -> int:
+    return int(_chapter_length_depth_requirements(profile, chapter_number, selected_section_count).get("minimum_words", 2200))
+
+
+def _build_expansion_prompt(
+    draft: str,
+    profile: dict[str, Any],
+    chapter_number: int,
+    base_prompt: str,
+    source_plan: str,
+    minimum_words: int,
+) -> str:
+    return json.dumps(
+        {
+            "task": "Expand this chapter into a fuller thesis-standard draft because it is too short for the selected level.",
+            "chapter_number": chapter_number,
+            "project_title": profile.get("title", ""),
+            "minimum_words": minimum_words,
+            "current_word_count": _word_count(draft),
+            "mandatory_rules": [
+                "Revise and expand; do not restart from scratch.",
+                "Preserve all accurate headings, citations, references, placeholders, tables and source-use audit entries already present.",
+                "Do not pad with repetition or generic prose. Expand through explanation, evidence, local context, concept clarification, theory/method alignment, and careful interpretation.",
+                "Actively use relevant supplied/source-bank references in the body where they support the claim; include only cited sources in References.",
+                "Where evidence, statistics, local records, sample details, or source details are missing, add precise bracketed placeholders rather than inventing facts.",
+                "For Bachelor level, still write a complete thesis chapter: Background and Statement of the Problem must be developed, not scanty.",
+                "Do not mention AI, models, providers, internal prompts, or the expansion process.",
+            ],
+            "source_and_argument_plan": source_plan,
+            "base_drafting_prompt": base_prompt,
+            "draft_to_expand": draft,
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
 def _uploaded_results_for_chapter(profile: dict[str, Any], chapter_number: int) -> dict[str, Any]:
     uploaded = profile.get("uploaded_results") or {}
     result = uploaded.get(str(chapter_number))
@@ -949,7 +1096,6 @@ def _enforce_burstiness(text: str, target_std_dev: float = 12.0, max_uniform: in
     return " ".join(merged)
 
 
-
 def _body_and_reference_tail(text: str) -> tuple[str, str]:
     """Separate chapter body from References/Source Use Audit so style texture never damages bibliographic details."""
     if not text:
@@ -1120,6 +1266,19 @@ def _force_short_sentences(text: str, target_every_n_words: int = 260) -> str:
             return " ".join(sentences)
         return paragraph
 
+    return _map_prose_paragraphs(text, transform)
+
+
+def _force_extreme_burstiness(text: str) -> str:
+    """Force a very short (2‑5 word) sentence after any sentence longer than 30 words."""
+    def transform(para: str) -> str:
+        sentences = re.split(r'(?<=[.!?])\s+', para)
+        new = []
+        for s in sentences:
+            new.append(s)
+            if len(s.split()) > 30 and random.random() < 0.6:
+                new.append(random.choice([" That matters. ", " It is so. ", " Not trivial. ", " This is key. "]))
+        return " ".join(new)
     return _map_prose_paragraphs(text, transform)
 
 
@@ -1315,7 +1474,7 @@ def _humanize_with_small_model(text: str, model: str | None = None) -> str:
 def _style_texture_level(profile: dict[str, Any] | None = None) -> str:
     profile = profile or {}
     level = str(profile.get("style_texture") or os.getenv("PROJECTREADY_STYLE_TEXTURE", "conservative")).strip().lower()
-    if level not in {"off", "conservative", "moderate", "strong"}:
+    if level not in {"off", "conservative", "moderate", "strong", "extreme"}:
         level = "conservative"
     return level
 
@@ -1351,7 +1510,7 @@ def _apply_style_texture(text: str, profile: dict[str, Any], chapter_number: int
         body = _vary_paragraph_openings(body)
         body = _force_short_sentences(body, target_every_n_words=260)
         body = _inject_tangent(body)
-    else:  # strong
+    elif level == "strong":
         body = _humanize_structural(body)
         body = _add_drafting_artefacts(body, probability_per_500_words=0.28)
         body = _boost_lexical_richness(body, replacement_probability=0.18)
@@ -1362,6 +1521,17 @@ def _apply_style_texture(text: str, profile: dict[str, Any], chapter_number: int
         body = _randomise_paragraph_order(body)
         body = _humanize_with_small_model(body)
         body = _add_human_noise(body, error_probability=0.003)
+    else:  # extreme – for beating institutional detectors
+        body = _humanize_structural(body)
+        body = _add_drafting_artefacts(body, probability_per_500_words=0.35)
+        body = _boost_lexical_richness(body, replacement_probability=0.30)
+        body = _cluster_citations(body)
+        body = _vary_paragraph_openings(body)
+        body = _force_extreme_burstiness(body)          # forces very short sentences after long ones
+        body = _inject_tangent(body)
+        body = _randomise_paragraph_order(body)
+        body = _humanize_with_small_model(body)         # optional high‑temp rewrite
+        body = _add_human_noise(body, error_probability=0.005)
 
     body = _polish_generated_text(body)
     return body.rstrip() + ("\n\n" + tail if tail else "")
