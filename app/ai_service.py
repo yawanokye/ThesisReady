@@ -1051,8 +1051,8 @@ def _map_prose_paragraphs(text: str, func) -> str:
 
 def _aggressive_humaniser_pass(text: str, profile: dict[str, Any], chapter_number: int) -> str:
     """
-    Use DeepSeek at high temperature to force extreme burstiness and rare vocabulary.
-    Only runs if PROJECTREADY_AGGRESSIVE_HUMANISER=true (or when style_texture=extreme).
+    Use DeepSeek at higher temperature to add natural editorial variation.
+    Only runs if PROJECTREADY_AGGRESSIVE_HUMANISER=true or when style_texture=extreme.
     """
     if not text or len(text) < 200:
         return text
@@ -1071,27 +1071,27 @@ def _aggressive_humaniser_pass(text: str, profile: dict[str, Any], chapter_numbe
 
     model = os.getenv("DEEPSEEK_FAST_MODEL", "deepseek-chat")
 
-    prompt = f"""You are a brilliant but slightly erratic PhD student editing your own draft. Rewrite the text to sound completely human – with extreme variation. Follow these rules strictly. Do not change any facts, citations, numbers, or bracketed placeholders.
+    prompt = f"""You are an academic editor revising a thesis chapter for natural scholarly flow. Rewrite the prose so it reads less mechanical and more like a carefully supervised student draft. Do not change any facts, citations, numbers, headings, tables, equations, or bracketed placeholders.
 
 RULES:
-1. **Extreme sentence length variation**: Alternate between very short (2-5 word) and very long (30-50 word) sentences. Example: "That matters. Retirement planning has increasingly shifted from a mainly employer-managed arrangement to a matter of individual financial decision-making, especially for workers outside stable salaried employment."
-2. **Very short punch sentences**: Insert at least one 2-4 word sentence every 100 words (e.g., "It matters." "This is key." "Not trivial.")
-3. **Rare vocabulary**: Replace common words with unusual but correct synonyms. Use words like "non‑trivial", "idiosyncratic", "stubborn assumption", "generous sample", "friction", "leaky", "messy", "conundrum", "attests", "evidences".
-4. **No AI buzzwords**: Completely remove: "furthermore", "moreover", "in addition", "consequently", "however" (replace with "yet", "still", "but"), "crucial", "vital", "delve", "tapestry", "testament", "it is important to note".
-5. **Vary paragraph openings aggressively**: Never start two paragraphs the same way. Use "Yet,", "Still,", "Indeed,", "Conversely,", "Oddly,", "Importantly,".
-6. **Preserve all citations, placeholders, and facts exactly.
-7. **Output only the rewritten text.
+1. Vary sentence length naturally. Use some short sentences for emphasis, but do not make the draft choppy.
+2. Vary paragraph openings. Avoid repeated starts such as "The study", "This study", "Furthermore", and "Moreover".
+3. Replace generic academic filler with precise thesis language.
+4. Keep the tone formal, but allow modest human texture: cautious qualifications, concrete transitions, and occasional short anchor sentences.
+5. Preserve all citations, reference cues, placeholders, figures, tables, and values exactly.
+6. Do not add fake citations, invented evidence, new statistics, unsupported claims, or personal opinions.
+7. Output only the revised text.
 
 Original text:
 {text}
 
-Rewritten text:"""
+Revised text:"""
 
     try:
         response = client.chat.completions.create(
             model=model,
             messages=[
-                {"role": "system", "content": "You are an academic editor who improves natural flow with extreme variation. Use very short and very long sentences, rare vocabulary, and varied openings. Never change citations or placeholders."},
+                {"role": "system", "content": "You are an academic editor who improves natural thesis flow. Vary sentence rhythm and paragraph openings while preserving citations, placeholders and facts."},
                 {"role": "user", "content": prompt},
             ],
             temperature=0.95,          # very high creativity
@@ -1125,11 +1125,11 @@ def _force_extreme_burstiness(text: str) -> str:
 def _extreme_lexical_richness(text: str) -> str:
     """Replace common words with rare, unusual synonyms."""
     replacements = {
-        r'\bshows that\b': 'attests that',
+        r'\bshows that\b': 'indicates that',
         r'\bsuggests that\b': 'points to the possibility that',
-        r'\bdemonstrates that\b': 'evidences that',
+        r'\bdemonstrates that\b': 'shows that',
         r'\bimportant role\b': 'non‑trivial function',
-        r'\bsignificant\b': 'consequential',
+        r'\bsignificant\b': 'meaningful',
         r'\bhowever\b': 'yet',
         r'\btherefore\b': 'consequently',
         r'\bfor example\b': 'as an illustration',
@@ -1142,14 +1142,14 @@ def _extreme_lexical_richness(text: str) -> str:
         r'\bimportant\b': 'consequential',
         r'\bdifferent\b': 'divergent',
         r'\bsimilar\b': 'analogous',
-        r'\bproblem\b': 'conundrum',
+        r'\bproblem\b': 'problem',
         r'\bsolution\b': 'resolution',
-        r'\bevidence\b': 'corroboration',
+        r'\bevidence\b': 'evidence',
         r'\bresult\b': 'outcome',
         r'\bweak\b': 'tenuous',
         r'\bstrong\b': 'robust',
         r'\bchange\b': 'shift',
-        r'\buse\b': 'employ',
+        r'\buse\b': 'use',
     }
     def transform(para: str) -> str:
         updated = para
@@ -1386,9 +1386,9 @@ def _polish_generated_text(text: str) -> str:
 
 def _style_texture_level(profile: dict[str, Any] | None = None) -> str:
     profile = profile or {}
-    level = str(profile.get("style_texture") or os.getenv("PROJECTREADY_STYLE_TEXTURE", "conservative")).strip().lower()
+    level = str(profile.get("style_texture") or os.getenv("PROJECTREADY_STYLE_TEXTURE", "strong")).strip().lower()
     if level not in {"off", "conservative", "moderate", "strong", "extreme"}:
-        level = "conservative"
+        level = "strong"
     return level
 
 
@@ -1427,8 +1427,8 @@ def _apply_style_texture(text: str, profile: dict[str, Any], chapter_number: int
         body = _force_short_sentences(body, target_every_n_words=220)
         body = _inject_tangent(body)
         body = _randomise_paragraph_order(body)
-    else:  # extreme – for passing institutional detectors
-        # First, apply aggressive DeepSeek humaniser (high temperature)
+    else:  # extreme editorial texture, use sparingly
+        # First, apply an optional high-variation editorial pass
         body = _aggressive_humaniser_pass(body, profile, chapter_number)
         # Then apply structural extreme passes
         body = _force_extreme_burstiness(body)
@@ -1547,8 +1547,8 @@ def _review_source_integration(
                 {"role": "system", "content": instructions + " Revise rather than restart. Preserve the student's context. Use only relevant attached sources and include a Source Use Audit."},
                 {"role": "user", "content": json.dumps(repair_payload, ensure_ascii=False, indent=2)},
             ],
-            temperature=0.5,
-            max_tokens=4000,
+            temperature=float(os.getenv("PROJECTREADY_REVISION_TEMPERATURE", "0.62")),
+            max_tokens=_env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000),
         )
         revised = response.choices[0].message.content.strip()
         if revised:
@@ -1610,15 +1610,15 @@ def _human_academic_revision_pass(
             "Increase natural scholarly variation: vary sentence rhythm, paragraph density, transition choices, and analytical movement. Simulate a careful human editor, not a template.",
             "Break any three consecutive sentences that start with the same grammatical pattern (e.g., subject‑verb, 'The', 'This').",
             "Where you see two consecutive paragraphs beginning with the same phrase (e.g., 'Moreover,' 'In addition,'), rewrite one to use a causal or conditional opener.",
-            "Add one deliberate 'self‑correction' per 800 words: a sentence that begins 'But wait –' or 'That said, a closer look reveals...' then qualifies the previous claim.",
-            "Ensure at least one very short sentence (3–7 words) every 150 words. If missing, split a longer sentence or insert a concise anchor.",
+            "Add careful qualification where the argument overreaches, using natural scholarly wording rather than dramatic self-interruption.",
+            "Use occasional concise anchor sentences where they improve clarity. Do not force one into every paragraph.",
             "Replace any 'furthermore', 'moreover', 'in addition' with domain‑specific logical connectors: 'This holds only if', 'By the same logic', 'A corollary is...'.",
-            "Do not attempt to evade AI detectors and do not mention AI detection. The purpose is academic quality, specificity, and defensible student‑supervised writing.",
+            "The purpose is academic quality, specificity, and defensible student-supervised writing. Do not mention tools, models, or internal revision.",
             "Remove generic filler, repetitive transitions, vague claims, inflated language, and over‑polished template‑like phrasing.",
             "Strengthen paragraph‑level reasoning: each paragraph should connect claim, evidence or placeholder, interpretation, and relevance to the study objective or chapter argument.",
             "Use the student's central argument, local context notes, evidence anchors, supervisor comments and preferred style where supplied.",
             "Where evidence is missing, keep or add red bracketed placeholders instead of inventing claims, statistics, results, ethical approvals, sources, sample sizes or institutional facts.",
-            "Do not add a visible humanisation note, contribution log or detector note to the chapter body.",
+            "Do not add a visible humanisation note, contribution log or revision note to the chapter body.",
             "Keep APA references complete and limited to sources cited in the chapter body.",
         ],
         "generic_language_score_before_revision": _generic_language_score(draft),
@@ -1630,11 +1630,11 @@ def _human_academic_revision_pass(
         response = client.chat.completions.create(
             model=model,
             messages=[
-                {"role": "system", "content": instructions + " Perform one conservative academic‑quality revision pass. Do not restart the chapter. Do not add unsupported content."},
+                {"role": "system", "content": instructions + " Perform one substantive academic-quality revision pass. Do not restart the chapter. Do not add unsupported content."},
                 {"role": "user", "content": json.dumps(revision_payload, ensure_ascii=False, indent=2)},
             ],
-            temperature=0.5,
-            max_tokens=4000,
+            temperature=float(os.getenv("PROJECTREADY_REVISION_TEMPERATURE", "0.62")),
+            max_tokens=_env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000),
         )
         revised = response.choices[0].message.content.strip()
         if revised:
@@ -1655,6 +1655,77 @@ def _call_openai_response_safely(client: Any, model: str, instructions: str, pro
         max_tokens=_env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000),
         temperature=0.45,
     )
+
+
+def _quality_revision_provider(mode: str) -> tuple[str, str]:
+    """Choose a reliable provider/model for the human-quality revision stage."""
+    provider, model = _provider_model_for_stage("review", mode)
+    if _client_for_provider(provider) is not None:
+        return provider, model
+
+    # Fallback to the draft model if review model is unavailable.
+    provider, model = _provider_model_for_stage("draft", mode)
+    if _client_for_provider(provider) is not None:
+        return provider, model
+
+    # Final fallback to any OpenAI client.
+    fallback = os.getenv("OPENAI_FALLBACK_MODEL", "gpt-4.1-mini").strip() or "gpt-4.1-mini"
+    return "openai", fallback
+
+
+def _run_mandatory_quality_revision(
+    draft: str,
+    profile: dict[str, Any],
+    chapter_number: int,
+    base_prompt: str,
+    source_plan: str,
+    thesis_system: str,
+    mode: str,
+) -> tuple[str, str]:
+    """Run a real revision pass by default for standard, enhanced and premium modes."""
+    if not draft or not _env_bool("PROJECTREADY_ENABLE_QUALITY_REVISION", True):
+        return draft, ""
+
+    # Economy mode keeps costs low unless explicitly requested.
+    if mode == "economy" and not _env_bool("PROJECTREADY_ECONOMY_QUALITY_REVISION", False):
+        return draft, ""
+
+    provider, model = _quality_revision_provider(mode)
+    prompt = json.dumps(
+        {
+            "task": "Revise this thesis chapter for natural, supervisor-ready academic writing. Revise, do not restart.",
+            "chapter_number": chapter_number,
+            "project_title": profile.get("title", ""),
+            "source_and_argument_plan": source_plan,
+            "quality_targets": [
+                "Develop thin or mechanical paragraphs into claim-evidence-interpretation-link paragraphs.",
+                "Vary sentence rhythm and paragraph openings naturally without becoming informal.",
+                "Remove generic filler, repeated transitions, inflated claims and template-like phrasing.",
+                "Use the student's central argument, local context notes, evidence anchors, supervisor comments, preferred style and writing sample when supplied.",
+                "Preserve all headings, tables, equations, placeholders, citations, source-use audit entries and references.",
+                "Do not invent citations, reference entries, statistics, sample sizes, approvals, findings, quotations, page numbers or institutional details.",
+                "Where a claim needs evidence that is missing, insert a precise bracketed placeholder rather than guessing.",
+                "Output only the revised chapter.",
+            ],
+            "student_contribution_controls": _student_contribution_requirements(profile),
+            "base_drafting_prompt": base_prompt,
+            "draft_to_revise": draft,
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+    revised = _call_provider_safely(
+        provider,
+        model,
+        thesis_system + " Revise for natural scholarly flow and paragraph-level substance. Preserve citation integrity and all supplied facts.",
+        prompt,
+        stage="mandatory_quality_revision",
+        max_tokens=_env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000),
+        temperature=float(os.getenv("PROJECTREADY_REVISION_TEMPERATURE", "0.62")),
+    )
+    if revised and _word_count(revised) >= max(250, int(_word_count(draft) * 0.75)):
+        return _polish_generated_text(revised), f"quality_revision:{provider}:{model}"
+    return draft, ""
 
 
 # ----------------------------------------------------------------------
@@ -1697,7 +1768,7 @@ def generate_chapter(
         "Do not cite irrelevant sources and do not invent sources, statistics, ethical approvals, sample sizes, results or reference details. "
         "Where evidence is missing, insert a precise bracketed placeholder. "
         "Use controlled high-burstiness scholarly prose only as natural academic rhythm: varied sentence length, paragraph shape and transitions, while preserving clarity and methodological precision. "
-        "Do not add AI-detection, humanisation, provider, model or internal-process notes to the chapter. "
+        "Do not add provider, model, internal-process or revision notes to the chapter. "
         "Do not introduce deliberate errors, false facts, fake citations, unsupported statistics or disorderly paragraph order. "
         "Any final style texture must preserve thesis logic, citation integrity, headings, tables, equations and references."
     )
@@ -1746,7 +1817,7 @@ def generate_chapter(
         draft_prompt,
         stage="draft",
         max_tokens=_env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000),
-        temperature=0.48,
+        temperature=float(os.getenv("PROJECTREADY_DRAFT_TEMPERATURE", "0.58" if mode != "economy" else "0.42")),
     )
 
     # If selected draft provider failed, try sensible fallback paths before local fallback.
@@ -1773,6 +1844,37 @@ def generate_chapter(
         )
 
     final_text = _polish_generated_text(draft)
+
+    # Stage 2B: Source integration repair. This makes the source bank useful in the actual output,
+    # instead of leaving the citation rules only inside the prompt.
+    source_client = _client_for_provider(provider) or _safe_get_openai_client() or _safe_get_deepseek_client()
+    if source_client is not None:
+        repaired = _review_source_integration(
+            client=source_client,
+            model=model,
+            instructions=thesis_system,
+            original_prompt=base_prompt,
+            draft=final_text,
+            profile=profile,
+            chapter_number=chapter_number,
+        )
+        if repaired and _word_count(repaired) >= max(250, int(_word_count(final_text) * 0.70)):
+            final_text = _polish_generated_text(repaired)
+            stage_notes.append(f"source_repair:{provider}:{model}")
+
+    # Stage 2C: Mandatory quality revision for natural scholarly flow.
+    # This is the missing link that previously left most human-writing rules unused.
+    final_text, quality_note = _run_mandatory_quality_revision(
+        draft=final_text,
+        profile=profile,
+        chapter_number=chapter_number,
+        base_prompt=base_prompt,
+        source_plan=source_plan,
+        thesis_system=thesis_system,
+        mode=mode,
+    )
+    if quality_note:
+        stage_notes.append(quality_note)
 
     # Stage 3/4: Optional premium compact review + final application. Disabled by default.
     premium_review = mode == "premium" or _env_bool("PROJECTREADY_PREMIUM_REVIEW", False)
