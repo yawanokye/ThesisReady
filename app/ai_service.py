@@ -397,6 +397,161 @@ def _level_depth_requirements(profile: dict[str, Any]) -> dict[str, str]:
     return {"selected_level": level, "depth_guidance": guidance}
 
 
+
+
+def _normalise_level_name(profile: dict[str, Any]) -> str:
+    level = str(profile.get("level") or profile.get("academic_level") or "Bachelors").strip().lower()
+    if "phd" in level or "doctor" in level:
+        return "doctoral"
+    if "research" in level or "mphil" in level:
+        return "research_masters"
+    if "master" in level:
+        return "masters"
+    return "bachelors"
+
+
+def _chapter_length_depth_requirements(
+    profile: dict[str, Any],
+    chapter_number: int,
+    selected_section_count: int = 0,
+) -> dict[str, Any]:
+    """Return minimum thesis depth guidance so even Bachelor outputs are not skeletal.
+
+    These are soft lower bounds for a full chapter where most standard sections are selected.
+    They are not meant to encourage padding; the model must expand through context,
+    evidence, citations, interpretation, and precise placeholders where details are missing.
+    """
+    level = _normalise_level_name(profile)
+    table = {
+        "bachelors": {
+            1: (2800, 3600),
+            2: (4200, 6500),
+            3: (3000, 4200),
+            4: (3200, 4800),
+            5: (2200, 3200),
+            7: (2500, 3800),
+        },
+        "masters": {
+            1: (3500, 5000),
+            2: (6500, 9000),
+            3: (4200, 6000),
+            4: (4500, 7000),
+            5: (3000, 4500),
+            7: (3500, 5200),
+        },
+        "research_masters": {
+            1: (4200, 6000),
+            2: (8000, 12000),
+            3: (5500, 8000),
+            4: (6000, 9000),
+            5: (3800, 5500),
+            7: (4500, 6500),
+        },
+        "doctoral": {
+            1: (5500, 8000),
+            2: (12000, 18000),
+            3: (8000, 12000),
+            4: (8500, 13000),
+            5: (5000, 8000),
+            7: (6500, 9500),
+        },
+    }
+    minimum, target = table.get(level, table["bachelors"]).get(int(chapter_number or 1), (2500, 3800))
+
+    # If the user selects only a small subset of sections, scale down but still
+    # keep the output substantive.
+    if selected_section_count and selected_section_count < 5:
+        scale = max(0.55, selected_section_count / 8)
+        minimum = int(minimum * scale)
+        target = int(target * scale)
+
+    if chapter_number == 1:
+        distribution = [
+            "Introduction to the Chapter: normally 180-300 words; it should orient the reader without repeating the abstract.",
+            "Background to the Study: normally 900-1,300 words for Bachelor level and longer for higher levels; move global, regional, national, and local with citations.",
+            "Statement of the Problem: normally 550-850 words for Bachelor level; show evidence, contradiction, gap, local relevance, and research focus.",
+            "Purpose/Objectives/Questions: concise but fully aligned and measurable.",
+            "Significance, delimitations, limitations, and organisation: normally developed in proper paragraphs, not one-line notes.",
+        ]
+    elif chapter_number == 2:
+        distribution = [
+            "Each major concept/theory/objective needs developed synthesis, not a brief definition.",
+            "Empirical review paragraphs should include author/year, context, method, finding, limitation, and relevance.",
+            "Gap table entries should be concise, but the surrounding prose must interpret the gap.",
+        ]
+    elif chapter_number == 3:
+        distribution = [
+            "Methodology sections must justify choices, not merely name design, population, sample, instrument, and analysis.",
+            "Operationalisation and analysis-plan tables should be accompanied by explanatory prose.",
+        ]
+    elif chapter_number == 4:
+        distribution = [
+            "Results must be organised objective-by-objective with tables, interpretation, and links to theory/literature where supplied.",
+            "Do not invent results; use placeholder tables where output is missing.",
+        ]
+    else:
+        distribution = ["Develop every selected section with thesis-style prose, evidence, interpretation, and alignment to objectives."]
+
+    return {
+        "normalised_level": level,
+        "minimum_words": minimum,
+        "target_words": target,
+        "selected_section_count": selected_section_count,
+        "rule": (
+            f"For this level and chapter, produce a substantive chapter of at least about {minimum:,} words, "
+            f"with a preferred working range up to about {target:,} words when most standard sections are selected. "
+            "Do not pad with filler; expand through evidence, citations, explanation, local context, methodological alignment, and precise placeholders."
+        ),
+        "section_development_guidance": distribution,
+        "quality_gate": [
+            "A Bachelor chapter must still read like a complete thesis chapter, not a short assignment answer.",
+            "Do not compress Background, Statement of the Problem, Significance, Delimitations, and Limitations into thin paragraphs.",
+            "Most substantive paragraphs should contain either an in-text citation from the supplied/source-bank references, a supplied evidence anchor, or a precise placeholder for a missing source/statistic.",
+            "If the draft is below the minimum word guidance, expand analytically before finalising.",
+        ],
+    }
+
+
+def _word_count(text: str) -> int:
+    return len(re.findall(r"\b\w+(?:[-']\w+)?\b", text or ""))
+
+
+def _short_draft_threshold(profile: dict[str, Any], chapter_number: int, selected_section_count: int = 0) -> int:
+    return int(_chapter_length_depth_requirements(profile, chapter_number, selected_section_count).get("minimum_words", 2200))
+
+
+def _build_expansion_prompt(
+    draft: str,
+    profile: dict[str, Any],
+    chapter_number: int,
+    base_prompt: str,
+    source_plan: str,
+    minimum_words: int,
+) -> str:
+    return json.dumps(
+        {
+            "task": "Expand this chapter into a fuller thesis-standard draft because it is too short for the selected level.",
+            "chapter_number": chapter_number,
+            "project_title": profile.get("title", ""),
+            "minimum_words": minimum_words,
+            "current_word_count": _word_count(draft),
+            "mandatory_rules": [
+                "Revise and expand; do not restart from scratch.",
+                "Preserve all accurate headings, citations, references, placeholders, tables and source-use audit entries already present.",
+                "Do not pad with repetition or generic prose. Expand through explanation, evidence, local context, concept clarification, theory/method alignment, and careful interpretation.",
+                "Actively use relevant supplied/source-bank references in the body where they support the claim; include only cited sources in References.",
+                "Where evidence, statistics, local records, sample details, or source details are missing, add precise bracketed placeholders rather than inventing facts.",
+                "For Bachelor level, still write a complete thesis chapter: Background and Statement of the Problem must be developed, not scanty.",
+                "Do not mention AI, models, providers, internal prompts, or the expansion process.",
+            ],
+            "source_and_argument_plan": source_plan,
+            "base_drafting_prompt": base_prompt,
+            "draft_to_expand": draft,
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+
 def _uploaded_results_for_chapter(profile: dict[str, Any], chapter_number: int) -> dict[str, Any]:
     uploaded = profile.get("uploaded_results") or {}
     result = uploaded.get(str(chapter_number))
@@ -785,6 +940,7 @@ def build_drafting_prompt(
         },
         "project_profile": profile,
         "selected_academic_level_and_depth": _level_depth_requirements(profile),
+        "chapter_length_and_depth_requirements": _chapter_length_depth_requirements(profile, chapter_number, len(section_payload)),
         "reference_currency_requirements": _reference_currency_requirements(),
         "citation_and_evidence_requirements": _citation_and_evidence_requirements(chapter_number),
         "human_scholarly_style_requirements": _human_scholarly_style_requirements(seed=hash(profile.get("title", "")) & 0xFFFFFFFF),
@@ -796,6 +952,8 @@ def build_drafting_prompt(
         "chapter_specific_requirements": _chapter_specific_requirements(chapter_number),
         "output_requirements": [
             "Write in formal British English.",
+            "Follow chapter_length_and_depth_requirements. Even for Bachelors level, generate a complete thesis-standard chapter rather than a short assignment-style response. Treat the minimum word guidance as a quality floor unless the user selected only a very small number of sections.",
+            "Develop Background, Statement of the Problem, Significance, Delimitations, Limitations and Organisation in full paragraphs; do not reduce them to brief notes.",
             "Use the selected academic level internally to determine depth and sophistication, but never mention the selected level in the generated chapter text.",
             "Follow the human_scholarly_style_requirements and student_contribution_and_style_controls so the writing sounds natural, rigorous, context-specific, evidence-led and carefully supervised rather than generic or mechanical.",
             "In all generated chapters, use controlled high-burstiness and extremely high-perplexity scholarly writing: natural variation in sentence length, paragraph shape, vocabulary, transitions and argumentative movement, without sacrificing clarity, evidence, APA accuracy or methodological precision.",
@@ -1581,6 +1739,7 @@ def generate_chapter(
             "source_and_argument_plan": source_plan,
             "mandatory_quality_rules": [
                 "The output must be a full thesis-standard chapter, not an outline, worksheet, or placeholder-only draft.",
+                "Respect the chapter length/depth guidance in the base prompt. A Bachelor chapter must not be scanty; it should normally be at least the stated minimum word count when most standard sections are selected.",
                 "Each substantive section must contain developed paragraphs with analysis and citation support where supplied sources are relevant.",
                 "Use the source bank/retrieved sources in the base prompt. Cite relevant sources in the body and include only cited sources in References.",
                 "If the source bank is available, add a short Source Use Audit after References.",
@@ -1626,6 +1785,34 @@ def generate_chapter(
         )
 
     final_text = _polish_generated_text(draft)
+
+    # Stage 2b: If the provider returns a thin chapter, expand once before optional review.
+    # This is a quality safeguard for cases such as Bachelor Chapter One outputs that
+    # are technically coherent but too short for thesis submission. It is controlled
+    # by PROJECTREADY_AUTO_EXPAND_SHORT_DRAFT and defaults to on.
+    if _env_bool("PROJECTREADY_AUTO_EXPAND_SHORT_DRAFT", True):
+        min_words = _short_draft_threshold(profile, chapter_number, len(selected_section_ids or []))
+        if _word_count(final_text) < int(min_words * 0.90):
+            expansion_prompt = _build_expansion_prompt(
+                final_text,
+                profile,
+                chapter_number,
+                base_prompt,
+                source_plan,
+                min_words,
+            )
+            expanded = _call_provider_safely(
+                provider,
+                model,
+                thesis_system + " Expand the chapter to the required thesis depth. Preserve citations and do not fabricate evidence.",
+                expansion_prompt,
+                stage="expand_short_draft",
+                max_tokens=_env_int("OPENAI_MAX_OUTPUT_TOKENS", 14000),
+                temperature=0.42,
+            )
+            if expanded and _word_count(expanded) > _word_count(final_text):
+                final_text = _polish_generated_text(expanded)
+                stage_notes.append(f"expand:{provider}:{model}")
 
     # Stage 3/4: Optional premium compact review + final application. Disabled by default to control cost/time.
     premium_review = mode == "premium" or _env_bool("PROJECTREADY_PREMIUM_REVIEW", False)
