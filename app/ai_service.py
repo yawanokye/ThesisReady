@@ -4,6 +4,7 @@ import json
 import os
 import re
 import random
+import subprocess
 from datetime import datetime
 from typing import Any, Optional
 
@@ -23,471 +24,6 @@ def _safe_get_openai_client():
         return OpenAI(api_key=api_key)
     except Exception:
         return None
-
-
-# ----------------------------------------------------------------------
-# MULTI-PROVIDER MODEL ROUTING: OPENAI + DEEPSEEK
-# ----------------------------------------------------------------------
-
-def _safe_get_deepseek_client():
-    """Return a DeepSeek client using the OpenAI-compatible SDK interface."""
-    api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
-    if not api_key:
-        return None
-    try:
-        from openai import OpenAI
-        return OpenAI(
-            api_key=api_key,
-            base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").strip() or "https://api.deepseek.com",
-        )
-    except Exception:
-        return None
-
-
-def _env_bool(name: str, default: bool = False) -> bool:
-    value = os.getenv(name, "").strip().lower()
-    if not value:
-        return default
-    return value in {"1", "true", "yes", "on", "y"}
-
-
-def _env_int(name: str, default: int) -> int:
-    try:
-        return int(str(os.getenv(name, default)).strip())
-    except Exception:
-        return default
-
-
-def _normalise_generation_mode(profile: dict[str, Any] | None = None) -> str:
-    """Return economy, standard, enhanced or premium."""
-    profile = profile or {}
-    mode = (
-        profile.get("generation_mode")
-        or profile.get("model_mode")
-        or os.getenv("PROJECTREADY_DEFAULT_MODE", "standard")
-    )
-    mode = str(mode or "standard").strip().lower()
-    if mode not in {"economy", "standard", "enhanced", "premium"}:
-        mode = "standard"
-    return mode
-
-
-def _deepseek_enabled() -> bool:
-    return _env_bool("PROJECTREADY_ENABLE_DEEPSEEK", False) and bool(os.getenv("DEEPSEEK_API_KEY", "").strip())
-
-
-def _provider_model_for_stage(stage: str, mode: str) -> tuple[str, str]:
-    """
-    Stage router.
-
-    economy  = DeepSeek plan + DeepSeek draft
-    standard = DeepSeek plan/source work + OpenAI draft
-    enhanced = DeepSeek plan + OpenAI draft + optional OpenAI/DeepSeek review
-    premium  = DeepSeek plan + OpenAI draft + GPT-5.5 review + OpenAI final
-    """
-    deepseek_fast = os.getenv("DEEPSEEK_FAST_MODEL", "deepseek-chat").strip() or "deepseek-chat"
-    deepseek_reasoner = os.getenv("DEEPSEEK_REASONER_MODEL", "deepseek-reasoner").strip() or "deepseek-reasoner"
-
-    openai_draft = os.getenv("OPENAI_DRAFT_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-4.1"
-    openai_review = os.getenv("OPENAI_REVIEW_MODEL") or os.getenv("OPENAI_PLANNER_MODEL") or "gpt-5.5"
-    openai_final = os.getenv("OPENAI_FINAL_MODEL") or openai_draft
-    openai_fallback = os.getenv("OPENAI_FALLBACK_MODEL") or "gpt-4.1-mini"
-
-    ds_on = _deepseek_enabled()
-
-    if mode == "economy":
-        if ds_on and stage in {"sources", "plan", "draft", "review"}:
-            return "deepseek", deepseek_reasoner if stage in {"plan", "draft"} else deepseek_fast
-        return "openai", openai_fallback
-
-    if mode == "standard":
-        if ds_on and stage in {"sources", "plan"}:
-            return "deepseek", deepseek_fast
-        if stage in {"draft", "final"}:
-            return "openai", openai_draft
-        return "openai", openai_fallback
-
-    if mode == "enhanced":
-        if ds_on and stage in {"sources", "plan"}:
-            return "deepseek", deepseek_reasoner
-        if stage in {"draft", "final"}:
-            return "openai", openai_draft
-        if stage == "review":
-            return "openai", openai_review
-        return "openai", openai_fallback
-
-    if mode == "premium":
-        if ds_on and stage in {"sources", "plan"}:
-            return "deepseek", deepseek_reasoner
-        if stage == "review":
-            return "openai", openai_review
-        if stage in {"draft", "final"}:
-            return "openai", openai_final if stage == "final" else openai_draft
-        return "openai", openai_fallback
-
-    return "openai", openai_draft
-
-
-def _client_for_provider(provider: str):
-    if provider == "deepseek":
-        return _safe_get_deepseek_client()
-    return _safe_get_openai_client()
-
-
-def _extract_text_from_chat_response(response: Any) -> str:
-    try:
-        return str(response.choices[0].message.content or "").strip()
-    except Exception:
-        return ""
-
-
-def _extract_text_from_responses_api(response: Any) -> str:
-    text = str(getattr(response, "output_text", "") or "").strip()
-    if text:
-        return text
-    try:
-        parts: list[str] = []
-        for item in getattr(response, "output", []) or []:
-            for content in getattr(item, "content", []) or []:
-                maybe = getattr(content, "text", "") or ""
-                if maybe:
-                    parts.append(str(maybe))
-        return "\n".join(parts).strip()
-    except Exception:
-        return ""
-
-
-def _call_provider_safely(
-    provider: str,
-    model: str,
-    instructions: str,
-    prompt: str,
-    *,
-    stage: str = "draft",
-    max_tokens: int | None = None,
-    temperature: float = 0.45,
-) -> str:
-    """
-    Safe multi-provider call.
-    OpenAI tries Responses API first, then Chat Completions. DeepSeek uses Chat Completions.
-    """
-    client = _client_for_provider(provider)
-    if client is None:
-        return ""
-
-    timeout_seconds = _env_int("OPENAI_TIMEOUT_SECONDS", 90)
-    max_tokens = max_tokens or _env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000)
-
-    # DeepSeek and most OpenAI-compatible providers use chat completions.
-    if provider == "deepseek":
-        try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": instructions},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=temperature,
-                max_tokens=max_tokens,
-                timeout=timeout_seconds,
-            )
-            return _extract_text_from_chat_response(response)
-        except Exception as e:
-            print(f"DeepSeek API error at {stage}: {e}")
-            return ""
-
-    # OpenAI: Responses API first, because long-context models are better supported there.
-    try:
-        response = client.responses.create(
-            model=model,
-            instructions=instructions,
-            input=prompt,
-            temperature=temperature,
-            max_output_tokens=max_tokens,
-            timeout=timeout_seconds,
-        )
-        text = _extract_text_from_responses_api(response)
-        if text:
-            return text
-    except Exception as e:
-        print(f"OpenAI Responses API error at {stage}: {e}")
-
-    # Fallback to Chat Completions for models/accounts where Responses is unavailable.
-    try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": instructions},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=temperature,
-            max_tokens=max_tokens,
-            timeout=timeout_seconds,
-        )
-        return _extract_text_from_chat_response(response)
-    except Exception as e:
-        print(f"OpenAI Chat Completions error at {stage}: {e}")
-        fallback_model = os.getenv("OPENAI_FALLBACK_MODEL", "").strip()
-        if fallback_model and fallback_model != model:
-            try:
-                response = client.chat.completions.create(
-                    model=fallback_model,
-                    messages=[
-                        {"role": "system", "content": instructions},
-                        {"role": "user", "content": prompt},
-                    ],
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    timeout=timeout_seconds,
-                )
-                return _extract_text_from_chat_response(response)
-            except Exception as e2:
-                print(f"OpenAI fallback model error at {stage}: {e2}")
-        return ""
-
-
-def _build_source_and_argument_plan_prompt(profile: dict[str, Any], chapter_number: int, drafting_prompt: str) -> str:
-    """Compact planning prompt usually handled by DeepSeek to reduce OpenAI token cost."""
-    return json.dumps(
-        {
-            "task": "Prepare a compact thesis-chapter plan, source-use map and evidence-gap list before drafting.",
-            "chapter_number": chapter_number,
-            "project_title": profile.get("title", ""),
-            "rules": [
-                "Do not draft the full chapter.",
-                "Identify the central argument for the selected chapter.",
-                "List which supplied/retrieved sources appear relevant and where they should be used.",
-                "Flag not_relevant sources that should be excluded.",
-                "Identify missing statistics, policy evidence, sample details, variables, methods or results that need placeholders.",
-                "Return a compact plan under 1,500 words.",
-            ],
-            "drafting_prompt": drafting_prompt,
-        },
-        ensure_ascii=False,
-        indent=2,
-    )
-
-
-def _build_final_review_prompt(draft: str, profile: dict[str, Any], chapter_number: int, source_plan: str = "") -> str:
-    return json.dumps(
-        {
-            "task": "Review this thesis chapter for supervisor-ready quality. Return a compact actionable review, not a rewrite.",
-            "chapter_number": chapter_number,
-            "project_title": profile.get("title", ""),
-            "checks": [
-                "Is the writing thesis-standard, substantive and not scanty?",
-                "Are in-text citations used across substantive paragraphs where supplied sources support the claims?",
-                "Are references limited to sources actually cited?",
-                "Are source-finder records used only when relevant?",
-                "Are unsupported claims replaced with precise placeholders instead of invented facts?",
-                "Are headings, tables, equations, results and methodology tense appropriate?",
-            ],
-            "source_and_argument_plan": source_plan,
-            "draft": draft,
-        },
-        ensure_ascii=False,
-        indent=2,
-    )
-
-
-def _build_apply_review_prompt(draft: str, review: str, profile: dict[str, Any], chapter_number: int) -> str:
-    return json.dumps(
-        {
-            "task": "Apply the review to produce a final clean thesis chapter. Revise, do not restart.",
-            "chapter_number": chapter_number,
-            "project_title": profile.get("title", ""),
-            "rules": [
-                "Keep accurate citations, source-use audit, references, tables and placeholders.",
-                "Improve thesis-standard depth and paragraph development.",
-                "Do not fabricate citations, statistics, methods, sample sizes, approvals, results or references.",
-                "Do not mention AI, models, providers or internal review.",
-                "Use British English and APA-style author-year citations by default.",
-            ],
-            "review": review,
-            "draft": draft,
-        },
-        ensure_ascii=False,
-        indent=2,
-    )
-
-
-# ----------------------------------------------------------------------
-# AGGRESSIVE HUMANISER PASS – HIGH BURSTINESS, HIGH PERPLEXITY
-# ----------------------------------------------------------------------
-
-def _humaniser_pass(text: str, profile: dict[str, Any], chapter_number: int) -> str:
-    """
-    Use DeepSeek with very high temperature and an aggressive prompt.
-    Forces extreme sentence length variation, rare vocabulary, and odd but correct phrasing.
-    """
-    if not text or len(text) < 200:
-        return text
-
-    if not _env_bool("PROJECTREADY_HUMANISER_PASS", default=False):
-        return text
-
-    if not _deepseek_enabled():
-        print("Humaniser pass skipped: DeepSeek not enabled or missing API key.")
-        return text
-
-    client = _safe_get_deepseek_client()
-    if client is None:
-        return text
-
-    model = os.getenv("DEEPSEEK_FAST_MODEL", "deepseek-chat")
-
-    prompt = f"""You are a brilliant but erratic PhD student editing your own draft. Rewrite the text to sound extremely human – with wild variation. Follow these rules strictly. Do not change any facts, citations, numbers, or bracketed placeholders.
-
-RULES:
-1. **Extreme sentence length variation**: Alternate between very short (2-5 word) and very long (30-50 word) sentences. Example: "That matters. Retirement planning has increasingly shifted from a mainly employer-managed arrangement to a matter of individual financial decision-making, especially for workers outside stable salaried employment."
-2. **Very short punch sentences**: Insert at least one 2-4 word sentence every 100 words (e.g., "It matters." "This is key." "Not trivial.")
-3. **Rare vocabulary**: Replace common words with unusual but correct synonyms. Use words like "non‑trivial", "idiosyncratic", "stubborn assumption", "generous sample", "friction", "leaky", "messy".
-4. **No AI buzzwords**: Completely remove: "furthermore", "moreover", "in addition", "consequently", "however" (replace with "yet", "still", "but"), "crucial", "vital", "delve", "tapestry", "testament", "it is important to note".
-5. **Vary paragraph openings aggressively**: Never start two paragraphs the same way. Use "Yet,", "Still,", "Indeed,", "Conversely,", "Oddly,", "Importantly,".
-6. **Preserve all citations, placeholders, and facts exactly.
-7. **Output only the rewritten text.
-
-Original text:
-{text}
-
-Rewritten text:"""
-
-    try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": "You are an academic editor who improves natural flow with extreme variation. Use very short and very long sentences, rare vocabulary, and varied openings. Never change citations or placeholders."},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.95,          # much higher creativity
-            max_tokens=_env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000),
-        )
-        rewritten = response.choices[0].message.content.strip()
-        # Accept if at least 70% of original length (more aggressive)
-        if rewritten and len(rewritten) >= len(text) * 0.70:
-            return rewritten
-        else:
-            print(f"Humaniser output too short ({len(rewritten)} vs {len(text)}), keeping original.")
-            return text
-    except Exception as e:
-        print(f"Humaniser pass failed with DeepSeek: {e}")
-        return text
-
-
-def _aggressive_burstiness(text: str) -> str:
-    """
-    Guarantee extreme sentence length variance.
-    Splits long sentences, merges short ones, and forces a very short sentence after every long one.
-    """
-    if not text or len(text) < 200:
-        return text
-
-    # Split into sentences
-    sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text)
-    if len(sentences) < 4:
-        return text
-
-    new_sentences = []
-    for i, s in enumerate(sentences):
-        word_count = len(s.split())
-        # If sentence is very long (>30 words), split it at a conjunction or comma
-        if word_count > 30 and random.random() < 0.7:
-            split_points = [m.start() for m in re.finditer(r'(,|;|and|but|or)\s+', s)]
-            if split_points:
-                split_at = split_points[len(split_points)//2]
-                first = s[:split_at].rstrip()
-                second = s[split_at:].lstrip()
-                if second and second[0].islower():
-                    second = second[0].upper() + second[1:]
-                new_sentences.append(first + ".")
-                new_sentences.append(second)
-                continue
-        new_sentences.append(s)
-
-    # Now insert a very short sentence (2-5 words) after every long sentence (>25 words)
-    final = []
-    for s in new_sentences:
-        final.append(s)
-        if len(s.split()) > 25 and random.random() < 0.9:
-            short_opts = [" That matters. ", " It is so. ", " Not trivial. ", " This is key. ", " Consider that. "]
-            final.append(random.choice(short_opts))
-    return " ".join(final)
-
-
-def _extreme_lexical_richness(text: str) -> str:
-    """
-    Replace common words with rare synonyms and inject odd but correct academic phrases.
-    """
-    if not text or len(text) < 200:
-        return text
-
-    # Extended replacement dictionary
-    replacements = {
-        r'\bshows that\b': 'demonstrates that',
-        r'\bsuggests that\b': 'implies that',
-        r'\bdemonstrates that\b': 'exemplifies how',
-        r'\bimportant role\b': 'non‑trivial function',
-        r'\bsignificant\b': 'meaningful',
-        r'\bhowever\b': 'yet',
-        r'\btherefore\b': 'consequently',
-        r'\bfor example\b': 'as an illustration',
-        r'\bbecause\b': 'insofar as',
-        r'\bthe study\b': 'the present investigation',
-        r'\bits findings\b': 'the results obtained',
-        r'\bmany studies\b': 'a substantial body of work',
-        r'\bhas been shown\b': 'has been demonstrated',
-        r'\bin contrast\b': 'by contrast',
-        r'\bimportant\b': 'non‑trivial',
-        r'\bdifferent\b': 'divergent',
-        r'\bsimilar\b': 'analogous',
-        r'\bproblem\b': 'conundrum',
-        r'\bsolution\b': 'resolution',
-        r'\bevidence\b': 'corroboration',
-        r'\bresult\b': 'outcome',
-        r'\bweak\b': 'tenuous',
-        r'\bstrong\b': 'robust',
-        r'\bchange\b': 'shift',
-        r'\buse\b': 'employ',
-    }
-    for pattern, repl in replacements.items():
-        if random.random() < 0.4:  # 40% chance per replacement
-            text = re.sub(pattern, repl, text, flags=re.IGNORECASE)
-
-    # Inject rare phrases at random sentence boundaries
-    rare_phrases = [
-        " a stubborn assumption persists that ",
-        " this messy reality complicates ",
-        " a generous sample size would help ",
-        " the friction between theory and practice ",
-        " a leaky conceptual boundary ",
-        " an idiosyncratic finding ",
-    ]
-    sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text)
-    if len(sentences) > 2:
-        idx = random.randint(1, len(sentences)-2)
-        if random.random() < 0.3:
-            sentences[idx] = random.choice(rare_phrases) + sentences[idx].lower()
-    return " ".join(sentences)
-
-
-def _shuffle_sentence_order(text: str) -> str:
-    """
-    Slightly randomise sentence order within paragraphs to break predictable patterns.
-    Does not break logical flow – only swaps two adjacent sentences in some paragraphs.
-    """
-    paragraphs = text.split('\n')
-    new_paras = []
-    for para in paragraphs:
-        if not para.strip():
-            new_paras.append(para)
-            continue
-        sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', para)
-        if len(sentences) > 3 and random.random() < 0.3:
-            # Swap two adjacent sentences
-            i = random.randint(0, len(sentences)-2)
-            sentences[i], sentences[i+1] = sentences[i+1], sentences[i]
-        new_paras.append(" ".join(sentences))
-    return "\n".join(new_paras)
 
 
 def _reference_currency_requirements() -> dict[str, Any]:
@@ -574,153 +110,6 @@ def _level_depth_requirements(profile: dict[str, Any]) -> dict[str, str]:
     }
     guidance = profile.get("academic_level_guidance") or guidance_map.get(level, guidance_map["Bachelors"])
     return {"selected_level": level, "depth_guidance": guidance}
-
-
-def _normalise_level_name(profile: dict[str, Any]) -> str:
-    level = str(profile.get("level") or profile.get("academic_level") or "Bachelors").strip().lower()
-    if "phd" in level or "doctor" in level:
-        return "doctoral"
-    if "research" in level or "mphil" in level:
-        return "research_masters"
-    if "master" in level:
-        return "masters"
-    return "bachelors"
-
-
-def _chapter_length_depth_requirements(
-    profile: dict[str, Any],
-    chapter_number: int,
-    selected_section_count: int = 0,
-) -> dict[str, Any]:
-    """Return minimum thesis depth guidance so even Bachelor outputs are not skeletal."""
-    level = _normalise_level_name(profile)
-    table = {
-        "bachelors": {
-            1: (2800, 3600),
-            2: (4200, 6500),
-            3: (3000, 4200),
-            4: (3200, 4800),
-            5: (2200, 3200),
-            7: (2500, 3800),
-        },
-        "masters": {
-            1: (3500, 5000),
-            2: (6500, 9000),
-            3: (4200, 6000),
-            4: (4500, 7000),
-            5: (3000, 4500),
-            7: (3500, 5200),
-        },
-        "research_masters": {
-            1: (4200, 6000),
-            2: (8000, 12000),
-            3: (5500, 8000),
-            4: (6000, 9000),
-            5: (3800, 5500),
-            7: (4500, 6500),
-        },
-        "doctoral": {
-            1: (5500, 8000),
-            2: (12000, 18000),
-            3: (8000, 12000),
-            4: (8500, 13000),
-            5: (5000, 8000),
-            7: (6500, 9500),
-        },
-    }
-    minimum, target = table.get(level, table["bachelors"]).get(int(chapter_number or 1), (2500, 3800))
-
-    if selected_section_count and selected_section_count < 5:
-        scale = max(0.55, selected_section_count / 8)
-        minimum = int(minimum * scale)
-        target = int(target * scale)
-
-    if chapter_number == 1:
-        distribution = [
-            "Introduction to the Chapter: normally 180-300 words; orient the reader without repeating the abstract.",
-            "Background: 900-1,300 words for Bachelor, longer for higher levels; move global to local with citations.",
-            "Statement of the Problem: 550-850 words for Bachelor; show evidence, contradiction, gap, local relevance.",
-            "Purpose/Objectives/Questions: concise but fully aligned and measurable.",
-            "Significance, delimitations, limitations, organisation: developed paragraphs, not one-line notes.",
-        ]
-    elif chapter_number == 2:
-        distribution = [
-            "Each concept/theory/objective needs developed synthesis, not a brief definition.",
-            "Empirical review paragraphs: author/year, context, method, finding, limitation, relevance.",
-            "Gap table entries concise, but surrounding prose must interpret the gap.",
-        ]
-    elif chapter_number == 3:
-        distribution = [
-            "Methodology sections justify choices, not merely name design, population, sample, instrument, analysis.",
-            "Operationalisation and analysis-plan tables accompanied by explanatory prose.",
-        ]
-    elif chapter_number == 4:
-        distribution = [
-            "Results objective-by-objective with tables, interpretation, links to theory/literature where supplied.",
-            "Do not invent results; use placeholder tables where output missing.",
-        ]
-    else:
-        distribution = ["Develop every selected section with thesis-style prose, evidence, interpretation, alignment to objectives."]
-
-    return {
-        "normalised_level": level,
-        "minimum_words": minimum,
-        "target_words": target,
-        "selected_section_count": selected_section_count,
-        "rule": (
-            f"For this level and chapter, produce a substantive chapter of at least about {minimum:,} words, "
-            f"with a preferred working range up to about {target:,} words when most standard sections are selected. "
-            "Do not pad with filler; expand through evidence, citations, explanation, local context, methodological alignment, and precise placeholders."
-        ),
-        "section_development_guidance": distribution,
-        "quality_gate": [
-            "A Bachelor chapter must still read like a complete thesis chapter, not a short assignment answer.",
-            "Do not compress Background, Statement of the Problem, Significance, Delimitations, and Limitations into thin paragraphs.",
-            "Most substantive paragraphs should contain either an in-text citation from the supplied/source-bank references, a supplied evidence anchor, or a precise placeholder for a missing source/statistic.",
-            "If the draft is below the minimum word guidance, expand analytically before finalising.",
-        ],
-    }
-
-
-def _word_count(text: str) -> int:
-    return len(re.findall(r"\b\w+(?:[-']\w+)?\b", text or ""))
-
-
-def _short_draft_threshold(profile: dict[str, Any], chapter_number: int, selected_section_count: int = 0) -> int:
-    return int(_chapter_length_depth_requirements(profile, chapter_number, selected_section_count).get("minimum_words", 2200))
-
-
-def _build_expansion_prompt(
-    draft: str,
-    profile: dict[str, Any],
-    chapter_number: int,
-    base_prompt: str,
-    source_plan: str,
-    minimum_words: int,
-) -> str:
-    return json.dumps(
-        {
-            "task": "Expand this chapter into a fuller thesis-standard draft because it is too short for the selected level.",
-            "chapter_number": chapter_number,
-            "project_title": profile.get("title", ""),
-            "minimum_words": minimum_words,
-            "current_word_count": _word_count(draft),
-            "mandatory_rules": [
-                "Revise and expand; do not restart from scratch.",
-                "Preserve all accurate headings, citations, references, placeholders, tables and source-use audit entries already present.",
-                "Do not pad with repetition or generic prose. Expand through explanation, evidence, local context, concept clarification, theory/method alignment, and careful interpretation.",
-                "Actively use relevant supplied/source-bank references in the body where they support the claim; include only cited sources in References.",
-                "Where evidence, statistics, local records, sample details, or source details are missing, add precise bracketed placeholders rather than inventing facts.",
-                "For Bachelor level, still write a complete thesis chapter: Background and Statement of the Problem must be developed, not scanty.",
-                "Do not mention AI, models, providers, internal prompts, or the expansion process.",
-            ],
-            "source_and_argument_plan": source_plan,
-            "base_drafting_prompt": base_prompt,
-            "draft_to_expand": draft,
-        },
-        ensure_ascii=False,
-        indent=2,
-    )
 
 
 def _uploaded_results_for_chapter(profile: dict[str, Any], chapter_number: int) -> dict[str, Any]:
@@ -1111,7 +500,6 @@ def build_drafting_prompt(
         },
         "project_profile": profile,
         "selected_academic_level_and_depth": _level_depth_requirements(profile),
-        "chapter_length_and_depth_requirements": _chapter_length_depth_requirements(profile, chapter_number, len(section_payload)),
         "reference_currency_requirements": _reference_currency_requirements(),
         "citation_and_evidence_requirements": _citation_and_evidence_requirements(chapter_number),
         "human_scholarly_style_requirements": _human_scholarly_style_requirements(seed=hash(profile.get("title", "")) & 0xFFFFFFFF),
@@ -1123,8 +511,6 @@ def build_drafting_prompt(
         "chapter_specific_requirements": _chapter_specific_requirements(chapter_number),
         "output_requirements": [
             "Write in formal British English.",
-            "Follow chapter_length_and_depth_requirements. Even for Bachelors level, generate a complete thesis-standard chapter rather than a short assignment-style response. Treat the minimum word guidance as a quality floor unless the user selected only a very small number of sections.",
-            "Develop Background, Statement of the Problem, Significance, Delimitations, Limitations and Organisation in full paragraphs; do not reduce them to brief notes.",
             "Use the selected academic level internally to determine depth and sophistication, but never mention the selected level in the generated chapter text.",
             "Follow the human_scholarly_style_requirements and student_contribution_and_style_controls so the writing sounds natural, rigorous, context-specific, evidence-led and carefully supervised rather than generic or mechanical.",
             "In all generated chapters, use controlled high-burstiness and extremely high-perplexity scholarly writing: natural variation in sentence length, paragraph shape, vocabulary, transitions and argumentative movement, without sacrificing clarity, evidence, APA accuracy or methodological precision.",
@@ -1177,7 +563,7 @@ def build_drafting_prompt(
 
 
 # ----------------------------------------------------------------------
-# HUMANISER POST-PROCESSING FUNCTIONS (now including aggressive ones)
+# HUMANISER POST-PROCESSING FUNCTIONS
 # ----------------------------------------------------------------------
 
 def _increase_natural_variation(text: str) -> str:
@@ -1297,6 +683,7 @@ def _add_drafting_artefacts(text: str, probability_per_500_words: float = 0.8) -
         if random.random() < 0.5:
             text = re.sub(pattern, repl, text, count=1, flags=re.IGNORECASE)
 
+    # Additional patterns
     if random.random() < 0.4:
         text = re.sub(r'\.\s+', r'. That said, ', text, count=1)
     if random.random() < 0.4:
@@ -1392,167 +779,81 @@ def _force_short_sentences(text: str, target_every_n_words: int = 200) -> str:
     return text
 
 
+def _humanize_with_small_model(text: str, model: str = "llama3-8b-8192") -> str:
+    """
+    Rewrite text using Groq's fast inference API (Llama 3 8B).
+    Provides low‑perplexity, natural variation without local Ollama.
+    """
+    if not text or len(text) < 200:
+        return text
+
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        return text  # fallback: no rewrite
+
+    try:
+        from groq import Groq
+        client = Groq(api_key=api_key)
+    except ImportError:
+        return text
+
+    prompt = f"""You are a careful but hurried PhD student revising your own draft.
+Rewrite the following academic paragraph in your own voice. Keep all facts, citations, statistics, placeholders, and technical terms exactly as given.
+Introduce natural variation: very short sentences (3-5 words), occasional sentence fragments, small grammatical inconsistencies (e.g., missing comma, lowercase after period, double space).
+Do not change any bracketed placeholders like [insert ...]. Do not remove or alter citations. Do not fabricate anything.
+Output only the rewritten text, no extra commentary.
+
+Original text:
+{text}
+
+Rewritten text:"""
+
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=2000,
+        )
+        rewritten = response.choices[0].message.content.strip()
+        rewritten = re.sub(r'^Rewritten text:\s*', '', rewritten, flags=re.IGNORECASE)
+        return rewritten
+    except Exception:
+        return text
+
+
 def _add_human_noise(text: str, error_probability: float = 0.02) -> str:
     """Introduce very small, realistic human typing errors and inconsistencies."""
     if not text or len(text) < 200:
         return text
 
+    # Delete a random character
     if random.random() < error_probability * 0.5:
         pos = random.randint(10, len(text)-10)
         text = text[:pos] + text[pos+1:]
 
+    # Double a random character
     if random.random() < error_probability * 0.5:
         pos = random.randint(10, len(text)-10)
         if text[pos].isalpha():
             text = text[:pos] + text[pos] + text[pos:]
 
+    # Randomly lowercase a word after a period
     if random.random() < 0.08:
         text = re.sub(r'\.\s+([A-Z])', lambda m: '. ' + m.group(1).lower(), text, count=1)
 
+    # Double space after a period
     if random.random() < 0.1:
         text = re.sub(r'\.\s+', '.  ', text, count=1)
 
+    # Replace period with comma in a short sentence
     if random.random() < 0.06:
         text = re.sub(r'([a-z]{5,20}\.)\s+([A-Z][a-z]{3,7}\s)', r'\1, \2', text, count=1)
 
+    # Double space between two words
     if random.random() < 0.05:
         text = re.sub(r'([a-z])\s+([a-z])', r'\1  \2', text, count=1)
 
-    return text
-
-
-# ----------------------------------------------------------------------
-# UNUSED LEGACY TEXT-VARIATION HELPERS (NOT CALLED BY GENERATION)
-# ----------------------------------------------------------------------
-
-def _split_long_paragraphs(text: str, max_paragraph_words: int = 120) -> str:
-    paras = text.split('\n')
-    new_paras = []
-    for para in paras:
-        words = para.split()
-        if len(words) <= max_paragraph_words:
-            new_paras.append(para)
-            continue
-        half = len(words) // 2
-        sentence_ends = [m.end() for m in re.finditer(r'[.!?]\s+', para)]
-        if sentence_ends:
-            best = min(sentence_ends, key=lambda x: abs(x - half))
-            first = para[:best].strip()
-            second = para[best:].strip()
-            if first and second:
-                new_paras.append(first)
-                new_paras.append(second)
-            else:
-                new_paras.append(para)
-        else:
-            new_paras.append(para)
-    return '\n'.join(new_paras)
-
-
-def _force_very_short_punch(text: str) -> str:
-    words = text.split()
-    if len(words) < 30:
-        return text
-    short_punches = re.findall(r'\b\w{1,5}\s+\w{1,5}\s+\w{1,5}\s*[.!?]', text, re.IGNORECASE)
-    if len(short_punches) > 1:
-        return text
-    match = re.search(r'([.!?])\s+', text)
-    if match:
-        pos = match.end()
-        options = [" That matters. ", " It is not trivial. ", " This is critical. ", " Consider that. ", " But here is the catch. "]
-        text = text[:pos] + random.choice(options) + text[pos:]
-    return text
-
-
-def _alternate_sentence_lengths(text: str) -> str:
-    sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text)
-    if len(sentences) < 3:
-        return text
-    new = []
-    for i, s in enumerate(sentences):
-        new.append(s)
-        if len(s.split()) > 25 and i+1 < len(sentences):
-            short = random.choice([" Yet it is so. ", " That holds true. ", " This is not accidental. "])
-            new.append(short)
-    return " ".join(new)
-
-
-def _remove_trigger_words(text: str) -> str:
-    replacements = {
-        r'\bFurthermore\b': 'Also',
-        r'\bMoreover\b': 'Besides',
-        r'\bIn conclusion\b': 'In short',
-        r'\bTapestry\b': 'range',
-        r'\bTestify\b': 'show',
-        r'\bDelve\b': 'examine',
-        r'\bCrucial\b': 'important',
-        r'\bIt is important to note\b': 'Note that',
-        r'\bVital\b': 'necessary',
-        r'\bRemainder\b': 'rest',
-    }
-    for pattern, repl in replacements.items():
-        text = re.sub(pattern, repl, text, flags=re.IGNORECASE)
-    return text
-
-
-def _break_rule_of_three(text: str) -> str:
-    def repl(match):
-        a, b, c = match.groups()
-        if random.random() < 0.5:
-            return f"{a}, {b}, and occasionally {c}"
-        else:
-            return f"{a} and {b}, or sometimes {c}"
-    text = re.sub(r'\b(\w+)\s*,\s*(\w+)\s*,\s*(?:and\s+)?(\w+)\b', repl, text, flags=re.IGNORECASE)
-    return text
-
-
-def _inject_tangent(text: str) -> str:
-    fractional = [
-        " about four out of ten cases, ",
-        " roughly two‑thirds of instances, ",
-        " in approximately one‑quarter of studies, ",
-        " nearly three out of five respondents, ",
-    ]
-    asides = [
-        " (a pattern also observed in Kenyan informal markets) ",
-        " (similar to findings from Lagos) ",
-        " — an issue also raised by Ghana's National Pension Regulatory Authority — ",
-        " , a point that local financial literacy programmes often miss, ",
-    ]
-    sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text)
-    if len(sentences) < 3:
-        return text
-    idx = random.randint(1, len(sentences)-2)
-    if random.random() < 0.4:
-        sentences[idx] += random.choice(fractional)
-    if random.random() < 0.3:
-        sentences[idx] += random.choice(asides)
-    return " ".join(sentences)
-
-
-def _randomise_paragraph_order(text: str) -> str:
-    paras = re.split(r'\n\s*\n', text)
-    if len(paras) < 3:
-        return text
-    i, j = random.sample(range(len(paras)), 2)
-    if abs(i - j) > 1:
-        paras[i], paras[j] = paras[j], paras[i]
-    return '\n\n'.join(paras)
-
-
-def _humanize_structural(text: str, seed: int = None) -> str:
-    """Legacy helper retained for backward compatibility; not called by generation."""
-    if seed is not None:
-        random.seed(seed)
-    if not text or len(text) < 200:
-        return text
-    text = _split_long_paragraphs(text)
-    text = _force_very_short_punch(text)
-    text = _alternate_sentence_lengths(text)
-    text = _remove_trigger_words(text)
-    text = _break_rule_of_three(text)
-    text = _inject_tangent(text)
-    text = _randomise_paragraph_order(text)
     return text
 
 
@@ -1622,7 +923,7 @@ def _polish_generated_text(text: str) -> str:
 
 
 # ----------------------------------------------------------------------
-# SOURCE INTEGRATION AND OTHER HELPERS
+# SOURCE INTEGRATION AND OTHER HELPERS (unchanged from original)
 # ----------------------------------------------------------------------
 
 def _source_usage_count(text: str, sources: list[dict[str, Any]]) -> int:
@@ -1719,16 +1020,12 @@ def _review_source_integration(
         "draft_to_revise": draft,
     }
     try:
-        response = client.chat.completions.create(
+        response = client.responses.create(
             model=model,
-            messages=[
-                {"role": "system", "content": instructions + " Revise rather than restart. Preserve the student's context. Use only relevant attached sources and include a Source Use Audit."},
-                {"role": "user", "content": json.dumps(repair_payload, ensure_ascii=False, indent=2)},
-            ],
-            temperature=0.5,
-            max_tokens=4000,
+            instructions=instructions + " Revise rather than restart. Preserve the student's context. Use only relevant attached sources and include a Source Use Audit.",
+            input=json.dumps(repair_payload, ensure_ascii=False, indent=2),
         )
-        revised = response.choices[0].message.content.strip()
+        revised = getattr(response, "output_text", "").strip()
         if revised:
             return _polish_generated_text(revised)
     except Exception:
@@ -1805,16 +1102,12 @@ def _human_academic_revision_pass(
         "draft_to_revise": draft,
     }
     try:
-        response = client.chat.completions.create(
+        response = client.responses.create(
             model=model,
-            messages=[
-                {"role": "system", "content": instructions + " Perform one conservative academic‑quality revision pass. Do not restart the chapter. Do not add unsupported content."},
-                {"role": "user", "content": json.dumps(revision_payload, ensure_ascii=False, indent=2)},
-            ],
-            temperature=0.5,
-            max_tokens=4000,
+            instructions=instructions + " Perform one conservative academic‑quality revision pass. Do not restart the chapter. Do not add unsupported content.",
+            input=json.dumps(revision_payload, ensure_ascii=False, indent=2),
         )
-        revised = response.choices[0].message.content.strip()
+        revised = getattr(response, "output_text", "").strip()
         if revised:
             return _polish_generated_text(revised)
     except Exception:
@@ -1823,20 +1116,22 @@ def _human_academic_revision_pass(
 
 
 def _call_openai_response_safely(client: Any, model: str, instructions: str, prompt: str) -> str:
-    """Backward-compatible wrapper used by older helper functions."""
-    return _call_provider_safely(
-        "openai",
-        model,
-        instructions,
-        prompt,
-        stage="legacy_openai_call",
-        max_tokens=_env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000),
-        temperature=0.45,
-    )
+    try:
+        response = client.responses.create(model=model, instructions=instructions, input=prompt)
+        return str(getattr(response, "output_text", "") or "").strip()
+    except Exception:
+        fallback_model = os.getenv("OPENAI_FALLBACK_MODEL", "").strip()
+        if fallback_model and fallback_model != model:
+            try:
+                response = client.responses.create(model=fallback_model, instructions=instructions, input=prompt)
+                return str(getattr(response, "output_text", "") or "").strip()
+            except Exception:
+                return ""
+        return ""
 
 
 # ----------------------------------------------------------------------
-# MAIN GENERATION FUNCTION – EXTREMELY AGGRESSIVE HUMANISATION
+# MAIN GENERATION FUNCTION
 # ----------------------------------------------------------------------
 
 def generate_chapter(
@@ -1848,196 +1143,96 @@ def generate_chapter(
     use_ai: bool = True,
 ) -> tuple[str, str]:
     """
-    Generate a chapter with a cost-aware multi-provider workflow.
-    Then apply extremely aggressive humanisation (high burstiness, high perplexity).
+    Generate a chapter using OpenAI (if available) or fallback to local templates.
+    Incorporates high‑burstiness, randomised humaniser and multiple human‑quality passes.
     """
     try:
-        base_prompt = build_drafting_prompt(profile, chapter_number, selected_section_ids, answers, extra_instructions)
+        prompt = build_drafting_prompt(profile, chapter_number, selected_section_ids, answers, extra_instructions)
     except Exception:
         return (
             _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)),
-            "local_template_fallback_prompt_error",
+            "local_template_fallback_prompt_error"
         )
 
-    if not use_ai:
-        return (
-            _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)),
-            "local_template_fallback_ai_disabled",
+    client = _safe_get_openai_client()
+    if use_ai and client:
+        model = os.getenv("OPENAI_MODEL", "gpt-5.5")
+        instructions = (
+            "You are ProjectReady AI, an academic project‑work drafting and compliance assistant. "
+            "Write in a natural, high‑standard scholarly voice that sounds like a carefully supervised draft, "
+            "built from the student's own evidence, context, supervisor comments and project decisions. "
+            "Apply controlled high‑burstiness and high‑perplexity: vary sentence/paragraph length, transitions, vocabulary, "
+            "and argumentative rhythm while keeping clarity, evidence‑led reasoning, and disciplinary precision. "
+            "Never mention the selected academic level, template, or checklist. Avoid generic AI phrasing, filler, overclaiming, "
+            "and perfectly balanced paragraphs. Use grounded verbs (suggests, indicates, complicates, qualifies). "
+            "Do not begin problem statements with 'The research problem is that'. Frame problems through evidence, tension, or gap. "
+            "Do not fabricate sources, results, approvals, or evidence. Use clear [bracketed placeholders] when information is missing. "
+            "Write as a completed final project (past tense for methodology, future only for suggested research in Ch5). "
+            "For Ch2: use clean markdown gap tables and Mermaid flowcharts for diagrams. For equations: display blocks with $$. "
+            "For Ch4: never invent output; present only supplied results. Apply reference currency (≥70% recent, but allow older where needed). "
+            "Include accurate in‑text citations. For source‑finder results: integrate only highly_relevant/partly_relevant records, "
+            "exclude not_relevant, and add a Source Use Audit after References. Do not add any AI‑detection or humanisation notes – "
+            "just produce normal scholarly prose."
         )
 
-    mode = _normalise_generation_mode(profile)
-    source_plan = ""
-    stage_notes: list[str] = []
+        text = _call_openai_response_safely(client, model, instructions, prompt)
+        if text:
+            # 1. Basic polish
+            polished = _polish_generated_text(text)
 
-    thesis_system = (
-        "You are ProjectReady AI, a human-supervised academic thesis drafting assistant. "
-        "Write thesis-standard, evidence-led, formal British English. Produce substantive paragraphs, not checklist notes. "
-        "Use supplied/retrieved references actively where relevant, with author-year in-text citations and an APA-style References section. "
-        "Do not cite irrelevant sources and do not invent sources, statistics, ethical approvals, sample sizes, results or reference details. "
-        "Where evidence is missing, insert a precise bracketed placeholder. "
-        "Use controlled high-burstiness scholarly prose only as natural academic rhythm: varied sentence length, paragraph shape and transitions, while preserving clarity and methodological precision. "
-        "Do not add AI-detection, humanisation, provider, model or internal-process notes to the chapter. "
-        "Do not introduce deliberate errors, typos, false facts, fake citations or random paragraph order."
-    )
+            # 2. Increase natural variation
+            polished = _increase_natural_variation(polished)
 
-    # Stage 1: Cheap source/argument planning, usually DeepSeek.
-    if _deepseek_enabled() and mode in {"economy", "standard", "enhanced", "premium"}:
-        provider, model = _provider_model_for_stage("plan", mode)
-        plan_prompt = _build_source_and_argument_plan_prompt(profile, chapter_number, base_prompt)
-        source_plan = _call_provider_safely(
-            provider,
-            model,
-            thesis_system + " Prepare only a compact plan and source map; do not draft the chapter.",
-            plan_prompt,
-            stage="plan",
-            max_tokens=_env_int("PROJECTREADY_PLAN_MAX_TOKENS", 2500),
-            temperature=0.25,
-        )
-        if source_plan:
-            stage_notes.append(f"plan:{provider}:{model}")
-
-    # Stage 2: Full draft. Economy may use DeepSeek; standard/premium use OpenAI.
-    provider, model = _provider_model_for_stage("draft", mode)
-    draft_prompt = json.dumps(
-        {
-            "task": "Draft the full thesis chapter now.",
-            "chapter_number": chapter_number,
-            "generation_mode": mode,
-            "source_and_argument_plan": source_plan,
-            "mandatory_quality_rules": [
-                "The output must be a full thesis-standard chapter, not an outline, worksheet, or placeholder-only draft.",
-                "Respect the chapter length/depth guidance in the base prompt. A Bachelor chapter must not be scanty; it should normally be at least the stated minimum word count when most standard sections are selected.",
-                "Each substantive section must contain developed paragraphs with analysis and citation support where supplied sources are relevant.",
-                "Use the source bank/retrieved sources in the base prompt. Cite relevant sources in the body and include only cited sources in References.",
-                "If the source bank is available, add a short Source Use Audit after References.",
-                "Use placeholders only for genuinely missing evidence, statistics, methodological decisions, results, or source details.",
-                "Do not mention uploaded files, AI provider, internal plan, or this instruction in the chapter body.",
-            ],
-            "base_drafting_prompt": base_prompt,
-        },
-        ensure_ascii=False,
-        indent=2,
-    )
-    draft = _call_provider_safely(
-        provider,
-        model,
-        thesis_system,
-        draft_prompt,
-        stage="draft",
-        max_tokens=_env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000),
-        temperature=0.48,
-    )
-
-    # If selected draft provider failed, try sensible fallback paths before local fallback.
-    if not draft and provider == "deepseek":
-        fallback_model = os.getenv("OPENAI_FALLBACK_MODEL", os.getenv("OPENAI_MODEL", "gpt-4.1-mini"))
-        draft = _call_provider_safely(
-            "openai",
-            fallback_model,
-            thesis_system,
-            draft_prompt,
-            stage="draft_openai_fallback_after_deepseek",
-            max_tokens=_env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000),
-            temperature=0.45,
-        )
-        if draft:
-            stage_notes.append(f"draft:openai:{fallback_model}")
-    elif draft:
-        stage_notes.append(f"draft:{provider}:{model}")
-
-    if not draft:
-        return (
-            _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)),
-            "local_template_fallback_provider_failed",
-        )
-
-    final_text = _polish_generated_text(draft)
-
-    # Stage 2b: Auto-expand short drafts (safeguard for Bachelor chapters)
-    if _env_bool("PROJECTREADY_AUTO_EXPAND_SHORT_DRAFT", True):
-        min_words = _short_draft_threshold(profile, chapter_number, len(selected_section_ids or []))
-        if _word_count(final_text) < int(min_words * 0.90):
-            expansion_prompt = _build_expansion_prompt(
-                final_text,
-                profile,
-                chapter_number,
-                base_prompt,
-                source_plan,
-                min_words,
+            # 3. Relevance‑gated source integration
+            polished = _review_source_integration(
+                client=client,
+                model=model,
+                instructions=instructions,
+                original_prompt=prompt,
+                draft=polished,
+                profile=profile,
+                chapter_number=chapter_number,
             )
-            expanded = _call_provider_safely(
-                provider,
-                model,
-                thesis_system + " Expand the chapter to the required thesis depth. Preserve citations and do not fabricate evidence.",
-                expansion_prompt,
-                stage="expand_short_draft",
-                max_tokens=_env_int("OPENAI_MAX_OUTPUT_TOKENS", 14000),
-                temperature=0.42,
+
+            # 4. Final human‑academic revision pass
+            polished = _human_academic_revision_pass(
+                client=client,
+                model=model,
+                instructions=instructions,
+                original_prompt=prompt,
+                draft=polished,
+                profile=profile,
+                chapter_number=chapter_number,
             )
-            if expanded and _word_count(expanded) > _word_count(final_text):
-                final_text = _polish_generated_text(expanded)
-                stage_notes.append(f"expand:{provider}:{model}")
 
-    # Stage 3/4: Optional premium review (disabled by default)
-    premium_review = mode == "premium" or _env_bool("PROJECTREADY_PREMIUM_REVIEW", False)
-    extra_passes = _env_int("PROJECTREADY_EXTRA_AI_PASSES", 0)
-    if premium_review and extra_passes > 0:
-        review_provider, review_model = _provider_model_for_stage("review", mode)
-        review_prompt = _build_final_review_prompt(final_text, profile, chapter_number, source_plan)
-        review = _call_provider_safely(
-            review_provider,
-            review_model,
-            thesis_system + " Return only a compact academic review report; do not rewrite the chapter.",
-            review_prompt,
-            stage="review",
-            max_tokens=_env_int("PROJECTREADY_REVIEW_MAX_TOKENS", 2500),
-            temperature=0.25,
-        )
-        if review:
-            stage_notes.append(f"review:{review_provider}:{review_model}")
-            final_provider, final_model = _provider_model_for_stage("final", mode)
-            final_prompt = _build_apply_review_prompt(final_text, review, profile, chapter_number)
-            revised = _call_provider_safely(
-                final_provider,
-                final_model,
-                thesis_system + " Apply the review and produce the final chapter. Revise, do not restart.",
-                final_prompt,
-                stage="final",
-                max_tokens=_env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000),
-                temperature=0.38,
-            )
-            if revised:
-                final_text = _polish_generated_text(revised)
-                stage_notes.append(f"final:{final_provider}:{final_model}")
+            # 5. Core humanisation passes (burstiness, artefacts, lexical richness)
+            polished = _enforce_burstiness(polished, target_std_dev=12.0)
+            polished = _add_drafting_artefacts(polished, probability_per_500_words=0.8)
+            polished = _boost_lexical_richness(polished, replacement_probability=0.5)
 
-    # ------------------------------------------------------------------
-    # EXTREMELY AGGRESSIVE HUMANISATION PIPELINE
-    # ------------------------------------------------------------------
-    # 1. DeepSeek rewrite (high temperature, extreme variation)
-    final_text = _humaniser_pass(final_text, profile, chapter_number)
-    # 2. Aggressive burstiness (forces 2-5 word sentences next to 30+ word sentences)
-    final_text = _aggressive_burstiness(final_text)
-    # 3. Extreme lexical richness (rare synonyms, odd academic phrases)
-    final_text = _extreme_lexical_richness(final_text)
-    # 4. Existing structural passes (burstiness, artefacts, etc.)
-    final_text = _enforce_burstiness(final_text, target_std_dev=12.0)
-    final_text = _add_drafting_artefacts(final_text, probability_per_500_words=0.8)
-    final_text = _boost_lexical_richness(final_text, replacement_probability=0.5)
-    final_text = _cluster_citations(final_text)
-    final_text = _vary_paragraph_openings(final_text)
-    final_text = _force_short_sentences(final_text, target_every_n_words=150)  # more frequent
-    final_text = _add_human_noise(final_text, error_probability=0.02)
-    # 5. Shuffle sentence order slightly to break predictability
-    final_text = _shuffle_sentence_order(final_text)
+            # 6. Additional high‑quality humanisation
+            polished = _cluster_citations(polished)
+            polished = _vary_paragraph_openings(polished)
+            polished = _force_short_sentences(polished, target_every_n_words=200)
 
-    # Final polish to remove any residual meta‑phrases
-    final_text = _polish_generated_text(final_text)
-    source = "multi_provider_" + mode + "_" + "|".join(stage_notes) if stage_notes else "multi_provider_" + mode
-    return final_text, source
+            # 7. Cloud‑based small‑model rewrite (Groq) – strongly recommended
+            #    (falls back to no rewrite if GROQ_API_KEY not set)
+            polished = _humanize_with_small_model(polished)
+
+            # 8. Final subtle noise (typos, spacing errors)
+            polished = _add_human_noise(polished, error_probability=0.015)
+
+            return polished, "openai_responses_api"
+
+    # Fallback when AI is disabled or fails
+    return (
+        _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)),
+        "local_template_fallback"
+    )
 
 
 # ----------------------------------------------------------------------
-# FALLBACK CHAPTER GENERATION (unchanged)
+# FALLBACK CHAPTER GENERATION (unchanged from original)
 # ----------------------------------------------------------------------
 
 def generate_fallback_chapter(
