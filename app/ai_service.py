@@ -328,7 +328,7 @@ def _student_contribution_requirements(profile: dict[str, Any]) -> dict[str, Any
             "Use the student's project-specific context, evidence anchors, supervisor comments, and preferred style wherever supplied.",
             "If the user has not supplied enough evidence for a confident claim, use a clear red bracketed placeholder instead of writing a generic unsupported claim.",
             "Avoid over-polished, perfectly balanced, template-like prose. Use natural scholarly reasoning, varied sentence structure, and context-specific transitions.",
-            "Apply controlled high-burstiness and high-perplexity academic style in practical terms: vary rhythm, vocabulary, sentence openings, and paragraph shape while preserving clarity, evidence, and disciplinary precision.",
+            "Apply controlled very high-burstiness and extremely high-perplexity academic style in practical terms: vary rhythm, vocabulary, sentence openings, and paragraph shape while preserving clarity, evidence, and disciplinary precision.",
             "Where a writing sample is supplied, use it only to infer broad tone, sentence rhythm and level of directness; do not copy wording or imitate personal details.",
             "Make the draft sound like it has passed through a careful supervisor-student revision process: specific, cautious, evidenced and reflective, not generic or promotional.",
             "Do not add a visible AI-detection or humanisation note to the chapter; the chapter should read as an ordinary academic draft.",
