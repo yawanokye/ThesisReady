@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import random
 from datetime import datetime
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 
@@ -273,34 +274,64 @@ def _retrieved_sources_for_prompt(profile: dict[str, Any], chapter_number: int |
         ],
     }
 
-def _human_scholarly_style_requirements() -> list[str]:
-    """Return high-standard academic writing rules for natural, polished chapter drafting."""
-    return [
-        "Use the selected academic level only as internal depth guidance. Do not mention the selected level, do not say the writing is produced to meet a level, and do not include meta-commentary about the project being written at a particular standard.",
-        "Write in a mature, natural scholarly voice that resembles a carefully supervised student draft: precise, analytical, context-specific, and free from generic AI patterns.",
-        "Use controlled high-burstiness academic prose: vary sentence length, paragraph length, transitions, and rhythm in a natural way, while keeping the argument clear, disciplined and defensible.",
-        "Use high lexical and syntactic variety where it improves meaning: avoid flat, uniform, predictable sentence patterns, but do not make the writing obscure, inflated or artificially complicated.",
-        "Do not make every paragraph look symmetrical. Some paragraphs may be compact and interpretive; others may be longer where evidence, methodological justification or theoretical explanation requires fuller development.",
-        "Maintain scholarly clarity even when the prose is varied. Perplexity in this app means intellectually rich, context-specific and less formulaic writing; it does not mean confusing language, unsupported claims or unnecessary vocabulary.",
-        "Avoid very short, clipped sentences except where a short sentence is needed for emphasis, transition, or clarity. Prefer well-developed academic sentences that connect evidence, reasoning, and implication.",
-        "Vary sentence structure, but avoid overusing sentence frames such as 'This study...', 'The study...', 'The research problem is...', or 'This section...'.",
-        "Do not begin a problem statement with wording such as 'The research problem is that...'. Frame the problem analytically, for example through a tension, contradiction, persistent gap, policy concern, empirical inconsistency, or unresolved practical challenge.",
-        "Avoid mechanical, generic, and repetitive academic-AI phrasing such as 'in today's world', 'it is important to note', 'this study is very important', 'delve into', 'plays a crucial role', 'it is imperative', and repeated formulaic paragraph openings.",
-        "Use a human academic rhythm: combine some concise analytical sentences with longer explanatory sentences, but never pad the text or make it artificially irregular.",
-        "Show scholarly judgement by explaining why evidence matters, why alternatives were not selected, where a limitation exists, and how each point changes the reader's understanding of the study.",
-        "Prefer grounded verbs such as suggests, indicates, implies, supports, complicates, qualifies and raises concern, instead of overconfident phrases such as proves, clearly shows or has a significant impact unless the evidence supports that claim.",
-        "Avoid paragraph templates that repeatedly start with the same phrase. Use transitions that follow the logic of the argument rather than mechanical transitions.",
-        "Do not merely list ideas. Build an argument by explaining relationships among concepts, comparing studies, identifying tensions, and showing why the present study is necessary.",
-        "Every substantive paragraph should develop one clear idea through a topic sentence, evidence or reasoning, interpretation, and a closing implication linked to the study problem, objective, method, finding, or recommendation.",
-        "Use critical synthesis rather than annotated-summary writing, especially in the literature review and discussion chapters.",
-        "Integrate theory, empirical evidence, context, methodology, and findings in a way that sounds like a carefully supervised academic draft, not a template.",
-        "Maintain discipline-appropriate terminology, but avoid unnecessary verbosity, inflated claims, and promotional language.",
-        "Use signposting only where it helps the reader. Do not overuse headings or repeated introductory sentences.",
-        "Write in third-person academic style unless the student's institution requires otherwise.",
-        "Keep the work defensible: do not overstate contribution, causality, generalisability, or policy implications beyond the evidence supplied.",
-    ]
 
+def _human_scholarly_style_requirements(seed: Optional[int] = None) -> Dict[str, List[str]]:
+    """
+    Return a high-standard, randomly sampled set of academic style rules.
 
+    The sampling is seeded per project title when called from build_drafting_prompt.
+    That gives consistency within one project while reducing repeated template output
+    across different projects.
+    """
+    rng = random.Random(seed)
+
+    full_rules: dict[str, list[str]] = {
+        "syntactic_burstiness": [
+            "Vary sentence length with a visible mix of compact, medium, and longer analytical sentences. Do not keep more than three consecutive sentences in the same length band.",
+            "Use occasional short academic anchor sentences of 3-7 words only when they clarify or emphasise a point.",
+            "Every few paragraphs, allow one longer explanatory sentence with multiple clauses, then follow it with a clearer interpretive sentence.",
+            "Avoid repeated three-part structures such as 'First... Second... Third...' unless the section genuinely needs sequence.",
+            "When listing evidence, vary the format: sometimes use a compact list, sometimes use a developed sentence, and sometimes use a table where it improves readability.",
+        ],
+        "argumentative_authenticity": [
+            "Include genuine qualification where evidence is limited. The chapter should not sound as if every issue is settled.",
+            "Do not write paragraphs that only summarise sources. Add interpretation that explains how the evidence extends, limits, compares with, or applies to the present study.",
+            "Where appropriate, add one cautious counterpoint in a section and respond to it using evidence or reasoning.",
+            "Let some empirical or theoretical tension remain visible before resolving it. Human academic writing often carries the tension before narrowing the claim.",
+            "Use hedging that matches the evidence: 'suggests', 'indicates', 'raises the possibility', 'is consistent with', or 'requires caution'.",
+        ],
+        "lexical_variety": [
+            "Replace mechanical connectors such as 'furthermore', 'moreover', and repeated 'in addition' with logic-led transitions such as 'This matters because', 'By the same logic', 'The difficulty is that', or 'This holds only where'.",
+            "Avoid generic academic-AI wording such as 'delve', 'testament', 'tapestry', 'landscape' used loosely, 'crucial' used vaguely, 'imperative', and 'it is important to note'.",
+            "Prefer precise verbs such as suggests, indicates, differentiates, complicates, qualifies, constrains, supports, and explains.",
+            "Use field-appropriate phrasing rather than inflated vocabulary. Natural scholarly writing is specific, not ornate.",
+        ],
+        "citation_and_evidence": [
+            "Use citations to map ideas, not merely to decorate sentences. Explain whether a cited source supports, contradicts, extends, or contextualises the claim.",
+            "Vary citation placement: use narrative citations for important studies and parenthetical citations for supporting evidence.",
+            "Do not create citation clusters from sources that are not already supplied or verified. It is better to use a placeholder than to invent support.",
+            "Where the available sources are insufficient, insert a precise bracketed placeholder for the missing source, statistic, or institutional evidence.",
+        ],
+        "paragraph_development": [
+            "Avoid symmetrical paragraph templates. Some paragraphs may be short and interpretive, while others may develop evidence in more detail.",
+            "Each substantive paragraph should contain a claim, evidence or a placeholder, interpretation, and a link to the study objective, problem, method, finding, or recommendation.",
+            "Vary paragraph openings so the chapter does not repeatedly begin paragraphs with 'The study', 'This study', 'The findings', or 'This section'.",
+            "Use context-specific detail from the student's project whenever supplied. Without context, use careful placeholders rather than generic filler.",
+        ],
+        "token_biome": [
+            "Avoid repeating common trigrams such as 'in order to', 'the fact that', and 'as a result of' when simpler wording works.",
+            "Do not start two consecutive prose paragraphs with the same grammatical pattern when it can be avoided naturally.",
+            "Alternate between that-clauses and gerund phrases where appropriate, for example 'The evidence suggests that...' and 'Interpreting the evidence requires...'.",
+            "Keep contractions rare in formal chapters, but do not make the prose stiff or robotic.",
+        ],
+    }
+
+    selected_rules: list[str] = []
+    for rules in full_rules.values():
+        n = max(1, int(len(rules) * 0.70))
+        selected_rules.extend(rng.sample(rules, n))
+
+    return {"humanizer_rules": selected_rules}
 
 
 def _student_contribution_requirements(profile: dict[str, Any]) -> dict[str, Any]:
@@ -479,7 +510,7 @@ def build_drafting_prompt(
         "selected_academic_level_and_depth": _level_depth_requirements(profile),
         "reference_currency_requirements": _reference_currency_requirements(),
         "citation_and_evidence_requirements": _citation_and_evidence_requirements(chapter_number),
-        "human_scholarly_style_requirements": _human_scholarly_style_requirements(),
+        "human_scholarly_style_requirements": _human_scholarly_style_requirements(seed=hash(profile.get("title", "")) & 0xFFFFFFFF),
         "student_contribution_and_style_controls": _student_contribution_requirements(profile),
         "analysis_evidence_for_this_chapter": _uploaded_results_for_chapter(profile, chapter_number),
         "retrieved_sources": _retrieved_sources_for_prompt(profile, chapter_number),
@@ -605,6 +636,130 @@ def _polish_generated_text(text: str) -> str:
     polished = re.sub(r"\n{3,}", "\n\n", polished)
     return polished.strip()
 
+
+
+
+
+def _body_and_reference_tail(text: str) -> tuple[str, str]:
+    """Separate chapter body from References/Source Use Audit for safe prose polishing."""
+    if not text:
+        return "", ""
+    match = re.search(r"(?im)^#{0,3}\s*(references|source\s+use\s+audit)\b", text)
+    if not match:
+        return text, ""
+    return text[: match.start()].rstrip(), text[match.start():].lstrip()
+
+
+def _looks_like_protected_block(block: str) -> bool:
+    """Return True for blocks that should not be mechanically rewritten."""
+    stripped = (block or "").strip()
+    if not stripped:
+        return True
+    protected_prefixes = ("#", "|", "```", "$$", "<table", "<tr", "<td")
+    if stripped.startswith(protected_prefixes):
+        return True
+    if re.match(r"^\s*[-*+]\s+", stripped):
+        return True
+    if re.match(r"^\s*\d+[.)]\s+", stripped):
+        return True
+    if "http://" in stripped or "https://" in stripped or "doi.org" in stripped:
+        return True
+    if "[insert " in stripped.lower() and len(stripped.split()) < 30:
+        return True
+    return False
+
+
+def _map_prose_paragraphs(text: str, func) -> str:
+    """Apply func only to normal prose paragraphs."""
+    parts = re.split(r"(\n\s*\n)", text or "")
+    out: list[str] = []
+    for part in parts:
+        if re.match(r"\n\s*\n", part or ""):
+            out.append(part)
+            continue
+        if _looks_like_protected_block(part):
+            out.append(part)
+            continue
+        try:
+            out.append(func(part))
+        except Exception:
+            out.append(part)
+    return "".join(out)
+
+
+def _sentence_length_variance(text: str) -> float:
+    """Compute simple sentence-length variance without external dependencies."""
+    sentences = [s.strip() for s in re.split(r"[.!?]+", text or "") if s.strip()]
+    if len(sentences) < 2:
+        return 0.0
+    lengths = [len(s.split()) for s in sentences]
+    mean_len = sum(lengths) / len(lengths)
+    return sum((length - mean_len) ** 2 for length in lengths) / len(lengths)
+
+
+def _increase_natural_variation(text: str) -> str:
+    """
+    Improve sentence-length variation and remove repetitive high-frequency phrases.
+
+    This function avoids references, source audits, tables, lists, equations, links, and
+    short placeholders. It does not fabricate citations or change data.
+    """
+    if not text or len(text.split()) < 120:
+        return text
+
+    body, tail = _body_and_reference_tail(text)
+    if not body.strip():
+        return text
+
+    trigram_replacements = {
+        r"\bin order to\b": "to",
+        r"\bthe fact that\b": "that",
+        r"\bas well as\b": "and also",
+        r"\bdue to the fact that\b": "because",
+        r"\bit is important to note that\b": "",
+        r"\bas a result of\b": "from",
+        r"\bin today's world\b": "in the present context",
+        r"\bplays a crucial role\b": "is important",
+        r"\bvarious factors\b": "specific factors",
+    }
+
+    def transform(paragraph: str) -> str:
+        updated = paragraph
+
+        for pattern, replacement in trigram_replacements.items():
+            updated = re.sub(pattern, replacement, updated, flags=re.IGNORECASE)
+
+        sentences = re.split(r"(?<=[.!?])\s+", updated)
+        sentences = [s for s in sentences if s.strip()]
+        if len(sentences) < 4:
+            return updated
+
+        lengths = [len(s.split()) for s in sentences]
+        has_short = any(3 <= length <= 7 for length in lengths)
+        variance = _sentence_length_variance(updated)
+
+        if not has_short and len(updated.split()) >= 120:
+            insert_at = min(2, len(sentences) - 1)
+            anchors = [
+                "That point matters.",
+                "This is the key point.",
+                "The distinction matters.",
+                "This is not trivial.",
+            ]
+            anchor = anchors[abs(hash(updated)) % len(anchors)]
+            sentences.insert(insert_at, anchor)
+            updated = " ".join(sentences)
+
+        if variance < 45:
+            short_pair = re.search(r"([^.?!]{20,90}[.!?])\s+([^.?!]{20,90}[.!?])", updated)
+            if short_pair:
+                joined = short_pair.group(1).rstrip(".!?") + ", while " + short_pair.group(2)[0].lower() + short_pair.group(2)[1:]
+                updated = updated[: short_pair.start()] + joined + updated[short_pair.end():]
+
+        return updated
+
+    body = _map_prose_paragraphs(body, transform)
+    return body.rstrip() + ("\n\n" + tail if tail else "")
 
 
 def _source_usage_count(text: str, sources: list[dict[str, Any]]) -> int:
@@ -738,6 +893,7 @@ def _generic_language_score(text: str) -> int:
     return sum(len(re.findall(pattern, lower, flags=re.IGNORECASE)) for pattern in patterns)
 
 
+
 def _human_academic_revision_pass(
     client: Any,
     model: str,
@@ -747,34 +903,42 @@ def _human_academic_revision_pass(
     profile: dict[str, Any],
     chapter_number: int,
 ) -> str:
-    """Run one quality-focused revision pass to reduce generic prose.
-
-    This is an academic-quality pass, not a detector-evasion pass. It asks the model
-    to make the writing more context-specific, evidence-led and supervisor-ready while
-    preserving citations, data, placeholders and chapter structure.
-    """
+    """Run one academic-quality revision pass for specificity and natural scholarly flow."""
     controls = _student_contribution_requirements(profile)
     if not controls.get("human_revision_pass_requested", True):
         return draft
 
     has_user_context = any(str(controls.get(k) or "").strip() for k in [
-        "central_argument", "local_context_notes", "evidence_anchors", "supervisor_comments", "preferred_style", "writing_sample", "phrases_to_avoid"
+        "central_argument",
+        "local_context_notes",
+        "evidence_anchors",
+        "supervisor_comments",
+        "preferred_style",
+        "writing_sample",
+        "phrases_to_avoid",
     ])
-    # Always run the pass for AI-generated drafts, but keep it short and conservative.
+
+    current_variance = _sentence_length_variance(draft)
+
     revision_payload = {
         "task": "Revise the chapter for human-supervised academic quality, specificity and natural scholarly flow.",
         "chapter_number": chapter_number,
         "draft_maturity": controls.get("draft_maturity"),
         "student_contribution_controls": controls,
+        "current_sentence_length_variance": current_variance,
         "quality_rules": [
-            "Revise rather than restart. Preserve the chapter structure, headings, accurate citations, tables, equations, placeholders and supplied results.",
-            "Do not attempt to evade AI detectors and do not mention AI detection. The purpose is academic quality, specificity, and defensible student-supervised writing.",
-            "Remove generic filler, repetitive transitions, vague claims, inflated language, and over-polished template-like phrasing.",
-            "Increase natural scholarly variation: vary sentence rhythm, paragraph density, transition choices and analytical movement so the prose reads like careful human academic editing rather than uniform template output.",
-            "Strengthen paragraph-level reasoning: each paragraph should connect claim, evidence or placeholder, interpretation, and relevance to the study objective or chapter argument.",
+            "Revise rather than restart. Preserve the chapter structure, headings, citations, tables, equations, placeholders and supplied results.",
+            "Increase natural scholarly variation: vary sentence rhythm, paragraph density, transition choices and analytical movement. Simulate a careful human academic editor, not a template.",
+            "Break any three consecutive sentences that begin with the same grammatical pattern, especially repeated openings such as 'The', 'This', 'The study', or 'This study'.",
+            "Where two consecutive paragraphs begin with the same phrase, rewrite one to use a causal, conditional or contrastive opener that follows the logic of the argument.",
+            "Use occasional concise anchor sentences only where they clarify the argument. Do not force short sentences into every paragraph.",
+            "Replace repeated generic transitions such as 'furthermore', 'moreover' and mechanical 'in addition' with logic-led connectors that fit the argument.",
+            "Remove generic filler, vague claims, inflated language and over-polished template-like phrasing.",
+            "Strengthen paragraph-level reasoning: each paragraph should connect claim, evidence or placeholder, interpretation and relevance to the study objective or chapter argument.",
             "Use the student's central argument, local context notes, evidence anchors, supervisor comments and preferred style where supplied.",
-            "Where evidence is missing, keep or add red bracketed placeholders instead of inventing claims, statistics, results, ethical approvals, sources, sample sizes or institutional facts.",
-            "Do not add a visible humanisation note, contribution log or detector note to the chapter body.",
+            "Where evidence is missing, keep or add bracketed placeholders instead of inventing claims, statistics, results, ethical approvals, sources, sample sizes or institutional facts.",
+            "Do not alter citations, data, placeholders, methodological facts, source-use decisions, or reference details unless correcting consistency.",
+            "Do not add visible notes about the writing process, models, providers, internal review, or style rules.",
             "Keep APA references complete and limited to sources cited in the chapter body.",
         ],
         "generic_language_score_before_revision": _generic_language_score(draft),
@@ -782,22 +946,22 @@ def _human_academic_revision_pass(
         "original_generation_prompt": original_prompt,
         "draft_to_revise": draft,
     }
+
     try:
         response = client.responses.create(
             model=model,
             instructions=(
                 instructions
-                + " Perform one conservative academic-quality revision pass. Do not restart the chapter. Do not add unsupported content."
+                + " Perform one conservative academic-quality revision pass. Revise, do not restart. Preserve evidence and do not add unsupported content."
             ),
             input=json.dumps(revision_payload, ensure_ascii=False, indent=2),
         )
         revised = getattr(response, "output_text", "").strip()
         if revised:
-            return _polish_generated_text(revised)
+            return _polish_generated_text(_increase_natural_variation(revised))
     except Exception:
         return draft
     return draft
-
 
 
 def _call_openai_response_safely(client: Any, model: str, instructions: str, prompt: str) -> str:
@@ -861,6 +1025,7 @@ def generate_chapter(
         text = _call_openai_response_safely(client, model, instructions, prompt)
         if text:
             polished = _polish_generated_text(text)
+            polished = _increase_natural_variation(polished)
             polished = _review_source_integration(
                 client=client,
                 model=model,
@@ -879,6 +1044,7 @@ def generate_chapter(
                 profile=profile,
                 chapter_number=chapter_number,
             )
+            polished = _polish_generated_text(_increase_natural_variation(polished))
             return polished, "openai_responses_api"
 
     return _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)), "local_template_fallback"
