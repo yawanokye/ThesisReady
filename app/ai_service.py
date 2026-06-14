@@ -312,14 +312,14 @@ def _build_apply_review_prompt(draft: str, review: str, profile: dict[str, Any],
 
 
 # ----------------------------------------------------------------------
-# IMPROVED HUMANISER PASS (AGGRESSIVE ANTI-AI REWRITE)
+# HUMANISER PASS – DEEPSEEK ONLY (NO OPENAI FALLBACK)
 # ----------------------------------------------------------------------
 
 def _humaniser_pass(text: str, profile: dict[str, Any], chapter_number: int) -> str:
     """
-    Use DeepSeek (preferred) or OpenAI to rewrite text so it beats AI detectors.
-    Forces very short sentences, removes all AI buzzwords, varies openings,
-    preserves citations and placeholders. Only runs if PROJECTREADY_HUMANISER_PASS=true.
+    Use DeepSeek exclusively to rewrite the text for maximum human‑likeness.
+    Only runs if PROJECTREADY_HUMANISER_PASS=true and DeepSeek is enabled.
+    No OpenAI fallback – if DeepSeek is not available, returns original text.
     """
     if not text or len(text) < 200:
         return text
@@ -327,27 +327,26 @@ def _humaniser_pass(text: str, profile: dict[str, Any], chapter_number: int) -> 
     if not _env_bool("PROJECTREADY_HUMANISER_PASS", default=False):
         return text
 
-    # Choose provider: DeepSeek if enabled and available, else OpenAI fallback
-    if _deepseek_enabled():
-        provider = "deepseek"
-        model = os.getenv("DEEPSEEK_FAST_MODEL", "deepseek-chat")
-        client = _safe_get_deepseek_client()
-    else:
-        provider = "openai"
-        model = os.getenv("OPENAI_DRAFT_MODEL", "gpt-4.1-mini")
-        client = _safe_get_openai_client()
-
-    if client is None:
+    # Require DeepSeek to be enabled and have an API key
+    if not _deepseek_enabled():
+        print("Humaniser pass skipped: DeepSeek not enabled or missing API key.")
         return text
 
-    prompt = f"""You are a careful PhD student editing your own draft to make it sound completely human. Follow these rules strictly. Do not change facts, citations, numbers, or bracketed placeholders like [insert ...].
+    client = _safe_get_deepseek_client()
+    if client is None:
+        print("Humaniser pass skipped: DeepSeek client unavailable.")
+        return text
+
+    model = os.getenv("DEEPSEEK_FAST_MODEL", "deepseek-chat")
+
+    prompt = f"""You are a careful PhD student editing your own academic draft. Rewrite the following text to sound completely human – as if written by a skilled but hurried student. Follow these rules strictly. Do not change any facts, citations, numbers, or bracketed placeholders like [insert ...].
 
 RULES:
 1. **Very short sentences**: Insert at least one sentence of 3‑5 words every 150 words. Examples: "That matters." "It is not trivial." "This is key."
-2. **No AI buzzwords**: Delete or replace every occurrence of: "furthermore", "moreover", "in addition", "consequently", "however", "crucial", "vital", "delve", "tapestry", "testament", "it is important to note", "plays a crucial role", "various factors", "significant impact". Replace "however" with "yet" or "still". Replace "therefore" with "so". Delete the rest or rewrite the sentence naturally.
+2. **No AI buzzwords**: Delete or replace every occurrence of: "furthermore", "moreover", "in addition", "consequently", "however" (replace with "yet", "still", "but"), "crucial", "vital", "delve", "tapestry", "testament", "it is important to note", "plays a crucial role", "various factors", "significant impact".
 3. **Vary paragraph openings**: Do not start consecutive paragraphs with the same word. Use occasional short transitions like "Yet,", "Still,", "Indeed,", "Conversely,".
-4. **Keep all facts, citations (Author, year), statistics, and bracketed placeholders [like this] exactly as given. Do not change any numbers or names.
-5. **No meta-comments**: Do not say you are editing or mention AI.
+4. **Preserve all facts, citations (Author, year), statistics, and bracketed placeholders exactly as given.
+5. **No meta‑comments** about AI or editing.
 6. **Output only the rewritten text, no explanation.
 
 Original text:
@@ -359,18 +358,21 @@ Rewritten text:"""
         response = client.chat.completions.create(
             model=model,
             messages=[
-                {"role": "system", "content": "You are an academic editor who improves natural flow without altering content. Use very short sentences, remove AI buzzwords, and vary openings."},
+                {"role": "system", "content": "You are an academic editor who improves natural flow without altering content. Use very short sentences, remove AI buzzwords, vary openings, and never change citations or placeholders."},
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.8,   # higher creativity
+            temperature=0.8,
             max_tokens=_env_int("OPENAI_MAX_OUTPUT_TOKENS", 8000),
         )
         rewritten = response.choices[0].message.content.strip()
         if rewritten and len(rewritten) > len(text) * 0.5:
             return rewritten
+        else:
+            print("Humaniser pass produced too short output, keeping original.")
+            return text
     except Exception as e:
-        print(f"Humaniser pass failed with {provider}: {e}")
-    return text
+        print(f"Humaniser pass failed with DeepSeek: {e}")
+        return text
 
 
 def _reference_currency_requirements() -> dict[str, Any]:
@@ -1897,7 +1899,7 @@ def generate_chapter(
                 stage_notes.append(f"final:{final_provider}:{final_model}")
 
     # ------------------------------------------------------------------
-    # STEP 3: HUMANISER PASS (uses DeepSeek or OpenAI fallback)
+    # HUMANISER PASS – USES DEEPSEEK EXCLUSIVELY (NO OPENAI FALLBACK)
     # ------------------------------------------------------------------
     final_text = _humaniser_pass(final_text, profile, chapter_number)
 
