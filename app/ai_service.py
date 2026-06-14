@@ -311,6 +311,69 @@ def _build_apply_review_prompt(draft: str, review: str, profile: dict[str, Any],
     )
 
 
+# ----------------------------------------------------------------------
+# NEW: HUMANISER PASS (STEP 3 OF RECOMMENDED WORKFLOW)
+# ----------------------------------------------------------------------
+
+def _humaniser_pass(text: str, profile: dict[str, Any], chapter_number: int) -> str:
+    """
+    Use DeepSeek (or fallback to OpenAI) to rewrite the text with natural variation,
+    short sentences, varied openings, and removal of AI buzzwords.
+    Preserves all citations, placeholders, and factual content.
+    Only runs if PROJECTREADY_HUMANISER_PASS=true.
+    """
+    if not text or len(text) < 200:
+        return text
+
+    if not _env_bool("PROJECTREADY_HUMANISER_PASS", default=False):
+        return text
+
+    # Decide provider: prefer DeepSeek if enabled and available
+    if _deepseek_enabled():
+        provider = "deepseek"
+        model = os.getenv("DEEPSEEK_FAST_MODEL", "deepseek-chat")
+        client = _safe_get_deepseek_client()
+    else:
+        provider = "openai"
+        model = os.getenv("OPENAI_DRAFT_MODEL", "gpt-4.1-mini")
+        client = _safe_get_openai_client()
+
+    if client is None:
+        return text
+
+    prompt = f"""You are a careful PhD student editing your own academic draft. Rewrite the following text to sound natural, human‑written, and varied. Follow these rules strictly:
+
+1. Keep every fact, citation, statistic, bracketed placeholder [like this], reference, and technical term exactly as given. Do not change any numbers, names, years, or quoted text.
+2. Vary sentence length: mix short (3‑7 words), medium, and long sentences. Insert occasional very short sentences (e.g., "That matters." or "It is not trivial.").
+3. Avoid overused AI transition words: completely remove "furthermore", "moreover", "in addition", "consequently", "however" (replace with "yet", "still", "but"), "crucial", "vital", "delve", "tapestry", "testament", "it is important to note". Replace them with natural alternatives or simply start the sentence directly.
+4. Vary paragraph openings: do not begin consecutive paragraphs with the same word or phrase.
+5. Do not introduce any grammatical errors, typos, or false information.
+6. Do not add any meta‑comments about AI, the editing process, or the original draft.
+7. Output only the rewritten text, no extra explanation.
+
+Original text:
+{text}
+
+Rewritten text:"""
+
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "You are an academic editor who improves natural flow without altering content."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.75,
+            max_tokens=_env_int("OPENAI_MAX_OUTPUT_TOKENS", 8000),
+        )
+        rewritten = response.choices[0].message.content.strip()
+        if rewritten and len(rewritten) > len(text) * 0.5:
+            return rewritten
+    except Exception as e:
+        print(f"Humaniser pass failed with {provider}: {e}")
+    return text
+
+
 def _reference_currency_requirements() -> dict[str, Any]:
     """Return the reference currency rule used across generated chapters."""
     current_year = datetime.now().year
@@ -397,8 +460,6 @@ def _level_depth_requirements(profile: dict[str, Any]) -> dict[str, str]:
     return {"selected_level": level, "depth_guidance": guidance}
 
 
-
-
 def _normalise_level_name(profile: dict[str, Any]) -> str:
     level = str(profile.get("level") or profile.get("academic_level") or "Bachelors").strip().lower()
     if "phd" in level or "doctor" in level:
@@ -415,12 +476,7 @@ def _chapter_length_depth_requirements(
     chapter_number: int,
     selected_section_count: int = 0,
 ) -> dict[str, Any]:
-    """Return minimum thesis depth guidance so even Bachelor outputs are not skeletal.
-
-    These are soft lower bounds for a full chapter where most standard sections are selected.
-    They are not meant to encourage padding; the model must expand through context,
-    evidence, citations, interpretation, and precise placeholders where details are missing.
-    """
+    """Return minimum thesis depth guidance so even Bachelor outputs are not skeletal."""
     level = _normalise_level_name(profile)
     table = {
         "bachelors": {
@@ -458,8 +514,6 @@ def _chapter_length_depth_requirements(
     }
     minimum, target = table.get(level, table["bachelors"]).get(int(chapter_number or 1), (2500, 3800))
 
-    # If the user selects only a small subset of sections, scale down but still
-    # keep the output substantive.
     if selected_section_count and selected_section_count < 5:
         scale = max(0.55, selected_section_count / 8)
         minimum = int(minimum * scale)
@@ -467,30 +521,30 @@ def _chapter_length_depth_requirements(
 
     if chapter_number == 1:
         distribution = [
-            "Introduction to the Chapter: normally 180-300 words; it should orient the reader without repeating the abstract.",
-            "Background to the Study: normally 900-1,300 words for Bachelor level and longer for higher levels; move global, regional, national, and local with citations.",
-            "Statement of the Problem: normally 550-850 words for Bachelor level; show evidence, contradiction, gap, local relevance, and research focus.",
+            "Introduction to the Chapter: normally 180-300 words; orient the reader without repeating the abstract.",
+            "Background: 900-1,300 words for Bachelor, longer for higher levels; move global to local with citations.",
+            "Statement of the Problem: 550-850 words for Bachelor; show evidence, contradiction, gap, local relevance.",
             "Purpose/Objectives/Questions: concise but fully aligned and measurable.",
-            "Significance, delimitations, limitations, and organisation: normally developed in proper paragraphs, not one-line notes.",
+            "Significance, delimitations, limitations, organisation: developed paragraphs, not one-line notes.",
         ]
     elif chapter_number == 2:
         distribution = [
-            "Each major concept/theory/objective needs developed synthesis, not a brief definition.",
-            "Empirical review paragraphs should include author/year, context, method, finding, limitation, and relevance.",
-            "Gap table entries should be concise, but the surrounding prose must interpret the gap.",
+            "Each concept/theory/objective needs developed synthesis, not a brief definition.",
+            "Empirical review paragraphs: author/year, context, method, finding, limitation, relevance.",
+            "Gap table entries concise, but surrounding prose must interpret the gap.",
         ]
     elif chapter_number == 3:
         distribution = [
-            "Methodology sections must justify choices, not merely name design, population, sample, instrument, and analysis.",
-            "Operationalisation and analysis-plan tables should be accompanied by explanatory prose.",
+            "Methodology sections justify choices, not merely name design, population, sample, instrument, analysis.",
+            "Operationalisation and analysis-plan tables accompanied by explanatory prose.",
         ]
     elif chapter_number == 4:
         distribution = [
-            "Results must be organised objective-by-objective with tables, interpretation, and links to theory/literature where supplied.",
-            "Do not invent results; use placeholder tables where output is missing.",
+            "Results objective-by-objective with tables, interpretation, links to theory/literature where supplied.",
+            "Do not invent results; use placeholder tables where output missing.",
         ]
     else:
-        distribution = ["Develop every selected section with thesis-style prose, evidence, interpretation, and alignment to objectives."]
+        distribution = ["Develop every selected section with thesis-style prose, evidence, interpretation, alignment to objectives."]
 
     return {
         "normalised_level": level,
@@ -551,6 +605,7 @@ def _build_expansion_prompt(
         ensure_ascii=False,
         indent=2,
     )
+
 
 def _uploaded_results_for_chapter(profile: dict[str, Any], chapter_number: int) -> dict[str, Any]:
     uploaded = profile.get("uploaded_results") or {}
@@ -1451,7 +1506,7 @@ def _polish_generated_text(text: str) -> str:
 
 
 # ----------------------------------------------------------------------
-# SOURCE INTEGRATION AND OTHER HELPERS (unchanged from original)
+# SOURCE INTEGRATION AND OTHER HELPERS
 # ----------------------------------------------------------------------
 
 def _source_usage_count(text: str, sources: list[dict[str, Any]]) -> int:
@@ -1548,7 +1603,6 @@ def _review_source_integration(
         "draft_to_revise": draft,
     }
     try:
-        # Use chat completion for the review pass as well (replaces responses.create)
         response = client.chat.completions.create(
             model=model,
             messages=[
@@ -1786,10 +1840,7 @@ def generate_chapter(
 
     final_text = _polish_generated_text(draft)
 
-    # Stage 2b: If the provider returns a thin chapter, expand once before optional review.
-    # This is a quality safeguard for cases such as Bachelor Chapter One outputs that
-    # are technically coherent but too short for thesis submission. It is controlled
-    # by PROJECTREADY_AUTO_EXPAND_SHORT_DRAFT and defaults to on.
+    # Stage 2b: Auto-expand short drafts (safeguard for Bachelor chapters)
     if _env_bool("PROJECTREADY_AUTO_EXPAND_SHORT_DRAFT", True):
         min_words = _short_draft_threshold(profile, chapter_number, len(selected_section_ids or []))
         if _word_count(final_text) < int(min_words * 0.90):
@@ -1814,7 +1865,7 @@ def generate_chapter(
                 final_text = _polish_generated_text(expanded)
                 stage_notes.append(f"expand:{provider}:{model}")
 
-    # Stage 3/4: Optional premium compact review + final application. Disabled by default to control cost/time.
+    # Stage 3/4: Optional premium review (disabled by default)
     premium_review = mode == "premium" or _env_bool("PROJECTREADY_PREMIUM_REVIEW", False)
     extra_passes = _env_int("PROJECTREADY_EXTRA_AI_PASSES", 0)
     if premium_review and extra_passes > 0:
@@ -1846,7 +1897,12 @@ def generate_chapter(
                 final_text = _polish_generated_text(revised)
                 stage_notes.append(f"final:{final_provider}:{final_model}")
 
-    # Safe final polish only. Do not run artificial noise, anti-detection, random paragraph order, or fake citation clustering.
+    # ------------------------------------------------------------------
+    # STEP 3: HUMANISER PASS (uses DeepSeek or OpenAI fallback)
+    # ------------------------------------------------------------------
+    final_text = _humaniser_pass(final_text, profile, chapter_number)
+
+    # Final polish to remove any residual meta‑phrases
     final_text = _polish_generated_text(final_text)
     source = "multi_provider_" + mode + "_" + "|".join(stage_notes) if stage_notes else "multi_provider_" + mode
     return final_text, source
