@@ -312,15 +312,14 @@ def _build_apply_review_prompt(draft: str, review: str, profile: dict[str, Any],
 
 
 # ----------------------------------------------------------------------
-# NEW: HUMANISER PASS (STEP 3 OF RECOMMENDED WORKFLOW)
+# IMPROVED HUMANISER PASS (AGGRESSIVE ANTI-AI REWRITE)
 # ----------------------------------------------------------------------
 
 def _humaniser_pass(text: str, profile: dict[str, Any], chapter_number: int) -> str:
     """
-    Use DeepSeek (or fallback to OpenAI) to rewrite the text with natural variation,
-    short sentences, varied openings, and removal of AI buzzwords.
-    Preserves all citations, placeholders, and factual content.
-    Only runs if PROJECTREADY_HUMANISER_PASS=true.
+    Use DeepSeek (preferred) or OpenAI to rewrite text so it beats AI detectors.
+    Forces very short sentences, removes all AI buzzwords, varies openings,
+    preserves citations and placeholders. Only runs if PROJECTREADY_HUMANISER_PASS=true.
     """
     if not text or len(text) < 200:
         return text
@@ -328,7 +327,7 @@ def _humaniser_pass(text: str, profile: dict[str, Any], chapter_number: int) -> 
     if not _env_bool("PROJECTREADY_HUMANISER_PASS", default=False):
         return text
 
-    # Decide provider: prefer DeepSeek if enabled and available
+    # Choose provider: DeepSeek if enabled and available, else OpenAI fallback
     if _deepseek_enabled():
         provider = "deepseek"
         model = os.getenv("DEEPSEEK_FAST_MODEL", "deepseek-chat")
@@ -341,15 +340,15 @@ def _humaniser_pass(text: str, profile: dict[str, Any], chapter_number: int) -> 
     if client is None:
         return text
 
-    prompt = f"""You are a careful PhD student editing your own academic draft. Rewrite the following text to sound natural, human‑written, and varied. Follow these rules strictly:
+    prompt = f"""You are a careful PhD student editing your own draft to make it sound completely human. Follow these rules strictly. Do not change facts, citations, numbers, or bracketed placeholders like [insert ...].
 
-1. Keep every fact, citation, statistic, bracketed placeholder [like this], reference, and technical term exactly as given. Do not change any numbers, names, years, or quoted text.
-2. Vary sentence length: mix short (3‑7 words), medium, and long sentences. Insert occasional very short sentences (e.g., "That matters." or "It is not trivial.").
-3. Avoid overused AI transition words: completely remove "furthermore", "moreover", "in addition", "consequently", "however" (replace with "yet", "still", "but"), "crucial", "vital", "delve", "tapestry", "testament", "it is important to note". Replace them with natural alternatives or simply start the sentence directly.
-4. Vary paragraph openings: do not begin consecutive paragraphs with the same word or phrase.
-5. Do not introduce any grammatical errors, typos, or false information.
-6. Do not add any meta‑comments about AI, the editing process, or the original draft.
-7. Output only the rewritten text, no extra explanation.
+RULES:
+1. **Very short sentences**: Insert at least one sentence of 3‑5 words every 150 words. Examples: "That matters." "It is not trivial." "This is key."
+2. **No AI buzzwords**: Delete or replace every occurrence of: "furthermore", "moreover", "in addition", "consequently", "however", "crucial", "vital", "delve", "tapestry", "testament", "it is important to note", "plays a crucial role", "various factors", "significant impact". Replace "however" with "yet" or "still". Replace "therefore" with "so". Delete the rest or rewrite the sentence naturally.
+3. **Vary paragraph openings**: Do not start consecutive paragraphs with the same word. Use occasional short transitions like "Yet,", "Still,", "Indeed,", "Conversely,".
+4. **Keep all facts, citations (Author, year), statistics, and bracketed placeholders [like this] exactly as given. Do not change any numbers or names.
+5. **No meta-comments**: Do not say you are editing or mention AI.
+6. **Output only the rewritten text, no explanation.
 
 Original text:
 {text}
@@ -360,10 +359,10 @@ Rewritten text:"""
         response = client.chat.completions.create(
             model=model,
             messages=[
-                {"role": "system", "content": "You are an academic editor who improves natural flow without altering content."},
+                {"role": "system", "content": "You are an academic editor who improves natural flow without altering content. Use very short sentences, remove AI buzzwords, and vary openings."},
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.75,
+            temperature=0.8,   # higher creativity
             max_tokens=_env_int("OPENAI_MAX_OUTPUT_TOKENS", 8000),
         )
         rewritten = response.choices[0].message.content.strip()
