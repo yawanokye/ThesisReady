@@ -4,7 +4,6 @@ import json
 import os
 import re
 import random
-import subprocess
 from datetime import datetime
 from typing import Any, Optional
 
@@ -683,7 +682,6 @@ def _add_drafting_artefacts(text: str, probability_per_500_words: float = 0.8) -
         if random.random() < 0.5:
             text = re.sub(pattern, repl, text, count=1, flags=re.IGNORECASE)
 
-    # Additional patterns
     if random.random() < 0.4:
         text = re.sub(r'\.\s+', r'. That said, ', text, count=1)
     if random.random() < 0.4:
@@ -779,78 +777,29 @@ def _force_short_sentences(text: str, target_every_n_words: int = 200) -> str:
     return text
 
 
-def _humanize_with_small_model(text: str, model: str = "llama3-8b-8192") -> str:
-    """
-    Rewrite text using Groq's fast inference API (Llama 3 8B).
-    Provides low‑perplexity, natural variation without local Ollama.
-    """
-    if not text or len(text) < 200:
-        return text
-
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        return text  # fallback: no rewrite
-
-    try:
-        from groq import Groq
-        client = Groq(api_key=api_key)
-    except ImportError:
-        return text
-
-    prompt = f"""You are a careful but hurried PhD student revising your own draft.
-Rewrite the following academic paragraph in your own voice. Keep all facts, citations, statistics, placeholders, and technical terms exactly as given.
-Introduce natural variation: very short sentences (3-5 words), occasional sentence fragments, small grammatical inconsistencies (e.g., missing comma, lowercase after period, double space).
-Do not change any bracketed placeholders like [insert ...]. Do not remove or alter citations. Do not fabricate anything.
-Output only the rewritten text, no extra commentary.
-
-Original text:
-{text}
-
-Rewritten text:"""
-
-    try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=2000,
-        )
-        rewritten = response.choices[0].message.content.strip()
-        rewritten = re.sub(r'^Rewritten text:\s*', '', rewritten, flags=re.IGNORECASE)
-        return rewritten
-    except Exception:
-        return text
-
-
 def _add_human_noise(text: str, error_probability: float = 0.02) -> str:
     """Introduce very small, realistic human typing errors and inconsistencies."""
     if not text or len(text) < 200:
         return text
 
-    # Delete a random character
     if random.random() < error_probability * 0.5:
         pos = random.randint(10, len(text)-10)
         text = text[:pos] + text[pos+1:]
 
-    # Double a random character
     if random.random() < error_probability * 0.5:
         pos = random.randint(10, len(text)-10)
         if text[pos].isalpha():
             text = text[:pos] + text[pos] + text[pos:]
 
-    # Randomly lowercase a word after a period
     if random.random() < 0.08:
         text = re.sub(r'\.\s+([A-Z])', lambda m: '. ' + m.group(1).lower(), text, count=1)
 
-    # Double space after a period
     if random.random() < 0.1:
         text = re.sub(r'\.\s+', '.  ', text, count=1)
 
-    # Replace period with comma in a short sentence
     if random.random() < 0.06:
         text = re.sub(r'([a-z]{5,20}\.)\s+([A-Z][a-z]{3,7}\s)', r'\1, \2', text, count=1)
 
-    # Double space between two words
     if random.random() < 0.05:
         text = re.sub(r'([a-z])\s+([a-z])', r'\1  \2', text, count=1)
 
@@ -858,11 +807,10 @@ def _add_human_noise(text: str, error_probability: float = 0.02) -> str:
 
 
 # ----------------------------------------------------------------------
-# NEW: Five-point structural anti-detection transformations
+# STRUCTURAL ANTI-DETECTION TRANSFORMATIONS (Five-point method)
 # ----------------------------------------------------------------------
 
 def _split_long_paragraphs(text: str, max_paragraph_words: int = 120) -> str:
-    """Split paragraphs longer than max_paragraph_words into two."""
     paras = text.split('\n')
     new_paras = []
     for para in paras:
@@ -870,7 +818,6 @@ def _split_long_paragraphs(text: str, max_paragraph_words: int = 120) -> str:
         if len(words) <= max_paragraph_words:
             new_paras.append(para)
             continue
-        # find sentence boundary near halfway
         half = len(words) // 2
         sentence_ends = [m.end() for m in re.finditer(r'[.!?]\s+', para)]
         if sentence_ends:
@@ -888,15 +835,12 @@ def _split_long_paragraphs(text: str, max_paragraph_words: int = 120) -> str:
 
 
 def _force_very_short_punch(text: str) -> str:
-    """Insert a very short (3-6 word) sentence after a period if none exists in a 200‑word window."""
     words = text.split()
     if len(words) < 30:
         return text
-    # check existing short sentences
     short_punches = re.findall(r'\b\w{1,5}\s+\w{1,5}\s+\w{1,5}\s*[.!?]', text, re.IGNORECASE)
     if len(short_punches) > 1:
         return text
-    # insert after first period
     match = re.search(r'([.!?])\s+', text)
     if match:
         pos = match.end()
@@ -906,7 +850,6 @@ def _force_very_short_punch(text: str) -> str:
 
 
 def _alternate_sentence_lengths(text: str) -> str:
-    """Force a short sentence (<10 words) after any long sentence (>25 words)."""
     sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text)
     if len(sentences) < 3:
         return text
@@ -914,14 +857,12 @@ def _alternate_sentence_lengths(text: str) -> str:
     for i, s in enumerate(sentences):
         new.append(s)
         if len(s.split()) > 25 and i+1 < len(sentences):
-            # insert a short punch
             short = random.choice([" Yet it is so. ", " That holds true. ", " This is not accidental. "])
             new.append(short)
     return " ".join(new)
 
 
 def _remove_trigger_words(text: str) -> str:
-    """Replace common Pangram/GPTZero trigger words."""
     replacements = {
         r'\bFurthermore\b': 'Also',
         r'\bMoreover\b': 'Besides',
@@ -940,8 +881,6 @@ def _remove_trigger_words(text: str) -> str:
 
 
 def _break_rule_of_three(text: str) -> str:
-    """Break lists of three adjectives/verbs into something less patterned."""
-    # Pattern: word, word, and word (or word, word, word)
     def repl(match):
         a, b, c = match.groups()
         if random.random() < 0.5:
@@ -953,7 +892,6 @@ def _break_rule_of_three(text: str) -> str:
 
 
 def _inject_tangent(text: str) -> str:
-    """Insert realistic fractional numbers or local asides."""
     fractional = [
         " about four out of ten cases, ",
         " roughly two‑thirds of instances, ",
@@ -978,7 +916,6 @@ def _inject_tangent(text: str) -> str:
 
 
 def _randomise_paragraph_order(text: str) -> str:
-    """Swap two non‑consecutive paragraphs to break predictable flow."""
     paras = re.split(r'\n\s*\n', text)
     if len(paras) < 3:
         return text
@@ -989,9 +926,7 @@ def _randomise_paragraph_order(text: str) -> str:
 
 
 def _humanize_structural(text: str, seed: int = None) -> str:
-    """
-    Apply the five‑point structural humanisation to break AI detection patterns.
-    """
+    """Apply the five‑point structural humanisation to break AI detection patterns."""
     if seed is not None:
         random.seed(seed)
     if not text or len(text) < 200:
@@ -1072,7 +1007,7 @@ def _polish_generated_text(text: str) -> str:
 
 
 # ----------------------------------------------------------------------
-# SOURCE INTEGRATION AND OTHER HELPERS (unchanged)
+# SOURCE INTEGRATION AND OTHER HELPERS (unchanged from original)
 # ----------------------------------------------------------------------
 
 def _source_usage_count(text: str, sources: list[dict[str, Any]]) -> int:
@@ -1169,12 +1104,17 @@ def _review_source_integration(
         "draft_to_revise": draft,
     }
     try:
-        response = client.responses.create(
+        # Use chat completion for the review pass as well (replaces responses.create)
+        response = client.chat.completions.create(
             model=model,
-            instructions=instructions + " Revise rather than restart. Preserve the student's context. Use only relevant attached sources and include a Source Use Audit.",
-            input=json.dumps(repair_payload, ensure_ascii=False, indent=2),
+            messages=[
+                {"role": "system", "content": instructions + " Revise rather than restart. Preserve the student's context. Use only relevant attached sources and include a Source Use Audit."},
+                {"role": "user", "content": json.dumps(repair_payload, ensure_ascii=False, indent=2)},
+            ],
+            temperature=0.5,
+            max_tokens=4000,
         )
-        revised = getattr(response, "output_text", "").strip()
+        revised = response.choices[0].message.content.strip()
         if revised:
             return _polish_generated_text(revised)
     except Exception:
@@ -1251,12 +1191,16 @@ def _human_academic_revision_pass(
         "draft_to_revise": draft,
     }
     try:
-        response = client.responses.create(
+        response = client.chat.completions.create(
             model=model,
-            instructions=instructions + " Perform one conservative academic‑quality revision pass. Do not restart the chapter. Do not add unsupported content.",
-            input=json.dumps(revision_payload, ensure_ascii=False, indent=2),
+            messages=[
+                {"role": "system", "content": instructions + " Perform one conservative academic‑quality revision pass. Do not restart the chapter. Do not add unsupported content."},
+                {"role": "user", "content": json.dumps(revision_payload, ensure_ascii=False, indent=2)},
+            ],
+            temperature=0.5,
+            max_tokens=4000,
         )
-        revised = getattr(response, "output_text", "").strip()
+        revised = response.choices[0].message.content.strip()
         if revised:
             return _polish_generated_text(revised)
     except Exception:
@@ -1265,15 +1209,33 @@ def _human_academic_revision_pass(
 
 
 def _call_openai_response_safely(client: Any, model: str, instructions: str, prompt: str) -> str:
+    """Call OpenAI chat completion API (works with gpt-3.5-turbo, gpt-4, etc.)."""
     try:
-        response = client.responses.create(model=model, instructions=instructions, input=prompt)
-        return str(getattr(response, "output_text", "") or "").strip()
-    except Exception:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": instructions},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.7,
+            max_tokens=4000,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"OpenAI API error: {e}")
         fallback_model = os.getenv("OPENAI_FALLBACK_MODEL", "").strip()
         if fallback_model and fallback_model != model:
             try:
-                response = client.responses.create(model=fallback_model, instructions=instructions, input=prompt)
-                return str(getattr(response, "output_text", "") or "").strip()
+                response = client.chat.completions.create(
+                    model=fallback_model,
+                    messages=[
+                        {"role": "system", "content": instructions},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.7,
+                    max_tokens=4000,
+                )
+                return response.choices[0].message.content.strip()
             except Exception:
                 return ""
         return ""
@@ -1305,6 +1267,7 @@ def generate_chapter(
 
     client = _safe_get_openai_client()
     if use_ai and client:
+        # Use gpt-3.5-turbo (set OPENAI_MODEL env var, default to gpt-3.5-turbo)
         model = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
         instructions = (
             "You are ProjectReady AI, an academic project‑work drafting and compliance assistant. "
@@ -1364,16 +1327,13 @@ def generate_chapter(
             polished = _vary_paragraph_openings(polished)
             polished = _force_short_sentences(polished, target_every_n_words=200)
 
-            # 7. Cloud‑based small‑model rewrite (Groq) – optional, can be disabled
-            # polished = _humanize_with_small_model(polished)
-
-            # 8. Final subtle noise (typos, spacing errors)
+            # 7. Final subtle noise (typos, spacing errors)
             polished = _add_human_noise(polished, error_probability=0.015)
 
-            # 9. Final structural anti‑detection pass (five‑point method)
+            # 8. Structural anti-detection pass (five-point method)
             polished = _humanize_structural(polished)
 
-            return polished, "openai_responses_api"
+            return polished, "openai_chat_completion"
 
     # Fallback when AI is disabled or fails
     return (
