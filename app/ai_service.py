@@ -503,6 +503,7 @@ def build_drafting_prompt(
         "student_contribution_and_style_controls": _student_contribution_requirements(profile),
         "analysis_evidence_for_this_chapter": _uploaded_results_for_chapter(profile, chapter_number),
         "retrieved_sources": _retrieved_sources_for_prompt(profile, chapter_number),
+        "citation_bank_for_chapter": _citation_bank_for_prompt(profile, chapter_number),
         "selected_sections": section_payload,
         "extra_instructions": extra_instructions,
         "chapter_specific_requirements": _chapter_specific_requirements(chapter_number),
@@ -521,6 +522,8 @@ def build_drafting_prompt(
             "Do not write sentences that say the work, chapter, section, depth, or argument is designed to meet the selected level of the project, thesis, or dissertation.",
             "Use the reference_currency_requirements: aim for at least 70% of substantive references within the stated recent-reference window, but where current sources do not exist, use the strongest credible available sources instead.",
             "Use the citation_and_evidence_requirements: include relevant, accurate in-text citations across all substantive write-up sections, especially literature, methodology justification, discussion, and problem framing.",
+            "Use citation_bank_for_chapter actively. In a thesis-standard draft, a substantive paragraph should rarely be left without either a relevant citation, a supplied data/result reference, or a precise red placeholder for the missing source. Do not ignore user-pasted references or attached source-finder records.",
+            "When writing fallback-quality or low-information sections, still produce developed thesis prose and use any available source-bank or user-pasted references as citations where relevant. Do not merely restate section rules.",
             "Use retrieved_sources as an additional evidence bank where the user has run the source finder. Do not replace the project profile, user-provided evidence, uploaded files, or placeholders; enrich the draft with relevant retrieved sources.",
             "When retrieved_sources contains sources marked highly_relevant or partly_relevant, review them carefully and integrate those that directly support the chapter argument. Do not cite not_relevant sources, and do not cite any source merely to increase citation count.",
             "Every chapter must end with a References section that includes complete reference entries for every source cited in the chapter, using available reference_entry_hint/apa_hint details from the source bank and user-supplied evidence notes. If source search results were attached, add a short Source Use Audit after the References section.",
@@ -1087,98 +1090,192 @@ def _joined_variables(terms: dict[str, Any]) -> str:
     return ", ".join(variables[:-1]) + " and " + variables[-1]
 
 
+# ----------------------------------------------------------------------
+# FALLBACK CITATION BANK AND APA SUPPORT
+# ----------------------------------------------------------------------
+
+def _extract_reference_records_from_notes(profile: dict[str, Any], limit: int = 30) -> list[dict[str, Any]]:
+    """Extract simple author-year records from user-pasted evidence/reference notes.
+
+    This is deliberately conservative. It does not invent bibliographic details; it only
+    converts references already pasted by the user into a citation-ready pool so fallback
+    drafts and AI prompts do not ignore verified references.
+    """
+    raw = "\n".join(
+        str(profile.get(key) or "")
+        for key in ["citation_evidence_notes", "reference_notes", "verified_references", "notes"]
+        if str(profile.get(key) or "").strip()
+    )
+    if not raw.strip():
+        return []
+    chunks = []
+    for part in re.split(r"\n+|(?<=\.)\s+(?=[A-Z][A-Za-z'’\-]+,\s+[A-Z])", raw):
+        part = re.sub(r"\s+", " ", part).strip(" -•\t")
+        if len(part) > 35 and re.search(r"\((?:19|20)\d{2}[a-z]?\)|\b(?:19|20)\d{2}\b", part):
+            chunks.append(part)
+    records: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for chunk in chunks:
+        year_match = re.search(r"\((19|20)\d{2}[a-z]?\)|\b((?:19|20)\d{2}[a-z]?)\b", chunk)
+        if not year_match:
+            continue
+        year = (year_match.group(0) or "").strip("()")
+        before_year = chunk[:year_match.start()].strip()
+        # APA normally begins with author surname(s). Keep only the author segment.
+        author_segment = before_year.split(".")[0].strip()
+        if not author_segment:
+            continue
+        first_author = re.split(r",|&| and ", author_segment)[0].strip()
+        first_author = re.sub(r"[^A-Za-zÀ-ÖØ-öø-ÿ'’\-\s]", "", first_author).strip()
+        family = first_author.split()[0] if first_author else "[Author]"
+        key = (family.lower(), year, re.sub(r"[^a-z0-9]+", "", chunk.lower())[:60])
+        if str(key) in seen:
+            continue
+        seen.add(str(key))
+        records.append({
+            "citation_key": f"REF{len(records)+1}",
+            "title": "",
+            "authors": [family],
+            "year": year,
+            "source": "User-supplied reference/evidence note",
+            "doi": "",
+            "url": "",
+            "abstract": "",
+            "database": "User supplied",
+            "relevance_tier": "user_verified",
+            "relevance_reason": "Reference pasted or supplied by the user.",
+            "suggested_use": "Use only where it supports the claim being made.",
+            "in_text_citation": f"({family}, {year})",
+            "apa_hint": chunk.rstrip('.') + ".",
+        })
+        if len(records) >= limit:
+            break
+    return records
+
+
+def _citation_bank(profile: dict[str, Any], limit: int = 30) -> list[dict[str, Any]]:
+    """Merge source-finder records and user-pasted references for drafting."""
+    records: list[dict[str, Any]] = []
+    records.extend(_merged_source_bank(profile, limit=limit))
+    records.extend(_extract_reference_records_from_notes(profile, limit=limit))
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for rec in records:
+        key = _source_key(rec) if rec.get("title") or rec.get("doi") else (rec.get("apa_hint") or rec.get("in_text_citation") or "")
+        key = re.sub(r"\s+", " ", str(key).lower()).strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        item = dict(rec)
+        if not item.get("in_text_citation"):
+            item["in_text_citation"] = _citation_label_for_source(item)
+        out.append(item)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _citation_bank_for_prompt(profile: dict[str, Any], chapter_number: int) -> dict[str, Any]:
+    bank = _citation_bank(profile, limit=24)
+    return {
+        "count": len(bank),
+        "use_rule": "Use this citation bank as the first place to look for in-text citations. Cite only records that are relevant to the claim; do not force unsuitable sources. If no record supports a claim, use a red bracketed placeholder.",
+        "chapter_expectation": "For a thesis-standard draft, most substantive paragraphs should contain either a relevant in-text citation, a supplied result, a user-supplied evidence anchor, or a precise placeholder.",
+        "records": [
+            {
+                "citation_key": rec.get("citation_key", f"REF{i+1}"),
+                "in_text_citation": rec.get("in_text_citation") or _citation_label_for_source(rec),
+                "reference_entry_hint": rec.get("apa_hint") or rec.get("reference_entry_hint") or "",
+                "title": rec.get("title", ""),
+                "year": rec.get("year", ""),
+                "relevance_tier": rec.get("relevance_tier", "user_verified_or_unclassified"),
+                "suggested_use": rec.get("suggested_use", "Use only where directly relevant."),
+            }
+            for i, rec in enumerate(bank[:24])
+        ],
+    }
+
+
+def _fallback_citations(profile: dict[str, Any], start: int = 0, count: int = 2) -> str:
+    bank = _citation_bank(profile, limit=12)
+    if not bank:
+        return "[insert verified in-text citation]"
+    selected = bank[start:start+count]
+    if not selected:
+        selected = bank[:count]
+    labels = []
+    for rec in selected:
+        label = str(rec.get("in_text_citation") or _citation_label_for_source(rec)).strip()
+        label = label.strip("()")
+        if label and label.lower() != "[author], n.d.":
+            labels.append(label)
+    if not labels:
+        return "[insert verified in-text citation]"
+    return "(" + "; ".join(_dedupe_keep_order(labels)) + ")"
+
+
+def _paragraph_with_citation(text: str, profile: dict[str, Any], start: int = 0, count: int = 2) -> str:
+    citation = _fallback_citations(profile, start=start, count=count)
+    if citation.startswith("[insert"):
+        return text.rstrip() + " " + citation
+    # add citation before final full stop where possible
+    if text.rstrip().endswith("."):
+        return text.rstrip()[:-1] + f" {citation}."
+    return text.rstrip() + f" {citation}."
+
+
 def _fallback_chapter_one_section(section_title: str, section_answers: dict[str, Any], profile: dict[str, Any]) -> str:
     t = _profile_terms(profile)
     title_lower = section_title.lower()
     evidence_note = _evidence_note(profile)
     answer_note = _answer_note(section_answers)
-
+    v = _joined_variables(t)
     if "introduction" in title_lower:
-        return (
-            f"This chapter introduces the study on {t['title']}. It situates the inquiry within {t['research_area']} and explains why {t['population']} in {t['location']} provide a meaningful context for examining {_joined_variables(t)}. "
-            f"The chapter begins by setting out the background to the study, after which the problem is stated and narrowed into a clear research focus. It then presents the purpose of the study, research objectives, research questions, significance, delimitations, limitations and organisation of the study. "
-            f"Together, these sections establish the intellectual and practical basis for the investigation and show how the study moves from a broad concern to a defined empirical inquiry. {answer_note}"
-        )
-
+        return (f"This chapter introduces the study on {t['title']}. The chapter locates the inquiry within the broader concern that individuals and households increasingly carry responsibility for financial decisions that affect their welfare beyond active working life {_fallback_citations(profile, 0, 1)}. It then narrows the discussion to {t['population']} in {t['location']}, a group for whom income irregularity, limited workplace pension communication and competing household demands can make long-term planning difficult. The chapter proceeds from the background to the study to the statement of the problem, purpose, objectives, research questions, significance, delimitations, limitations and organisation of the study. In doing so, it explains why {v} require empirical attention in the selected context. {answer_note}")
     if "background" in title_lower:
-        return (
-            f"The preparation for later-life financial security has become a major personal finance and social policy concern, particularly in economies where many workers earn irregular income and operate outside formal employer-sponsored pension arrangements. Financial literacy is central to this concern because individuals need to understand saving, budgeting, risk, interest, inflation, pension participation and long-term financial planning before they can make informed retirement decisions. In informal work settings, however, these decisions are rarely made under stable conditions. Earnings may vary across seasons, business cycles and household demands, while access to structured financial advice and pension information may be limited. [insert recent empirical or policy source on financial literacy and retirement planning among informal workers].\n\n"
-            f"The Ghanaian context adds a further layer to the issue. Informal workers contribute substantially to livelihoods and local economic activity, yet many do not benefit from the regular pension communication, payroll deductions and workplace financial education that formal employees may receive. For workers in {t['location']}, retirement planning is therefore likely to depend not only on knowledge of financial products but also on trust in pension institutions, income regularity, household obligations, business survival needs and access to appropriate financial services. [insert current Ghana Statistical Service, SSNIT, NPRA or Ministry of Employment evidence on informal employment and pension participation].\n\n"
-            f"Conceptually, the study links {_joined_variables(t)} by treating financial literacy as more than the ability to recognise financial terms. It includes the capacity to interpret financial information and apply it to decisions about saving, investment, insurance, credit and retirement preparation. Retirement planning, in turn, refers to the deliberate actions taken to secure income, assets and welfare in old age. Where literacy is weak, retirement planning may be delayed, informal, inconsistent or shaped mainly by immediate household pressures rather than long-term income security.\n\n"
-            f"Although financial literacy has received increasing attention in personal finance research, the specific circumstances of informal workers remain insufficiently understood in many local contexts. The present study therefore focuses on {t['population']} in {t['location']} to examine how financial knowledge, attitudes and practices relate to retirement preparation within a setting where income uncertainty and limited formal pension coverage may influence long-term financial behaviour. {evidence_note}"
-        )
-
+        p1 = "Retirement planning has become an important personal finance and social policy issue because old-age income security is no longer determined only by family support or public pension provision. Workers are increasingly expected to make informed decisions about saving, pension participation, insurance, debt, investment and consumption long before retirement occurs. Financial literacy is central to these decisions because it shapes how people understand interest, inflation, risk, financial products and the consequences of delaying retirement preparation"
+        p2 = f"The issue is sharper in informal employment. Many informal workers earn income outside regular payroll systems, and this often means that they do not receive automatic pension deductions, employer-based retirement information or structured workplace financial education. For {t['population']} in {t['location']}, retirement preparation may therefore depend on personal discipline, trust in financial institutions, household bargaining, business-cycle pressures and the ability to convert irregular income into long-term savings"
+        p3 = f"Conceptually, the study treats {v} as connected but not identical constructs. Financial literacy refers not merely to awareness of financial terms, but to the capacity to interpret financial information and apply it to decisions about saving, borrowing, investment and future income security. Retirement planning, by contrast, concerns the deliberate steps individuals take to prepare resources, income streams and welfare arrangements for old age. A worker may understand the value of retirement planning and still fail to act because income is unstable; another may earn enough to save but lack knowledge of credible pension or savings channels"
+        p4 = f"The present study is therefore situated at the point where knowledge, behaviour and local economic reality meet. Although financial literacy and retirement planning have received scholarly attention, local evidence on how informal workers in {t['location']} connect financial knowledge to retirement preparation remains limited. This matters because policy prescriptions designed for salaried workers may not fit the lived conditions of informal workers whose income, risk exposure and institutional contact differ substantially from formal employment"
+        return "\n\n".join([_paragraph_with_citation(p1, profile, 0, 2), _paragraph_with_citation(p2, profile, 2, 2), _paragraph_with_citation(p3, profile, 4, 1), p4 + " " + evidence_note])
     if "problem" in title_lower:
-        return (
-            f"Many informal workers face the difficult task of preparing for retirement without the regular income, employer-based pension communication and structured financial counselling that often support formal sector employees. In such circumstances, retirement planning can easily be displaced by immediate business expenses, family obligations, debt servicing and daily consumption needs. This creates a practical problem: workers may remain economically active for many years but reach old age without adequate savings, pension participation or a clear plan for income security. [insert recent national or local evidence showing low pension participation, low savings, or weak retirement preparedness among informal workers].\n\n"
-            f"The problem is not merely the absence of income. It also concerns the knowledge and confidence required to translate limited income into deliberate long-term planning. A worker may know the importance of saving but lack understanding of pension products; another may understand saving but distrust formal financial institutions; yet another may intend to plan for retirement but face income volatility that makes regular contributions difficult. These differences suggest that financial literacy may shape retirement planning in ways that are not captured by income level alone. [insert empirical source on financial literacy and retirement planning behaviour].\n\n"
-            f"In {t['location']}, the issue is especially relevant because informal economic activities support many households, yet local evidence on how informal workers understand and practise retirement planning remains limited. Existing studies may address financial literacy broadly, pension participation nationally, or saving behaviour in general, but fewer studies appear to examine the specific relationship between financial literacy and retirement planning among {t['population']} in this local context. This study was therefore designed to examine {t['title']}, thereby providing evidence that can inform financial education, pension outreach and policy interventions for informal workers."
-        )
-
+        p1 = f"Informal workers are expected to prepare for old age, yet many do so under economic conditions that make regular and long-term financial planning difficult. Income from informal work may be uncertain, seasonal or vulnerable to business shocks, while immediate household needs often compete with savings and pension contributions. The practical implication is that a worker may remain economically active for decades but approach old age without adequate savings, pension membership or a clear retirement income strategy"
+        p2 = "The problem is not only a matter of low income. It is also a knowledge and decision-making problem. Financial literacy can influence whether workers understand pension products, compare financial options, evaluate risk, plan contributions, and appreciate the long-term consequences of postponing retirement preparation. Where literacy is weak, retirement planning may become reactive rather than deliberate; where literacy is stronger, planning may still be constrained by income instability, trust deficits or limited access to appropriate financial services"
+        p3 = f"In {t['location']}, the issue deserves local empirical attention because informal economic activities support many households, yet the specific relationship between financial literacy and retirement planning among {t['population']} has not been sufficiently established from the information supplied for this study. Existing literature may address financial literacy generally, pension participation nationally or saving behaviour broadly, but such evidence does not fully explain how informal workers in the Cape Coast context translate financial knowledge into retirement planning decisions"
+        p4 = f"This study therefore examined {t['title']}. By focusing on {t['population']} in {t['location']}, the study addressed a practical and empirical gap: whether and how financial literacy is associated with retirement planning in a setting where workers may have limited formal pension contact and irregular income flows. [insert current local evidence on informal employment, pension coverage, savings behaviour or retirement preparedness in Cape Coast/Ghana]"
+        return "\n\n".join([_paragraph_with_citation(p1, profile, 1, 2), _paragraph_with_citation(p2, profile, 3, 2), _paragraph_with_citation(p3, profile, 5, 1), p4])
     if "purpose" in title_lower:
-        return (
-            f"The purpose of the study was to examine {t['title']}. Specifically, the study sought to determine how financial literacy relates to retirement planning among {t['population']} in {t['location']} and to generate evidence that can support more effective financial education, pension communication and retirement-preparedness interventions for workers in the informal economy."
-        )
-
+        return _paragraph_with_citation(f"The purpose of the study was to examine {t['title']}. More specifically, the study sought to determine how financial literacy relates to retirement planning among {t['population']} in {t['location']} and to generate evidence that can inform financial education, pension outreach and retirement-preparedness interventions for informal workers.", profile, 0, 1)
     if "objective" in title_lower:
-        objectives = t["objectives"] or [
-            f"assess the level of financial literacy among {t['population']} in {t['location']}",
-            f"assess the retirement planning practices of {t['population']} in {t['location']}",
-            "examine the relationship between financial literacy and retirement planning",
-            "identify the financial-literacy dimensions that most strongly explain retirement planning behaviour",
-        ]
-        lines = ["The study was guided by the following specific objectives:"]
+        objectives = t["objectives"] or [f"assess the level of financial literacy among {t['population']} in {t['location']}", f"assess the retirement planning practices of {t['population']} in {t['location']}", "examine the relationship between financial literacy and retirement planning", "determine the financial-literacy dimensions that explain retirement planning behaviour"]
+        lines = ["The specific objectives of the study were to:"]
         for i, obj in enumerate(objectives, 1):
             obj = obj.rstrip(".")
-            if not re.match(r"(?i)^(to\s+)?(assess|examine|analyse|analyze|determine|evaluate|investigate|explore|identify|establish)", obj):
-                obj = "examine " + obj
-            if not obj.lower().startswith("to "):
-                obj = "to " + obj
+            if not re.match(r"(?i)^(to\s+)?(assess|examine|analyse|analyze|determine|evaluate|investigate|explore|identify|establish)", obj): obj = "examine " + obj
+            if obj.lower().startswith("to "): obj = obj[3:]
             lines.append(f"{i}. {obj};")
         lines[-1] = lines[-1].rstrip(";") + "."
         return "\n".join(lines)
-
     if "question" in title_lower:
         questions = t["questions"]
         if not questions:
-            objectives = t["objectives"] or [
-                f"assess the level of financial literacy among {t['population']} in {t['location']}",
-                f"assess the retirement planning practices of {t['population']} in {t['location']}",
-                "examine the relationship between financial literacy and retirement planning",
-                "identify the financial-literacy dimensions that most strongly explain retirement planning behaviour",
-            ]
+            objectives = t["objectives"] or [f"assess the level of financial literacy among {t['population']} in {t['location']}", f"assess the retirement planning practices of {t['population']} in {t['location']}", "examine the relationship between financial literacy and retirement planning", "determine the financial-literacy dimensions that explain retirement planning behaviour"]
             questions = [_objective_to_question(obj, t) for obj in objectives]
         lines = ["The study was guided by the following research questions:"]
-        for i, q in enumerate(questions, 1):
-            q = q.strip().rstrip("?") + "?"
-            lines.append(f"{i}. {q}")
+        for i, q in enumerate(questions, 1): lines.append(f"{i}. {q.strip().rstrip('?')}?")
         return "\n".join(lines)
-
     if "significance" in title_lower:
-        return (
-            f"The study is significant to informal workers because it draws attention to the knowledge, attitudes and financial practices that may influence their preparedness for old age. Evidence from the study can help workers, trade associations and local business groups to recognise the importance of early and consistent retirement planning, even where income is irregular. It may also support the design of practical financial education programmes that speak directly to the realities of informal work rather than assuming salaried employment conditions.\n\n"
-            f"The study is also useful to pension institutions, financial service providers and public agencies involved in financial inclusion. By showing how {t['population']} in {t['location']} understand and practise retirement planning, the findings can guide pension outreach, savings-product design, communication strategies and trust-building interventions. For policymakers, the study provides local evidence that can inform broader discussions on informal-sector social protection and old-age income security.\n\n"
-            f"Academically, the study contributes to literature on financial literacy and retirement planning by focusing on a local informal-worker population. It extends the discussion beyond general financial knowledge by linking literacy to a concrete planning outcome and by situating the relationship within the economic realities of {t['location']}."
-        )
-
+        p1 = f"The study is significant to informal workers because it focuses on financial knowledge and retirement behaviour within the conditions under which such workers actually earn and plan. The findings can help workers, trade associations and local business groups recognise the forms of financial knowledge that are most closely connected with retirement preparedness."
+        p2 = f"The study is also useful to pension institutions, financial service providers and public agencies concerned with financial inclusion and old-age income security. Evidence on {t['population']} in {t['location']} can guide pension education, savings-product communication and outreach strategies that are sensitive to irregular income and limited formal employment contact."
+        p3 = f"Academically, the study contributes to literature on {v} by focusing on a local informal-worker population. It extends the discussion beyond general financial knowledge by linking literacy to a concrete planning outcome and by locating that relationship within the economic realities of {t['location']}."
+        return "\n\n".join([_paragraph_with_citation(p1, profile, 0, 1), _paragraph_with_citation(p2, profile, 1, 1), _paragraph_with_citation(p3, profile, 2, 1)])
     if "delimitation" in title_lower:
-        return (
-            f"The study was delimited to {t['population']} in {t['location']}. This boundary was necessary because the study sought to understand retirement planning within a specific informal-work context rather than across all categories of workers in Ghana. The study also focused on {_joined_variables(t)} and therefore did not examine all possible determinants of retirement security, such as health status, inheritance, family support, asset ownership or macroeconomic conditions, except where these issues were relevant to the interpretation of the findings."
-        )
-
+        return f"The study was delimited to {t['population']} in {t['location']}. This boundary was deliberate because the study sought to understand retirement planning within a specific informal-work context rather than across all categories of workers in Ghana. The study also focused on {v} and therefore did not examine every possible determinant of retirement security, such as health status, inheritance, family support, asset ownership or macroeconomic shocks, except where these issues helped to interpret the findings."
     if "limitation" in title_lower:
-        return (
-            f"The study was limited by its reliance on information provided by respondents about their financial knowledge and retirement planning practices. Such self-reported data may be affected by recall error or the tendency of respondents to present their financial behaviour more favourably. This limitation can be managed through clear questionnaire wording, anonymity and careful interpretation of the results.\n\n"
-            f"Another limitation is that the study focuses on {t['location']}, which means that the findings may not automatically represent all informal workers in Ghana. Informal work varies across regions, occupations and income levels. The findings should therefore be interpreted within the selected study context, while future studies may extend the analysis to other municipalities, regions or occupational groups. [insert final methodological limitations after data collection and analysis]."
-        )
-
+        return f"The study was limited by its reliance on information provided by respondents about their financial knowledge and retirement planning practices. Self-reported data are appropriate for examining perceptions and financial behaviour, but they may be affected by recall error or the tendency of respondents to present their financial practices favourably. This limitation should be managed through clear questionnaire wording, anonymity and cautious interpretation of the results.\n\nA further limitation is that the study focused on {t['location']}. Informal work varies across regions, occupations and income levels; consequently, the findings should be interpreted within the selected study context rather than treated as a complete representation of all informal workers in Ghana. [insert final methodological limitations after data collection and analysis]."
     if "organisation" in title_lower or "organization" in title_lower:
-        return (
-            "The study is organised into five chapters. Chapter One introduces the study, presents the background, states the problem, outlines the purpose, objectives and research questions, and explains the significance, delimitations and limitations of the study. Chapter Two reviews relevant theoretical, conceptual and empirical literature and identifies the gap addressed by the study. Chapter Three describes the methodology, including the research approach, design, population, sampling, instrumentation, data collection procedures, validity, reliability, ethics and data analysis methods. Chapter Four presents and discusses the results in line with the research objectives. Chapter Five summarises the findings, draws conclusions, makes recommendations and suggests areas for future research."
-        )
-
+        return "The study is organised into five chapters. Chapter One introduces the study, presents the background, states the problem, outlines the purpose, objectives and research questions, and explains the significance, delimitations and limitations of the study. Chapter Two reviews relevant theoretical, conceptual and empirical literature and identifies the gap addressed by the study. Chapter Three describes the methodology, including the research approach, design, population, sampling, instrumentation, data collection procedures, validity, reliability, ethics and data analysis methods. Chapter Four presents and discusses the results in line with the research objectives. Chapter Five summarises the findings, draws conclusions, makes recommendations and suggests areas for future research."
     return _substantive_placeholder_section(section_title, profile, 1)
-
 
 def _objective_to_question(objective: str, terms: dict[str, Any]) -> str:
     text = re.sub(r"(?i)^to\s+", "", str(objective).strip()).rstrip(".")
@@ -1392,7 +1489,7 @@ def _evidence_note(profile: dict[str, Any]) -> str:
 
 
 def _fallback_references_section(profile: dict[str, Any]) -> str:
-    sources = _merged_source_bank(profile, limit=8)
+    sources = _citation_bank(profile, limit=12)
     if not sources:
         return "[insert APA 7th reference entries for all sources cited in this chapter after verifying bibliographic details]."
     entries = []
@@ -1401,7 +1498,6 @@ def _fallback_references_section(profile: dict[str, Any]) -> str:
         if hint:
             entries.append(hint.rstrip("." ) + ".")
     return "\n".join(_dedupe_keep_order(entries)) if entries else "[insert APA 7th reference entries for all sources cited in this chapter after verifying bibliographic details]."
-
 
 def _draft_from_answers(
     section_title: str,
