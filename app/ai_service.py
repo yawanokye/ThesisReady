@@ -3,129 +3,30 @@ from __future__ import annotations
 import json
 import os
 import re
-import random
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from dotenv import load_dotenv
-# OpenAI SDK is imported lazily inside the DeepSeek client helper.
 
 from app.template_store import get_chapter, selected_sections
 
 load_dotenv()
 
 
-# ----------------------------------------------------------------------
-# DEEPSEEK CLIENT (ONLY)
-# ----------------------------------------------------------------------
-
-def _safe_get_deepseek_client():
-    """Return a DeepSeek client using the OpenAI-compatible SDK interface."""
-    api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
+def _safe_get_openai_client():
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
         return None
     try:
         from openai import OpenAI
-        return OpenAI(
-            api_key=api_key,
-            base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").strip() or "https://api.deepseek.com",
-        )
-    except Exception as exc:
-        print(f"DeepSeek client setup failed: {exc}")
+        return OpenAI(api_key=api_key)
+    except Exception:
         return None
 
 
-def _call_deepseek(
-    prompt: str,
-    instructions: str,
-    *,
-    stage: str = "draft",
-    model: str | None = None,
-    temperature: float | None = None,
-    max_tokens: int | None = None,
-) -> str:
-    """
-    Call DeepSeek safely.
-
-    DeepSeek is OpenAI-compatible, but this wrapper avoids crashing the app when
-    keys, SDK settings, network calls or model names fail. It also lets the main
-    generation flow use different temperatures and token budgets for planning,
-    drafting, revision and expansion.
-    """
-    client = _safe_get_deepseek_client()
-    if client is None:
-        return ""
-
-    if model is None:
-        if stage in {"plan", "review"}:
-            model = os.getenv("DEEPSEEK_REASONER_MODEL", "").strip() or os.getenv("DEEPSEEK_FAST_MODEL", "deepseek-chat").strip() or "deepseek-chat"
-        else:
-            model = os.getenv("DEEPSEEK_DRAFT_MODEL", "").strip() or os.getenv("DEEPSEEK_FAST_MODEL", "deepseek-chat").strip() or "deepseek-chat"
-
-    if temperature is None:
-        temperature = {
-            "plan": _env_float("PROJECTREADY_PLAN_TEMPERATURE", 0.25),
-            "draft": _env_float("PROJECTREADY_DRAFT_TEMPERATURE", 0.62),
-            "expand": _env_float("PROJECTREADY_EXPANSION_TEMPERATURE", 0.56),
-            "review": _env_float("PROJECTREADY_REVISION_TEMPERATURE", 0.54),
-        }.get(stage, 0.55)
-
-    if max_tokens is None:
-        max_tokens = {
-            "plan": _env_int("PROJECTREADY_PLAN_MAX_TOKENS", 2500),
-            "draft": _env_int("PROJECTREADY_DRAFT_MAX_TOKENS", _env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000)),
-            "expand": _env_int("PROJECTREADY_EXPANSION_MAX_TOKENS", _env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000)),
-            "review": _env_int("PROJECTREADY_REVISION_MAX_TOKENS", _env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000)),
-        }.get(stage, _env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000))
-
-    timeout = _env_int("OPENAI_TIMEOUT_SECONDS", 90)
-
-    try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": instructions},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=temperature,
-            max_tokens=max_tokens,
-            timeout=timeout,
-        )
-        try:
-            return str(response.choices[0].message.content or "").strip()
-        except Exception:
-            return ""
-    except Exception as exc:
-        print(f"DeepSeek call failed at {stage} using {model}: {exc}")
-        return ""
-
-
-def _env_bool(name: str, default: bool = False) -> bool:
-    value = os.getenv(name, "").strip().lower()
-    if not value:
-        return default
-    return value in {"1", "true", "yes", "on", "y"}
-
-
-def _env_int(name: str, default: int) -> int:
-    try:
-        return int(str(os.getenv(name, default)).strip())
-    except Exception:
-        return default
-
-
-def _env_float(name: str, default: float) -> float:
-    try:
-        return float(str(os.getenv(name, default)).strip())
-    except Exception:
-        return default
-
-
-# ----------------------------------------------------------------------
-# THESIS REQUIREMENTS (unchanged)
-# ----------------------------------------------------------------------
 
 def _reference_currency_requirements() -> dict[str, Any]:
+    """Return the reference currency rule used across generated chapters."""
     current_year = datetime.now().year
     start_year = current_year - 5
     return {
@@ -133,7 +34,7 @@ def _reference_currency_requirements() -> dict[str, Any]:
         "recent_reference_window": f"{start_year}-{current_year}",
         "rule": (
             f"Aim for at least 70% of substantive references to be from {start_year}-{current_year}. "
-            "Where current references do not exist, use the strongest credible available sources. "
+            "Where current references do not exist for a specific concept, method, context, or theory, use the strongest credible available sources. "
             "Older sources are acceptable for foundational theories, classic models, scarce-literature areas, and essential earlier studies."
         ),
         "integrity_guard": (
@@ -145,13 +46,14 @@ def _reference_currency_requirements() -> dict[str, Any]:
 
 
 def _citation_and_evidence_requirements(chapter_number: int) -> dict[str, Any]:
+    """Return rules for evidence-led writing, citation accuracy, and problem-statement statistics."""
     current_year = datetime.now().year
     start_year = current_year - 5
     common_rules = [
         "Include relevant and accurate in-text citations in every substantive section of the write-up.",
         "Use author-year citation style unless the user or institution requests another style.",
         "Do not cite a source unless the source was supplied by the student, included in the profile/reference notes, present in uploaded material, or can be stated confidently without guessing.",
-        "Where a citation is needed but no reliable source details are available, insert a red bracketed placeholder such as [insert verified source for this claim] rather than inventing a citation.",
+        "Where a citation is needed but no reliable source details are available, insert a red bracketed placeholder in the draft, such as [insert verified source for this claim] rather than inventing a citation.",
         "Support factual claims with evidence. Use statistics, policy evidence, institutional records, peer-reviewed studies, official reports, or credible datasets where available.",
         f"Prioritise recent references from {start_year}-{current_year}, but use older sources when they are foundational theories, classic models, or the best credible evidence available.",
         "Do not create a reference list entry for any source unless enough accurate bibliographic information is supplied or known with confidence.",
@@ -181,6 +83,7 @@ def _citation_and_evidence_requirements(chapter_number: int) -> dict[str, Any]:
 
 
 def _level_depth_requirements(profile: dict[str, Any]) -> dict[str, str]:
+    """Return writing-depth guidance based on the selected thesis/dissertation/project level."""
     level = (profile.get("level") or "Bachelors").strip()
     guidance_map = {
         "Bachelors": (
@@ -208,86 +111,13 @@ def _level_depth_requirements(profile: dict[str, Any]) -> dict[str, str]:
     return {"selected_level": level, "depth_guidance": guidance}
 
 
-def _normalise_level_name(profile: dict[str, Any]) -> str:
-    level = str(profile.get("level") or profile.get("academic_level") or "Bachelors").strip().lower()
-    if "phd" in level or "doctor" in level:
-        return "doctoral"
-    if "research" in level or "mphil" in level:
-        return "research_masters"
-    if "master" in level:
-        return "masters"
-    return "bachelors"
-
-
-def _chapter_length_depth_requirements(
-    profile: dict[str, Any],
-    chapter_number: int,
-    selected_section_count: int = 0,
-) -> dict[str, Any]:
-    level = _normalise_level_name(profile)
-    table = {
-        "bachelors": {
-            1: (2800, 3600),
-            2: (4200, 6500),
-            3: (3000, 4200),
-            4: (3200, 4800),
-            5: (2200, 3200),
-            7: (2500, 3800),
-        },
-        "masters": {
-            1: (3500, 5000),
-            2: (6500, 9000),
-            3: (4200, 6000),
-            4: (4500, 7000),
-            5: (3000, 4500),
-            7: (3500, 5200),
-        },
-        "research_masters": {
-            1: (4200, 6000),
-            2: (8000, 12000),
-            3: (5500, 8000),
-            4: (6000, 9000),
-            5: (3800, 5500),
-            7: (4500, 6500),
-        },
-        "doctoral": {
-            1: (5500, 8000),
-            2: (12000, 18000),
-            3: (8000, 12000),
-            4: (8500, 13000),
-            5: (5000, 8000),
-            7: (6500, 9500),
-        },
-    }
-    minimum, target = table.get(level, table["bachelors"]).get(int(chapter_number or 1), (2500, 3800))
-    if selected_section_count and selected_section_count < 5:
-        scale = max(0.55, selected_section_count / 8)
-        minimum = int(minimum * scale)
-        target = int(target * scale)
-    return {
-        "normalised_level": level,
-        "minimum_words": minimum,
-        "target_words": target,
-        "rule": (
-            f"For this level and chapter, produce a substantive chapter of at least about {minimum:,} words, "
-            f"with a preferred working range up to about {target:,} words when most standard sections are selected. "
-            "Do not pad with filler; expand through evidence, citations, explanation, local context, methodological alignment, and precise placeholders."
-        ),
-        "quality_gate": [
-            "A Bachelor chapter must still read like a complete thesis chapter, not a short assignment answer.",
-            "Do not compress Background, Statement of the Problem, Significance, Delimitations, and Limitations into thin paragraphs.",
-            "Most substantive paragraphs should contain either an in-text citation from the supplied/source-bank references, a supplied evidence anchor, or a precise placeholder for a missing source/statistic.",
-            "If the draft is below the minimum word guidance, expand analytically before finalising.",
-        ],
-    }
-
-
 def _uploaded_results_for_chapter(profile: dict[str, Any], chapter_number: int) -> dict[str, Any]:
     uploaded = profile.get("uploaded_results") or {}
     result = uploaded.get(str(chapter_number))
     if chapter_number == 4 and not result:
         result = uploaded.get("4")
     return result or {}
+
 
 
 def _normalise_author_for_citation(author: str) -> str:
@@ -322,18 +152,21 @@ def _source_key(src: dict[str, Any]) -> str:
 
 
 def _merged_source_bank(profile: dict[str, Any], limit: int = 24) -> list[dict[str, Any]]:
+    """Merge latest retrieved sources and accumulated source bank without replacing user evidence."""
     collected: list[dict[str, Any]] = []
     for container_key in ["source_bank", "attached_sources"]:
         value = profile.get(container_key) or []
         if isinstance(value, list):
             collected.extend([v for v in value if isinstance(v, dict)])
+
     retrieved = profile.get("retrieved_sources") or {}
     value = retrieved.get("sources") or []
     if isinstance(value, list):
         collected.extend([v for v in value if isinstance(v, dict)])
+
     seen: set[str] = set()
     merged: list[dict[str, Any]] = []
-    for src in collected:
+    for idx, src in enumerate(collected, start=1):
         key = _source_key(src)
         if not key or key in seen:
             continue
@@ -357,7 +190,34 @@ def _merged_source_bank(profile: dict[str, Any], limit: int = 24) -> list[dict[s
     return merged
 
 
+def _source_attention_target(chapter_number: int, source_count: int) -> int:
+    if source_count <= 0:
+        return 0
+    if chapter_number == 2:
+        return min(source_count, 10)
+    if chapter_number == 1:
+        return min(source_count, 6)
+    if chapter_number == 3:
+        return min(source_count, 4)
+    if chapter_number == 4:
+        return min(source_count, 5)
+    return min(source_count, 3)
+
+
+def _relevance_tier_rank(tier: Any) -> int:
+    return {"highly_relevant": 3, "partly_relevant": 2, "not_relevant": 1}.get(str(tier or ""), 0)
+
+
+def _source_relevance_counts(sources: list[dict[str, Any]]) -> dict[str, int]:
+    counts = {"highly_relevant": 0, "partly_relevant": 0, "not_relevant": 0, "unclassified": 0}
+    for src in sources:
+        tier = str(src.get("relevance_tier") or "unclassified")
+        counts[tier] = counts.get(tier, 0) + 1
+    return counts
+
+
 def _retrieved_sources_for_prompt(profile: dict[str, Any], chapter_number: int | None = None) -> dict[str, Any]:
+    """Return source-search results in a compact prompt-friendly form."""
     retrieved = profile.get("retrieved_sources") or {}
     source_bank = _merged_source_bank(profile)
     compact_sources = []
@@ -378,20 +238,78 @@ def _retrieved_sources_for_prompt(profile: dict[str, Any], chapter_number: int |
             "in_text_citation": src.get("in_text_citation", ""),
             "reference_entry_hint": src.get("apa_hint", ""),
         })
-    compact_sources.sort(key=lambda x: ({"highly_relevant":3, "partly_relevant":2}.get(x.get("relevance_tier",""), 0)), reverse=True)
+    compact_sources.sort(
+        key=lambda item: (
+            _relevance_tier_rank(item.get("relevance_tier")),
+            bool(item.get("abstract")),
+            bool(item.get("doi")),
+        ),
+        reverse=True,
+    )
+    target = _source_attention_target(int(chapter_number or 0), len(compact_sources))
     return {
         "query": retrieved.get("query", ""),
+        "searched_at": retrieved.get("searched_at", ""),
+        "recent_reference_window": retrieved.get("recent_reference_window", ""),
+        "databases": retrieved.get("databases", []),
+        "usage_note": retrieved.get("usage_note", ""),
         "source_count": len(compact_sources),
+        "relevance_counts": _source_relevance_counts(compact_sources),
+        "recommended_relevant_sources_to_review": target,
         "sources": compact_sources,
         "source_use_rules": [
-            "Use retrieved_sources only where directly relevant.",
-            "Do not cite not_relevant sources.",
-            "If a source is not directly needed, use a placeholder instead.",
-        ]
+            "Use retrieved_sources as an additional evidence bank alongside the student's project profile, pasted verified evidence, uploaded files, and placeholders.",
+            "Do not replace student-supplied evidence with search results; enrich the existing argument only where a retrieved source is directly relevant.",
+            f"Use the recommended_relevant_sources_to_review value ({target}) only as a review guide, not as a compulsory citation quota.",
+            "Prioritise sources marked highly_relevant, then partly_relevant. Use not_relevant sources only if a human has confirmed their relevance in the project notes.",
+            "Apply a relevance gate before every citation: cite a retrieved source only when its title, abstract, method, context, theory, or finding directly supports the sentence or paragraph being written.",
+            "Do not cite irrelevant, weakly related, or merely keyword-matching sources. It is better to use a placeholder than to cite an unsuitable source.",
+            "Do not list retrieved sources in the References section unless they were actually cited in the chapter body.",
+            "Use the supplied in_text_citation value for author-year citations where possible.",
+            "Use the supplied reference_entry_hint when building the References section for sources actually cited.",
+            "Where retrieved sources are insufficient for a claim, use a bracketed placeholder rather than inventing or forcing a citation.",
+            "If any source search results are attached, end the chapter with a short Source Use Audit after the References section. The audit should list cited sources and relevant-but-not-cited sources with reasons. It should also state that irrelevant sources were excluded.",
+            "Do not invent page numbers, quotations, findings, or reference-list details not present in the metadata or supplied by the student.",
+        ],
     }
+
+def _human_scholarly_style_requirements() -> list[str]:
+    """Return high-standard academic writing rules for natural, polished chapter drafting."""
+    return [
+        "Use the selected academic level only as internal depth guidance. Do not mention the selected level, do not say the writing is produced to meet a level, and do not include meta-commentary about the project being written at a particular standard.",
+        "Write in a mature, natural scholarly voice that resembles a carefully supervised student draft: precise, analytical, context-specific, and free from generic AI patterns.",
+        "Use controlled high-burstiness academic prose: vary sentence length, paragraph length, transitions, and rhythm in a natural way, while keeping the argument clear, disciplined and defensible.",
+        "Use high lexical and syntactic variety where it improves meaning: avoid flat, uniform, predictable sentence patterns, but do not make the writing obscure, inflated or artificially complicated.",
+        "Do not make every paragraph look symmetrical. Some paragraphs may be compact and interpretive; others may be longer where evidence, methodological justification or theoretical explanation requires fuller development.",
+        "Maintain scholarly clarity even when the prose is varied. Perplexity in this app means intellectually rich, context-specific and less formulaic writing; it does not mean confusing language, unsupported claims or unnecessary vocabulary.",
+        "Avoid very short, clipped sentences except where a short sentence is needed for emphasis, transition, or clarity. Prefer well-developed academic sentences that connect evidence, reasoning, and implication.",
+        "Vary sentence structure, but avoid overusing sentence frames such as 'This study...', 'The study...', 'The research problem is...', or 'This section...'.",
+        "Do not begin a problem statement with wording such as 'The research problem is that...'. Frame the problem analytically, for example through a tension, contradiction, persistent gap, policy concern, empirical inconsistency, or unresolved practical challenge.",
+        "Avoid mechanical, generic, and repetitive academic-AI phrasing such as 'in today's world', 'it is important to note', 'this study is very important', 'delve into', 'plays a crucial role', 'it is imperative', and repeated formulaic paragraph openings.",
+        "Use a human academic rhythm: combine some concise analytical sentences with longer explanatory sentences, but never pad the text or make it artificially irregular.",
+        "Show scholarly judgement by explaining why evidence matters, why alternatives were not selected, where a limitation exists, and how each point changes the reader's understanding of the study.",
+        "Prefer grounded verbs such as suggests, indicates, implies, supports, complicates, qualifies and raises concern, instead of overconfident phrases such as proves, clearly shows or has a significant impact unless the evidence supports that claim.",
+        "Avoid paragraph templates that repeatedly start with the same phrase. Use transitions that follow the logic of the argument rather than mechanical transitions.",
+        "Do not merely list ideas. Build an argument by explaining relationships among concepts, comparing studies, identifying tensions, and showing why the present study is necessary.",
+        "Every substantive paragraph should develop one clear idea through a topic sentence, evidence or reasoning, interpretation, and a closing implication linked to the study problem, objective, method, finding, or recommendation.",
+        "Use critical synthesis rather than annotated-summary writing, especially in the literature review and discussion chapters.",
+        "Integrate theory, empirical evidence, context, methodology, and findings in a way that sounds like a carefully supervised academic draft, not a template.",
+        "Maintain discipline-appropriate terminology, but avoid unnecessary verbosity, inflated claims, and promotional language.",
+        "Use signposting only where it helps the reader. Do not overuse headings or repeated introductory sentences.",
+        "Write in third-person academic style unless the student's institution requires otherwise.",
+        "Keep the work defensible: do not overstate contribution, causality, generalisability, or policy implications beyond the evidence supplied.",
+    ]
+
+
 
 
 def _student_contribution_requirements(profile: dict[str, Any]) -> dict[str, Any]:
+    """Return user-supplied human contribution and writing-style controls.
+
+    These controls are designed to improve academic quality and specificity.
+    They are not detector-evasion instructions. The model should use them to build
+    a supervised, evidence-led draft from the student's own inputs.
+    """
     contribution = profile.get("student_contribution") or {}
     if not isinstance(contribution, dict):
         contribution = {}
@@ -405,10 +323,26 @@ def _student_contribution_requirements(profile: dict[str, Any]) -> dict[str, Any
         "writing_sample": contribution.get("writing_sample") or "",
         "phrases_to_avoid": contribution.get("phrases_to_avoid") or "",
         "human_revision_pass_requested": bool(contribution.get("human_revision_pass", True)),
+        "paragraph_development_protocol": [
+            "Before writing each substantive paragraph, identify the paragraph purpose, the evidence or user input available, the interpretation required, and the link to the study objective.",
+            "Use the student's project-specific context, evidence anchors, supervisor comments, and preferred style wherever supplied.",
+            "If the user has not supplied enough evidence for a confident claim, use a clear red bracketed placeholder instead of writing a generic unsupported claim.",
+            "Avoid over-polished, perfectly balanced, template-like prose. Use natural scholarly reasoning, varied sentence structure, and context-specific transitions.",
+            "Apply controlled high-burstiness and high-perplexity academic style in practical terms: vary rhythm, vocabulary, sentence openings, and paragraph shape while preserving clarity, evidence, and disciplinary precision.",
+            "Where a writing sample is supplied, use it only to infer broad tone, sentence rhythm and level of directness; do not copy wording or imitate personal details.",
+            "Make the draft sound like it has passed through a careful supervisor-student revision process: specific, cautious, evidenced and reflective, not generic or promotional.",
+            "Do not add a visible AI-detection or humanisation note to the chapter; the chapter should read as an ordinary academic draft.",
+        ],
+        "generic_language_to_avoid": [
+            "in today's world", "it is important to note", "delve into", "plays a crucial role",
+            "various factors", "significant impact used vaguely", "this highlights the importance",
+            "this study aims to contribute used vaguely", "moreover repeated mechanically",
+            "furthermore repeated mechanically", "the research problem is that",
+        ],
     }
 
-
 def _chapter_specific_requirements(chapter_number: int) -> list[str]:
+    """Return chapter-level drafting rules that apply beyond section rules."""
     common = [
         "Use valid markdown for headings, paragraphs, lists, and tables.",
         "Keep paragraphs coherent and academic, with clear topic sentences, developed reasoning, and smooth transitions.",
@@ -418,12 +352,14 @@ def _chapter_specific_requirements(chapter_number: int) -> list[str]:
         "Treat the chapter as part of a completed project, dissertation, or thesis. Do not use future-tense proposal wording such as 'will examine', 'will collect', 'will use', 'will adopt', 'will analyse', or 'will be conducted'.",
         "Do not mention that the writing is designed to meet a selected academic level, checklist, template, or software requirement. The chapter should read like normal scholarly prose.",
     ]
+
     if chapter_number == 1:
         return common + [
             "Frame the statement of the problem through evidence, contradiction, gap, or unresolved practical concern rather than beginning with 'The research problem is that...'.",
             "Use connected paragraphs that move from context to evidence, evidence to gap, and gap to research focus.",
             "Use accurate statistics and factual evidence where supplied or confidently known. Where statistics are needed but not supplied, insert a bracketed placeholder rather than inventing figures.",
         ]
+
     if chapter_number == 2:
         return common + [
             "Organise the literature review around the student's selected structure and research objectives.",
@@ -432,32 +368,73 @@ def _chapter_specific_requirements(chapter_number: int) -> list[str]:
             "Each research objective should have at least one separate row in the literature gap table.",
             "Use concise table entries. Do not merge all studies, methods, findings, and gaps into one long cell.",
             "Where the student has not supplied authors or studies, use placeholders such as [insert author and year] rather than inventing sources.",
+            "For conceptual framework sections, do not create messy ASCII diagrams. Present a clean relationship table and, where a diagram is needed, provide a simple Mermaid flowchart code block that can be rendered later.",
+            "Explain the conceptual framework in prose after the table or diagram, including independent, dependent, mediating, moderating and control variables where applicable.",
         ]
+
     if chapter_number == 3:
         return common + [
             "Write Chapter Three as a completed final project, dissertation, or thesis chapter, not as a proposal.",
-            "Use past tense and completed-study wording throughout Chapter Three.",
-            "Do not use proposal-style future tense.",
-            "If a detail has not been supplied, use a past-tense placeholder, for example '[insert sampling procedure used]'.",
+            "Use past tense and completed-study wording throughout Chapter Three, for example: 'the study adopted', 'data were collected', 'respondents were selected', 'the questionnaire was administered', and 'the data were analysed'.",
+            "Do not use proposal-style future tense such as 'will adopt', 'will collect', 'will be used', 'will be analysed', 'will be administered', 'will be obtained', or 'will be conducted'.",
+            "If a detail has not been supplied, use a past-tense placeholder, for example '[insert sampling procedure used]' or '[insert data collection period]', not future-tense wording.",
+            "Maintain consistency among philosophy, approach, design, sampling, instrument, validity, reliability, analysis, and ethics.",
             "The methodology chapter should follow a strong doctoral-methods structure: introduction, research philosophy, research approach, study design, target population, sample size and sampling procedure, operationalisation and measurement, sources of data, data collection instrument, reliability and validity, ethical considerations, and data processing and analysis.",
+            "For primary survey studies, include common method variance and social desirability safeguards, including procedural remedies such as varied scale formats, careful item ordering, anonymity, and statistical checks where applicable.",
+            "Use a variable or construct operationalisation table where measurement is discussed, with columns: Variable/Concept, Indicator/Dimension, Operational Indicator, Item Scale, Level of Measurement, and Origin/Source.",
+            "Use an analysis-plan table where data analysis is discussed, with columns: Research Objective, Research Question/Hypothesis, Analytical Technique, Ex-Ante Assumptions, Post-Estimation/Analysis Checks, and Decision Rule.",
+            "When model equations are needed, present each equation in a separate display equation block using double dollar delimiters. Prefer clean Word-friendly mathematical notation using Unicode Greek letters and subscripts where possible, for example SDᵢ = β₀ + β₁PCRᵢ + ∑ₖ₌₁ᵐ βₖCVₖᵢ + εᵢ. Define all variables directly below the equation.",
         ]
+
     if chapter_number == 4:
         return common + [
-            "Write a clean Results/Data Analysis and Discussion chapter. Do not refer to the file as 'uploaded results', 'the uploaded output', or similar.",
+            "Write a clean Results/Data Analysis and Discussion chapter. Do not refer to the file as 'uploaded results', 'the uploaded output', 'the output uploaded', or similar; convert the supplied output into normal thesis prose and tables.",
+            "Study any supplied results, statistical output, qualitative coding output, Excel tables, SPSS/Stata/R output, or analysis notes and reorganise them into a coherent chapter aligned with the methods and objectives.",
+            "Create all required tables that match the research methods, objectives, questions and hypotheses: response/profile table, descriptive statistics, reliability/validity where applicable, assumptions/diagnostics, objective-by-objective results, model estimates/path coefficients/regression/econometric tables, qualitative theme tables, and hypothesis decision tables where relevant.",
             "Use only results actually supplied in uploaded files or student answers. Do not invent coefficients, p-values, sample sizes, reliability values, model fit statistics, themes, quotations or percentages.",
-            "Where a required result is missing, create a clean placeholder table with bracketed red placeholders and add a short advisory sentence telling the user the exact result/output to obtain.",
-            "Advise what should go to appendix, including raw software output, long diagnostics, full correlation matrices, full interview transcripts, questionnaires, codebooks and lengthy robustness checks.",
+            "Where a required result is missing, create a clean placeholder table with bracketed red placeholders such as [insert regression coefficients and p-values here] and add a short advisory sentence telling the user the exact result/output to obtain.",
+            "Where a figure, graph, conceptual/path diagram or visual result is required but missing, insert a red placeholder such as [insert Figure 4.1: Conceptual/path diagram or chart here] and state the output needed to create it.",
+            "Advise what should go to appendix, including raw software output, long diagnostics, full correlation matrices, full interview transcripts, questionnaires, codebooks and lengthy robustness checks. Keep the main text clean.",
+            "Map each result to the relevant research objective, question or hypothesis before discussing it.",
             "Interpret results beyond description and link discussion to theory, prior studies and context using relevant citations.",
         ]
+
     if chapter_number == 5:
         return common + [
             "Base summaries, conclusions, recommendations, and future research suggestions only on supplied findings.",
             "Ensure each recommendation can be traced to a finding.",
         ]
+
+    if chapter_number == 6:
+        return common + [
+            "Treat this as a user-specified additional chapter. Use the user's requested headings, scope and evidence requirements as the organising structure.",
+            "Do not force standard Chapter One to Chapter Five content into this custom chapter unless the user requests it.",
+            "Keep the chapter aligned with the overall project title, objectives, theory, method, results and recommendations.",
+        ]
+
+    if chapter_number == 7:
+        return [
+            "Treat this as a Supplementary Methods Chapter, not the main Research Methods/Methodology chapter. It is a working/support document for gathering analysis inputs, developing instruments, tracing measurement/data sources, preparing coding notes and organising appendix materials.",
+            "Do not rewrite or replace the submission-ready Research Methods/Methodology chapter. Keep the distinction clear in the generated text.",
+            "For primary survey or mixed-method studies, include objective-to-construct alignment, instrument development and source traceability, draft questionnaire, draft interview guide where applicable, validation notes and appendix placement guide.",
+            "For secondary data, econometrics, time-series or panel-data studies, include a variable/data-source register, operational definition table, preferred data source placeholders, transformation/coding notes, quality checks and appendix guidance.",
+            "Use the project source bank where available for questionnaire scales, validated item sources, operational definitions and data-source traceability. Cite only relevant sources.",
+            "Where a questionnaire scale, validated item source, data source, period, frequency, code, transformation, permission note or validation output is missing, insert a red bracketed placeholder such as [insert verified scale source for this construct] or [insert verified data source and access link].",
+            "Create clean, complete tables for alignment, source traceability, questionnaire items, interview themes, variable/data-source register, coding/transformation notes, quality checks and appendix placement where relevant.",
+            "Include an APA-style References section containing only sources cited in the supplementary chapter.",
+        ]
+
     return common
 
 
+
 def _effective_chapter_title(chapter: dict[str, Any], profile: dict[str, Any], chapter_number: int) -> str:
+    """Return the chapter title used in prompts and fallback drafts.
+
+    The dropdown uses standard names such as Introduction and Others. When the user
+    selects Others and supplies a custom title, the generated chapter should use the
+    user's title while the menu still shows Others.
+    """
     if int(chapter_number or 0) == 6:
         custom_title = str(profile.get("other_chapter_title") or "").strip()
         if custom_title:
@@ -482,13 +459,15 @@ def build_drafting_prompt(
 
     section_payload = []
     for section in sections:
-        section_payload.append({
-            "section_id": section["section_id"],
-            "section_title": section["section_title"],
-            "guiding_questions": section.get("guiding_questions", []),
-            "rules": section.get("rules", []),
-            "student_answers": answers.get(section["section_id"], {}),
-        })
+        section_payload.append(
+            {
+                "section_id": section["section_id"],
+                "section_title": section["section_title"],
+                "guiding_questions": section.get("guiding_questions", []),
+                "rules": section.get("rules", []),
+                "student_answers": answers.get(section["section_id"], {}),
+            }
+        )
 
     prompt = {
         "task": "Draft a full academic project chapter using selected institutional guideline sections.",
@@ -498,9 +477,9 @@ def build_drafting_prompt(
         },
         "project_profile": profile,
         "selected_academic_level_and_depth": _level_depth_requirements(profile),
-        "chapter_length_and_depth_requirements": _chapter_length_depth_requirements(profile, chapter_number, len(section_payload)),
         "reference_currency_requirements": _reference_currency_requirements(),
         "citation_and_evidence_requirements": _citation_and_evidence_requirements(chapter_number),
+        "human_scholarly_style_requirements": _human_scholarly_style_requirements(),
         "student_contribution_and_style_controls": _student_contribution_requirements(profile),
         "analysis_evidence_for_this_chapter": _uploaded_results_for_chapter(profile, chapter_number),
         "retrieved_sources": _retrieved_sources_for_prompt(profile, chapter_number),
@@ -510,202 +489,62 @@ def build_drafting_prompt(
         "output_requirements": [
             "Write in formal British English.",
             "Use the selected academic level internally to determine depth and sophistication, but never mention the selected level in the generated chapter text.",
+            "Follow the human_scholarly_style_requirements and student_contribution_and_style_controls so the writing sounds natural, rigorous, context-specific, evidence-led and carefully supervised rather than generic or mechanical.",
+            "In all generated chapters, use controlled high-burstiness and high-perplexity scholarly writing: natural variation in sentence length, paragraph shape, vocabulary, transitions and argumentative movement, without sacrificing clarity, evidence, APA accuracy or methodological precision.",
+            "Use the student's central argument, local context notes, evidence anchors, supervisor comments, preferred writing style and supplied writing sample as style/context guidance; do not copy the writing sample verbatim unless the user has written it as content to include.",
             "Use an evidence-to-paragraph method: each substantive paragraph should have a purpose, a claim grounded in supplied evidence or source-bank material, interpretation, and a clear link to the objective or chapter argument.",
-            "Where the user has supplied limited information, write a focused draft with red bracketed placeholders asking for the exact missing facts, data, citations, institutional details, result tables, or supervisor decisions.",
+            "Before producing a long paragraph, ask internally whether the user supplied enough context, evidence or source support for that paragraph. If not, write a shorter defensible paragraph and insert a precise red placeholder for the missing evidence.",
+            "Make the writing high-quality and human-supervised by adding discipline-specific reasoning, careful qualifications, context-specific transitions and clear links between evidence and the student's own objectives.",
+            "Where the user has supplied limited information, avoid creating long polished generic prose. Write a focused draft with red bracketed placeholders asking for the exact missing facts, data, citations, institutional details, result tables, or supervisor decisions.",
+            "Respect the selected draft maturity: a structured draft can be more schematic; a supervisor-ready or revised academic draft must be more developed, but still grounded in user-supplied evidence and sources.",
+            "Avoid very short sentences except where they are necessary for emphasis, transition, or clarity.",
             "Do not write sentences that say the work, chapter, section, depth, or argument is designed to meet the selected level of the project, thesis, or dissertation.",
-            "Use the reference_currency_requirements: aim for at least 70% of substantive references within the stated recent-reference window.",
-            "Use the citation_and_evidence_requirements: include relevant, accurate in-text citations across all substantive write-up sections.",
-            "Every chapter must end with a References section that includes complete reference entries for every source cited in the chapter.",
-            "Do not fabricate citations, statistics, or reference-list entries.",
+            "Use the reference_currency_requirements: aim for at least 70% of substantive references within the stated recent-reference window, but where current sources do not exist, use the strongest credible available sources instead.",
+            "Use the citation_and_evidence_requirements: include relevant, accurate in-text citations across all substantive write-up sections, especially literature, methodology justification, discussion, and problem framing.",
+            "Use retrieved_sources as an additional evidence bank where the user has run the source finder. Do not replace the project profile, user-provided evidence, uploaded files, or placeholders; enrich the draft with relevant retrieved sources.",
+            "When retrieved_sources contains sources marked highly_relevant or partly_relevant, review them carefully and integrate those that directly support the chapter argument. Do not cite not_relevant sources, and do not cite any source merely to increase citation count.",
+            "Every chapter must end with a References section that includes complete reference entries for every source cited in the chapter, using available reference_entry_hint/apa_hint details from the source bank and user-supplied evidence notes. If source search results were attached, add a short Source Use Audit after the References section.",
+            "Increase in-text citation density: Chapter Two should be citation-rich; Chapter One should cite evidence for context, problem and gaps; Chapter Three should cite methodological authorities where appropriate; Chapter Four discussion should cite theory and prior studies.",
+            "If retrieved_sources do not provide enough support for a required claim, insert a bracketed placeholder such as [insert verified source for this claim] rather than guessing.",
+            "For Chapter One, make the Background and Statement of the Problem factual and evidence-led. Use relevant accurate statistics, policy evidence, institutional evidence, or empirical findings to support the problem where supplied or confidently known.",
+            "Do not fabricate citations, statistics, or reference-list entries. Use verified/supplied citations and facts where available. Where a required source, statistic, or fact is not supplied or cannot be stated confidently, insert a bracketed placeholder rather than inventing it.",
             "Use clear numbered headings matching the selected sections.",
             "Draft only the selected sections.",
+            "Use analytical and connective prose: show why each point matters to the study rather than merely naming concepts, authors, variables, or methods.",
+            "Avoid weak or unscholarly problem-statement phrasing such as 'The research problem is that...'. Use an evidence-led academic formulation instead.",
             "Write as a completed academic project, dissertation, or thesis. Avoid proposal-style future tense across the write-up, except where Chapter Five legitimately suggests future research using 'should', 'could', or 'may'.",
+            "Prefer precise, discipline-appropriate wording over exaggerated claims or promotional language.",
+            "Do not invent fabricated references, statistics, ethical approvals, sample sizes, or data results.",
+            "Where evidence is missing, write a bracketed placeholder such as [insert recent empirical evidence].",
             "Keep variables, objectives, questions, hypotheses, theories, context, and methods internally consistent.",
-            "Use APA 7th style for the chapter References section.",
-            "For Chapter One, make the Background and Statement of the Problem factual and evidence-led.",
-            "For Chapter Three, use past tense for completed project work.",
-            "For Chapter Four, transform supplied result files and answers into a clean thesis chapter. Do not write phrases such as 'the uploaded results'.",
+            "Use markdown tables only where a table is clearly requested or useful.",
+            "Use APA 7th style for the chapter References section. Include only sources cited in the chapter body, and keep entries clean, complete and alphabetised where possible.",
+            "When equations are required, place each equation in a display equation block using the format $$ equation $$. Use clean Word-friendly mathematical notation where possible, with Unicode Greek letters and subscripts rather than raw LaTeX commands. Do not leave important equations only as ordinary text.",
+            "For conceptual framework diagrams, avoid messy ASCII art. Use a clean relationship table and, where appropriate, a Mermaid flowchart code block. Keep the diagram simple enough to be readable.",
+            "When revision mode is enabled, preserve the original structure as far as possible, revise with comments in the narrative where helpful, and wrap new inserted material in [[ADD]] and [[/ADD]] markers so the DOCX export can colour additions red.",
+            "For Chapter Two tables, use a properly structured markdown table with meaningful column headers and one idea per cell.",
+            "For Chapter Three, use past tense for completed project work and avoid future-tense proposal wording.",
+            "For Chapter Four, transform supplied result files and answers into a clean thesis chapter. Do not write phrases such as 'the uploaded results', 'uploaded output', 'the output uploaded', or 'the attached file shows'. Present the tables and narrative as normal Results/Data Analysis and Discussion content.",
+            "For Chapter Four, create the tables required by the selected methodology and objectives. If a required table cannot be completed from the supplied results, create a placeholder markdown table with red bracketed placeholders and advise the user exactly which output to obtain.",
+            "For Chapter Four, insert red placeholders for required missing figures, graphs, path diagrams, conceptual diagrams or charts, and advise whether they belong in the main chapter or appendix.",
+            "For Chapter Four, advise which materials should move to appendices, such as raw software output, lengthy diagnostic tables, full correlation matrices, full questionnaires, interview transcripts, codebooks and robustness checks.",
             "For Chapter Four, report only results found in uploaded files or student answers. Do not fabricate numbers, tables, themes, or interpretation.",
+            "For the Research Methods/Methodology chapter, produce a complete, clean, submission-ready methodology chapter. Do not present it as a planning note, upload summary, worksheet, or supplementary file.",
+            "For questionnaire or interview-guide outputs, build draft instruments from the constructs, variables and objectives supplied in the project profile rather than giving only a generic structure.",
+            "Keep a clear distinction between the main Research Methods/Methodology chapter and the Supplementary Methods Chapter. The main methodology chapter is the clean submission-ready chapter; the supplementary chapter is a separate support document for instruments, data sources, scale traceability, coding, validation checks and appendix materials.",
+            "Do not overload the main Research Methods/Methodology chapter with a full questionnaire, interview guide, scale bank, secondary-data register, or data-source codebook. Those details belong in the separate Supplementary Methods Chapter or appendix unless the institution specifically requires them in the main chapter.",
             "For Chapter Five, base conclusions and recommendations only on findings supplied in the profile or answers.",
         ],
     }
     return json.dumps(prompt, ensure_ascii=False, indent=2)
 
 
-# ----------------------------------------------------------------------
-# LIGHT HUMANISATION (only safe, non‑mechanical transformations)
-# ----------------------------------------------------------------------
-
-def _body_and_reference_tail(text: str) -> tuple[str, str]:
-    """Separate chapter body from References/Source Use Audit."""
-    if not text:
-        return "", ""
-    match = re.search(r"(?im)^#{0,3}\s*(references|source\s+use\s+audit)\b", text)
-    if not match:
-        return text, ""
-    return text[: match.start()].rstrip(), text[match.start():].lstrip()
-
-
-def _looks_like_protected_block(paragraph: str) -> bool:
-    """Return True for blocks that must not be rewritten (tables, headings, references, etc.)."""
-    stripped = (paragraph or "").strip()
-    if not stripped:
-        return True
-    protected_prefixes = ("#", "|", "```", "$$", "<table", "<tr", "<td")
-    if stripped.startswith(protected_prefixes):
-        return True
-    if re.match(r"^\s*[-*+]\s+", stripped):
-        return True
-    if re.match(r"^\s*\d+[.)]\s+", stripped):
-        return True
-    if "http://" in stripped or "https://" in stripped or "doi.org" in stripped:
-        return True
-    if "[insert " in stripped.lower() and len(stripped.split()) < 30:
-        return True
-    return False
-
-
-def _map_prose_paragraphs(text: str, func) -> str:
-    """Apply a function only to prose paragraphs, preserving protected blocks."""
-    parts = re.split(r"(\n\s*\n)", text or "")
-    out: list[str] = []
-    for part in parts:
-        if re.match(r"\n\s*\n", part or ""):
-            out.append(part)
-            continue
-        if _looks_like_protected_block(part):
-            out.append(part)
-            continue
-        try:
-            out.append(func(part))
-        except Exception:
-            out.append(part)
-    return "".join(out)
-
-
-def _remove_ai_transition_words(text: str) -> str:
-    """Reduce obvious template transitions without damaging sentence grammar."""
-    if not text:
-        return text
-
-    phrase_replacements = [
-        (r"\b[Ff]urthermore,?\s+", ""),
-        (r"\b[Mm]oreover,?\s+", ""),
-        (r"\b[Ii]n addition,?\s+", "Also, "),
-        (r"\b[Cc]onsequently,?\s+", "As a result, "),
-        (r"\b[Hh]owever,?\s+", "Yet, "),
-        (r"\b[Nn]evertheless,?\s+", "Still, "),
-        (r"\b[Ii]t is important to note that\s+", ""),
-        (r"\b[Ii]t is worth noting that\s+", ""),
-        (r"\b[Ii]t should be noted that\s+", ""),
-        (r"\b[Tt]his highlights the importance of\s+", "This draws attention to "),
-        (r"\b[Pp]lays a crucial role in\s+", "is central to "),
-    ]
-
-    updated = text
-    for pattern, replacement in phrase_replacements:
-        updated = re.sub(pattern, replacement, updated)
-    updated = re.sub(r"\s+([,.;:])", r"\1", updated)
-    updated = re.sub(r"[ \t]{2,}", " ", updated)
-    return updated
-
-
-def _cluster_citations(text: str) -> str:
-    """Combine adjacent parenthetical citations that are already present."""
-    if not text:
-        return text
-    def combine(m: re.Match) -> str:
-        first = m.group(1).strip("()")
-        second = m.group(2).strip("()")
-        if "[" in first+second or "insert" in (first+second).lower():
-            return m.group(0)
-        if first == second:
-            return f"({first})"
-        return f"({first}; {second})"
-    pattern = r"(\([A-Z][A-Za-z'’\-]+(?:\s+et\s+al\.)?,\s*\d{4}[a-z]?\))\s*(?:;|,|and)?\s*(\([A-Z][A-Za-z'’\-]+(?:\s+et\s+al\.)?,\s*\d{4}[a-z]?\))"
-    return re.sub(pattern, combine, text)
-
-
-def _add_occasional_short_sentence(text: str) -> str:
-    """
-    Add one occasional anchor sentence to long prose only.
-    This is deliberately restrained. Too many punch sentences can make a thesis
-    draft sound artificial.
-    """
-    words = text.split()
-    if len(words) < 700 or random.random() > 0.18:
-        return text
-
-    paragraphs = re.split(r"(\n\s*\n)", text)
-    candidate_indices = [
-        i for i, p in enumerate(paragraphs)
-        if not re.match(r"\n\s*\n", p or "")
-        and not _looks_like_protected_block(p)
-        and 80 <= len(p.split()) <= 220
-        and not re.search(r"\b(That matters|This matters|The point is simple)\.", p)
-    ]
-    if not candidate_indices:
-        return text
-
-    idx = random.choice(candidate_indices)
-    para = paragraphs[idx]
-    sentences = re.split(r"(?<=[.!?])\s+", para)
-    if len(sentences) < 4:
-        return text
-
-    anchor_sentences = [
-        "This matters.",
-        "The point is simple.",
-        "That distinction matters.",
-        "The implication is practical.",
-    ]
-    insert_at = random.randint(1, min(len(sentences) - 2, 3))
-    sentences.insert(insert_at, random.choice(anchor_sentences))
-    paragraphs[idx] = " ".join(sentences)
-    return "".join(paragraphs)
-
-
-def _vary_paragraph_openings(text: str) -> str:
-    """If two consecutive prose paragraphs start with the same word, prepend a light transition."""
-    paragraphs = re.split(r"(\n\s*\n)", text or "")
-    transitions = ["Yet, ", "Still, ", "In this respect, ", "At the same time, ", "More specifically, "]
-    prev_start = ""
-    out = []
-    for para in paragraphs:
-        if re.match(r"\n\s*\n", para or "") or _looks_like_protected_block(para):
-            out.append(para)
-            continue
-        words = para.strip().split()
-        curr = words[0].lower() if words else ""
-        if curr and curr == prev_start and not para.lstrip().startswith(tuple(transitions)) and random.random() < 0.3:
-            para = random.choice(transitions) + para.strip()
-        prev_start = curr
-        out.append(para)
-    return "".join(out)
-
-
-def _apply_light_humanisation(text: str) -> str:
-    """Apply only safe, non‑mechanical transformations to prose."""
-    if not text:
-        return text
-    body, tail = _body_and_reference_tail(text)
-    if not body.strip():
-        return text
-
-    body = _remove_ai_transition_words(body)
-    body = _cluster_citations(body)
-    body = _add_occasional_short_sentence(body)
-    body = _vary_paragraph_openings(body)
-
-    # Final polish to remove any leftover meta‑phrases
-    body = _polish_generated_text(body)
-    return body.rstrip() + ("\n\n" + tail if tail else "")
-
 
 def _polish_generated_text(text: str) -> str:
     """Lightly remove common proposal/meta phrases that weaken scholarly output."""
     if not text:
         return text
+
     replacements = {
         r"\bThe research problem is that\b": "The central concern is that",
         r"\bthe research problem is that\b": "the central concern is that",
@@ -752,175 +591,235 @@ def _polish_generated_text(text: str) -> str:
         r"\buploaded output\b": "results",
     }
     polished = text
-    for pattern, repl in replacements.items():
-        polished = re.sub(pattern, repl, polished, flags=re.IGNORECASE)
-    polished = re.sub(r"(?im)^.*(?:selected academic level|level of the project|level of the thesis|level of the dissertation|checklist requirement|template requirement|software requirement).*\n?", "", polished)
+    for pattern, replacement in replacements.items():
+        polished = re.sub(pattern, replacement, polished, flags=re.IGNORECASE)
+
+    # Remove full sentences that explicitly disclose internal level/template/checklist guidance.
+    polished = re.sub(
+        r"(?im)^.*(?:selected academic level|level of the project|level of the thesis|level of the dissertation|checklist requirement|template requirement|software requirement).*\n?",
+        "",
+        polished,
+    )
+
     polished = re.sub(r"[ \t]{2,}", " ", polished)
     polished = re.sub(r"\n{3,}", "\n\n", polished)
     return polished.strip()
 
 
 
-# ----------------------------------------------------------------------
-# PLANNING, REVISION AND QUALITY-GATE HELPERS
-# ----------------------------------------------------------------------
-
-def _has_source_bank(profile: dict[str, Any]) -> bool:
-    return bool(_merged_source_bank(profile))
-
-
-def _word_count(text: str) -> int:
-    return len(re.findall(r"\b\w+(?:[-']\w+)?\b", text or ""))
-
-
-def _short_draft_threshold(
-    profile: dict[str, Any],
-    chapter_number: int,
-    selected_section_count: int = 0,
-) -> int:
-    requirements = _chapter_length_depth_requirements(profile, chapter_number, selected_section_count)
-    minimum = int(requirements.get("minimum_words", 2200))
-    # DeepSeek token limits may prevent very long chapters in one call, so the
-    # quality gate uses a realistic floor rather than the full target.
-    return max(900, int(minimum * _env_float("PROJECTREADY_MIN_WORD_RATIO", 0.70)))
-
-
-def _build_source_argument_plan_prompt(
-    base_prompt: str,
-    profile: dict[str, Any],
-    chapter_number: int,
-) -> str:
-    return json.dumps(
-        {
-            "task": "Prepare a compact chapter plan before drafting. Do not write the chapter.",
-            "chapter_number": chapter_number,
-            "project_title": profile.get("title", ""),
-            "required_output": [
-                "Central argument for the chapter.",
-                "Section-by-section development plan.",
-                "Relevant supplied/source-bank citations to use, with the exact section where each fits.",
-                "Sources to exclude because they are not directly relevant.",
-                "Missing evidence, statistics, methods details, results, ethical approvals or references that require placeholders.",
-                "A short note on tone: natural supervisor-ready academic prose, not template-like prose.",
-            ],
-            "rules": [
-                "Do not invent sources or facts.",
-                "Do not draft paragraphs.",
-                "Keep the plan compact and useful for the drafting pass.",
-            ],
-            "base_drafting_prompt": base_prompt,
-        },
-        ensure_ascii=False,
-        indent=2,
-    )
+def _source_usage_count(text: str, sources: list[dict[str, Any]]) -> int:
+    """Count how many retrieved source-bank records appear to be cited in the chapter body."""
+    if not text or not sources:
+        return 0
+    body = text
+    refs_match = re.search(r"(?im)^#{0,3}\s*references\b", text)
+    if refs_match:
+        body = text[: refs_match.start()]
+    used = 0
+    lower_body = body.lower()
+    for src in sources:
+        year = str(src.get("year") or "").strip()
+        authors = src.get("authors") or []
+        if isinstance(authors, str):
+            authors = [authors]
+        family_names = [_normalise_author_for_citation(a).lower() for a in authors if str(a).strip()]
+        family_names = [f for f in family_names if f and f != "[author]"]
+        if not family_names:
+            continue
+        first = re.escape(family_names[0])
+        year_ok = bool(year and year != "n.d." and re.search(re.escape(str(year)), body))
+        author_ok = bool(re.search(first, lower_body))
+        if author_ok and (year_ok or len(family_names) == 1):
+            used += 1
+    return used
 
 
-def _build_revision_prompt(
+def _source_reference_hints(sources: list[dict[str, Any]]) -> str:
+    lines = []
+    for src in sources:
+        hint = src.get("apa_hint") or src.get("reference_entry_hint") or ""
+        citation = _citation_label_for_source(src)
+        title = src.get("title", "")
+        if hint:
+            lines.append(f"- {src.get('citation_key', '')} {citation}: {hint}")
+        elif title:
+            lines.append(f"- {src.get('citation_key', '')} {citation}: {title}")
+    return "\n".join(lines)
+
+
+
+def _has_source_use_audit(text: str) -> bool:
+    return bool(re.search(r"(?im)^#{0,3}\s*source\s+use\s+audit\b", text or ""))
+
+
+def _relevant_source_bank(profile: dict[str, Any]) -> list[dict[str, Any]]:
+    sources = _merged_source_bank(profile)
+    relevant = [s for s in sources if str(s.get("relevance_tier") or "").lower() in {"highly_relevant", "partly_relevant", "unclassified"}]
+    relevant.sort(key=lambda item: _relevance_tier_rank(item.get("relevance_tier")), reverse=True)
+    return relevant
+
+def _review_source_integration(
+    client: Any,
+    model: str,
+    instructions: str,
+    original_prompt: str,
     draft: str,
-    base_prompt: str,
-    plan: str,
     profile: dict[str, Any],
     chapter_number: int,
 ) -> str:
-    return json.dumps(
-        {
-            "task": "Revise this chapter into a cleaner, more human-supervised academic draft. Revise, do not restart.",
-            "chapter_number": chapter_number,
-            "project_title": profile.get("title", ""),
-            "revision_goals": [
-                "Strengthen paragraph development and academic reasoning.",
-                "Remove template-like transitions and generic filler.",
-                "Vary sentence length and paragraph shape naturally without becoming informal.",
-                "Use supplied or source-bank citations only where they directly support the claim.",
-                "Keep placeholders where evidence is missing instead of inventing facts.",
-                "Preserve headings, tables, equations, citations, references and any Source Use Audit.",
-                "Use formal British English.",
-            ],
-            "non_negotiable_rules": [
-                "Do not fabricate citations, statistics, sample sizes, approvals, coefficients, findings or reference entries.",
-                "Do not add model, provider, AI, detector or internal-process notes.",
-                "Do not replace bracketed placeholders with invented information.",
-                "Do not remove the References section if the draft contains citations.",
-            ],
-            "source_and_argument_plan": plan,
-            "base_drafting_prompt": base_prompt,
-            "draft_to_revise": draft,
-        },
-        ensure_ascii=False,
-        indent=2,
-    )
+    """Run a single relevance-gated review pass for attached source results.
+
+    This pass does not force citations. It asks the model to use clearly relevant
+    searched sources where they genuinely strengthen the chapter, and to add a
+    Source Use Audit explaining why sources were cited or excluded.
+    """
+    source_bank = _merged_source_bank(profile)
+    if not source_bank:
+        return draft
+
+    relevant_sources = _relevant_source_bank(profile)
+    used = _source_usage_count(draft, relevant_sources)
+    has_audit = _has_source_use_audit(draft)
+
+    # If the draft already used at least one relevant source and includes an audit,
+    # do not keep revising. The audit lets a human judge whether non-use was defensible.
+    if used > 0 and has_audit:
+        return draft
+
+    repair_payload = {
+        "task": "Review the chapter draft against the attached source-search results using a relevance gate.",
+        "chapter_number": chapter_number,
+        "reason_for_review": (
+            f"The attached source search returned {len(source_bank)} source records. About {used} relevant source-bank records appear to be cited in the body. "
+            "Revise only where relevant searched sources genuinely support the chapter. Do not force unsuitable sources into the prose."
+        ),
+        "important_rules": [
+            "Keep the student's project profile, uploaded results, supplied references, and placeholders; do not replace them.",
+            "Use highly_relevant and partly_relevant source-bank records where they directly support a specific point, theory, method, context, empirical gap, or discussion.",
+            "Do not cite sources marked not_relevant unless the student's own notes explicitly confirm their relevance.",
+            "Do not cite a source unless it supports the specific sentence or paragraph being written.",
+            "If no searched source fits a claim, keep or add a bracketed placeholder instead of forcing a citation.",
+            "Increase citation density only where doing so improves scholarly support and accuracy.",
+            "End the chapter with a References section for sources actually cited in the body.",
+            "After the References section, add a short Source Use Audit with columns: Source Key, Relevance Tier, Decision, Reason.",
+            "In the Source Use Audit, mark sources as Cited, Not cited - not relevant, or Not cited - not needed for this chapter.",
+            "Do not invent new sources, statistics, page numbers, quotations, findings, or reference details.",
+        ],
+        "source_bank_reference_hints": _source_reference_hints(source_bank),
+        "original_generation_prompt": original_prompt,
+        "draft_to_revise": draft,
+    }
+    try:
+        response = client.responses.create(
+            model=model,
+            instructions=(
+                instructions
+                + " Revise rather than restart. Preserve the student's context. Use only relevant attached sources and include a Source Use Audit."
+            ),
+            input=json.dumps(repair_payload, ensure_ascii=False, indent=2),
+        )
+        revised = getattr(response, "output_text", "").strip()
+        if revised:
+            return _polish_generated_text(revised)
+    except Exception:
+        return draft
+    return draft
 
 
-def _build_expansion_prompt(
+
+def _generic_language_score(text: str) -> int:
+    patterns = [
+        r"\bin today's world\b", r"\bit is important to note\b", r"\bdelve into\b",
+        r"\bplays a crucial role\b", r"\bvarious factors\b", r"\bsignificant impact\b",
+        r"\bthis highlights the importance\b", r"\bthis study aims to contribute\b",
+        r"\bmoreover\b", r"\bfurthermore\b", r"\bthe research problem is that\b",
+    ]
+    lower = text or ""
+    return sum(len(re.findall(pattern, lower, flags=re.IGNORECASE)) for pattern in patterns)
+
+
+def _human_academic_revision_pass(
+    client: Any,
+    model: str,
+    instructions: str,
+    original_prompt: str,
     draft: str,
-    base_prompt: str,
-    plan: str,
     profile: dict[str, Any],
     chapter_number: int,
-    minimum_words: int,
 ) -> str:
-    return json.dumps(
-        {
-            "task": "Expand this chapter because it is too short. Revise and expand, do not restart.",
-            "chapter_number": chapter_number,
-            "project_title": profile.get("title", ""),
-            "current_word_count": _word_count(draft),
-            "minimum_word_floor": minimum_words,
-            "expansion_rules": [
-                "Expand through explanation, evidence, local context, concept clarification, theory/method alignment and careful interpretation.",
-                "Do not pad with repetition.",
-                "Do not invent sources, facts, statistics, ethics approvals, sample sizes or results.",
-                "Use precise placeholders where evidence is missing.",
-                "Preserve headings, tables, equations, citations and references.",
-                "Keep the style natural, supervisor-ready and thesis-appropriate.",
-            ],
-            "source_and_argument_plan": plan,
-            "base_drafting_prompt": base_prompt,
-            "draft_to_expand": draft,
-        },
-        ensure_ascii=False,
-        indent=2,
-    )
+    """Run one quality-focused revision pass to reduce generic prose.
+
+    This is an academic-quality pass, not a detector-evasion pass. It asks the model
+    to make the writing more context-specific, evidence-led and supervisor-ready while
+    preserving citations, data, placeholders and chapter structure.
+    """
+    controls = _student_contribution_requirements(profile)
+    if not controls.get("human_revision_pass_requested", True):
+        return draft
+
+    has_user_context = any(str(controls.get(k) or "").strip() for k in [
+        "central_argument", "local_context_notes", "evidence_anchors", "supervisor_comments", "preferred_style", "writing_sample", "phrases_to_avoid"
+    ])
+    # Always run the pass for AI-generated drafts, but keep it short and conservative.
+    revision_payload = {
+        "task": "Revise the chapter for human-supervised academic quality, specificity and natural scholarly flow.",
+        "chapter_number": chapter_number,
+        "draft_maturity": controls.get("draft_maturity"),
+        "student_contribution_controls": controls,
+        "quality_rules": [
+            "Revise rather than restart. Preserve the chapter structure, headings, accurate citations, tables, equations, placeholders and supplied results.",
+            "Do not attempt to evade AI detectors and do not mention AI detection. The purpose is academic quality, specificity, and defensible student-supervised writing.",
+            "Remove generic filler, repetitive transitions, vague claims, inflated language, and over-polished template-like phrasing.",
+            "Increase natural scholarly variation: vary sentence rhythm, paragraph density, transition choices and analytical movement so the prose reads like careful human academic editing rather than uniform template output.",
+            "Strengthen paragraph-level reasoning: each paragraph should connect claim, evidence or placeholder, interpretation, and relevance to the study objective or chapter argument.",
+            "Use the student's central argument, local context notes, evidence anchors, supervisor comments and preferred style where supplied.",
+            "Where evidence is missing, keep or add red bracketed placeholders instead of inventing claims, statistics, results, ethical approvals, sources, sample sizes or institutional facts.",
+            "Do not add a visible humanisation note, contribution log or detector note to the chapter body.",
+            "Keep APA references complete and limited to sources cited in the chapter body.",
+        ],
+        "generic_language_score_before_revision": _generic_language_score(draft),
+        "user_context_supplied": has_user_context,
+        "original_generation_prompt": original_prompt,
+        "draft_to_revise": draft,
+    }
+    try:
+        response = client.responses.create(
+            model=model,
+            instructions=(
+                instructions
+                + " Perform one conservative academic-quality revision pass. Do not restart the chapter. Do not add unsupported content."
+            ),
+            input=json.dumps(revision_payload, ensure_ascii=False, indent=2),
+        )
+        revised = getattr(response, "output_text", "").strip()
+        if revised:
+            return _polish_generated_text(revised)
+    except Exception:
+        return draft
+    return draft
 
 
-def _basic_structure_score(text: str) -> int:
-    score = 0
-    if re.search(r"(?im)^#{1,3}\s+", text or ""):
-        score += 1
-    if re.search(r"(?im)^#{0,3}\s*references\b", text or ""):
-        score += 1
-    if len(re.findall(r"\n\s*\n", text or "")) >= 3:
-        score += 1
-    return score
 
+def _call_openai_response_safely(client: Any, model: str, instructions: str, prompt: str) -> str:
+    """Call the OpenAI Responses API without allowing provider/API errors to crash the app.
 
-def _accept_rewrite(original: str, revised: str, min_ratio: float = 0.72) -> bool:
-    """Reject revision outputs that accidentally truncate or strip structure."""
-    if not revised or not revised.strip():
-        return False
-    if len(revised) < max(600, int(len(original or "") * min_ratio)):
-        return False
-    if _basic_structure_score(revised) < max(1, _basic_structure_score(original) - 1):
-        return False
-    if "[insert" in (original or "").lower() and "[insert" not in revised.lower():
-        # A revision that removes all placeholders is risky because it may have
-        # filled missing evidence with invented content.
-        return False
-    return True
-
-
-def _ensure_source_audit_instruction(profile: dict[str, Any]) -> str:
-    if not _has_source_bank(profile):
+    Render users were seeing generic Internal Server Error responses when the
+    provider rejected a model name, timed out, or returned a transient error.
+    This helper catches those errors so the route can return a local fallback
+    rather than failing the request.
+    """
+    try:
+        response = client.responses.create(model=model, instructions=instructions, input=prompt)
+        return str(getattr(response, "output_text", "") or "").strip()
+    except Exception:
+        fallback_model = os.getenv("OPENAI_FALLBACK_MODEL", "").strip()
+        if fallback_model and fallback_model != model:
+            try:
+                response = client.responses.create(model=fallback_model, instructions=instructions, input=prompt)
+                return str(getattr(response, "output_text", "") or "").strip()
+            except Exception:
+                return ""
         return ""
-    return (
-        "Because retrieved or supplied source-bank records are present, include a short Source Use Audit after the References section. "
-        "Use columns: Source Key, Relevance Tier, Decision, Reason. Mark sources as Cited, Not cited - not relevant, or Not cited - not needed for this chapter."
-    )
-
-
-# ----------------------------------------------------------------------
-# MAIN GENERATION FUNCTION (DeepSeek only, light humanisation)
-# ----------------------------------------------------------------------
 
 def generate_chapter(
     profile: dict[str, Any],
@@ -930,123 +829,60 @@ def generate_chapter(
     extra_instructions: str = "",
     use_ai: bool = True,
 ) -> tuple[str, str]:
-    """
-    Generate a chapter using DeepSeek, then run planning, expansion, revision
-    and safe light humanisation.
-
-    This version keeps the app cost-friendly while fixing the main weakness in
-    the earlier DeepSeek-only version: the draft was generated once and then only
-    lightly polished. Here, the model first plans, then drafts, then expands if
-    the output is too thin, then revises for supervisor-ready academic quality.
-    """
-    if not use_ai:
-        return (
-            _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)),
-            "local_fallback_ai_disabled",
-        )
-
     try:
-        base_prompt = build_drafting_prompt(profile, chapter_number, selected_section_ids, answers, extra_instructions)
-    except Exception as exc:
-        print(f"Prompt build failed: {exc}")
-        return (
-            _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)),
-            "local_fallback_prompt_error",
+        prompt = build_drafting_prompt(profile, chapter_number, selected_section_ids, answers, extra_instructions)
+    except Exception:
+        return _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)), "local_template_fallback_prompt_error"
+    client = _safe_get_openai_client()
+    if use_ai and client:
+        model = os.getenv("OPENAI_MODEL", "gpt-5.5")
+        instructions = (
+            "You are ProjectReady AI, an academic project-work drafting and compliance assistant. "
+            "You help students draft chapters from selected guidelines. You support learning and compliance. "
+            "Write in a natural, high-standard scholarly voice that sounds like a carefully supervised academic draft built from the student's own evidence, context, supervisor comments and project decisions, not generic AI prose. The writing should show judgement, local specificity, cautious interpretation and paragraph-level reasoning. "
+            "In every generated output, apply controlled high-burstiness and high-perplexity academic style: vary sentence length, paragraph shape, transitions, vocabulary and argumentative rhythm, while keeping the writing clear, evidence-led, disciplined and suitable for thesis or dissertation work. "
+            "Use the selected academic level only to determine depth; never mention the selected level or say the chapter is written to meet a level, checklist, template, or software requirement. "
+            "Avoid generic AI-style phrasing, repetition, filler, overclaiming, template-like prose, and very short choppy sentences except where a short sentence is needed for clarity. "
+            "Build coherent academic arguments with critical synthesis, contextual relevance, and defensible reasoning. Use paragraph-level judgement rather than formulaic section filling, and avoid perfectly repetitive sentence patterns or generic balanced paragraphs. "
+            "Do not begin the problem statement with phrases such as 'The research problem is that'; frame the problem through evidence, contradiction, gap, policy concern, or unresolved practical challenge. "
+            "You do not fabricate sources, results, approvals, page numbers, or evidence. "
+            "When the user has not provided facts, use clear placeholders rather than inventing content. "
+            "Write as a completed final project, dissertation, or thesis. Avoid proposal-style future tense across chapters, especially Chapter Three methodology. "
+            "For Chapter Two, format literature gap tables as clean markdown tables with clear columns. Avoid messy conceptual framework diagrams; use clean relationship tables and simple Mermaid flowcharts where a diagram is needed. "
+            "For equations, use display equation blocks with double dollar delimiters and clean Word-friendly notation so the DOCX exporter can create readable Word equation objects. "
+            "For Chapter Four, use uploaded results files where available and never invent analysis output. "
+            "Let the selected thesis, dissertation, or project-work level guide depth silently without appearing in the chapter text. "
+            "Make each section read like publishable or supervisor-ready academic prose, with a clear line of reasoning and strong paragraph development. "
+            "Apply the reference currency rule: aim for most substantive citations to be from the last five years, but where recent literature does not exist, use credible available sources, including foundational theories and essential older studies. "
+            "Include relevant and accurate in-text citations throughout the write-up. For the problem statement, use factual evidence and accurate statistics to show that the problem exists, where those facts are supplied or can be stated confidently. "
+            "When source-finder results are available in the prompt, review them as an additional evidence bank. Integrate highly_relevant and partly_relevant records only where they directly support the argument; exclude not_relevant records. Add a Source Use Audit after the References section explaining which searched sources were cited or excluded. "
+            "Do not fabricate citations, references, statistics, or institutional evidence. Use clear bracketed placeholders only when a credible source, fact, or statistic is not available or has not been supplied."
         )
+        text = _call_openai_response_safely(client, model, instructions, prompt)
+        if text:
+            polished = _polish_generated_text(text)
+            polished = _review_source_integration(
+                client=client,
+                model=model,
+                instructions=instructions,
+                original_prompt=prompt,
+                draft=polished,
+                profile=profile,
+                chapter_number=chapter_number,
+            )
+            polished = _human_academic_revision_pass(
+                client=client,
+                model=model,
+                instructions=instructions,
+                original_prompt=prompt,
+                draft=polished,
+                profile=profile,
+                chapter_number=chapter_number,
+            )
+            return polished, "openai_responses_api"
 
-    source_audit_rule = _ensure_source_audit_instruction(profile)
+    return _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)), "local_template_fallback"
 
-    thesis_system = (
-        "You are a human-supervised academic thesis drafting assistant. "
-        "Write thesis-standard, evidence-led, formal British English. "
-        "Use supplied and source-bank references only when they directly support the claim. "
-        "Use author-year in-text citations and an APA-style References section. "
-        "Do not cite irrelevant sources. Do not invent sources, statistics, ethical approvals, sample sizes, results or reference details. "
-        "Where evidence is missing, insert a precise bracketed placeholder. "
-        "Vary sentence length, paragraph shape and transitions naturally without becoming informal. "
-        "Do not add provider, model, AI, detector or internal-process notes. "
-        + source_audit_rule
-    ).strip()
-
-    # 1. Compact planning pass. This helps DeepSeek avoid generic structure.
-    plan = ""
-    if _env_bool("PROJECTREADY_USE_PLANNER", True):
-        plan = _call_deepseek(
-            _build_source_argument_plan_prompt(base_prompt, profile, chapter_number),
-            thesis_system,
-            stage="plan",
-            temperature=_env_float("PROJECTREADY_PLAN_TEMPERATURE", 0.25),
-            max_tokens=_env_int("PROJECTREADY_PLAN_MAX_TOKENS", 2500),
-        )
-
-    # 2. Draft pass.
-    draft_prompt = json.dumps(
-        {
-            "task": "Draft the full thesis chapter now.",
-            "chapter_number": chapter_number,
-            "source_and_argument_plan": plan,
-            "base_drafting_prompt": base_prompt,
-            "final_instruction": (
-                "Write a complete chapter with developed paragraphs. Do not produce an outline. "
-                "Use placeholders for missing evidence. Keep references accurate and limited to sources cited."
-            ),
-        },
-        ensure_ascii=False,
-        indent=2,
-    )
-
-    draft = _call_deepseek(
-        draft_prompt,
-        thesis_system,
-        stage="draft",
-        temperature=_env_float("PROJECTREADY_DRAFT_TEMPERATURE", 0.62),
-        max_tokens=_env_int("PROJECTREADY_DRAFT_MAX_TOKENS", _env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000)),
-    )
-
-    if not draft:
-        return (
-            _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)),
-            "deepseek_failed",
-        )
-
-    final_text = _polish_generated_text(draft)
-
-    # 3. Expansion pass if the chapter is too thin.
-    minimum_words = _short_draft_threshold(profile, chapter_number, len(selected_section_ids or []))
-    if _env_bool("PROJECTREADY_ENABLE_EXPANSION_PASS", True) and _word_count(final_text) < minimum_words:
-        expanded = _call_deepseek(
-            _build_expansion_prompt(final_text, base_prompt, plan, profile, chapter_number, minimum_words),
-            thesis_system,
-            stage="expand",
-            temperature=_env_float("PROJECTREADY_EXPANSION_TEMPERATURE", 0.56),
-            max_tokens=_env_int("PROJECTREADY_EXPANSION_MAX_TOKENS", _env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000)),
-        )
-        if _accept_rewrite(final_text, expanded, min_ratio=0.85):
-            final_text = _polish_generated_text(expanded)
-
-    # 4. Supervisor-quality revision pass. This is the main fix.
-    if _env_bool("PROJECTREADY_ENABLE_QUALITY_REVISION", True):
-        revised = _call_deepseek(
-            _build_revision_prompt(final_text, base_prompt, plan, profile, chapter_number),
-            thesis_system,
-            stage="review",
-            temperature=_env_float("PROJECTREADY_REVISION_TEMPERATURE", 0.54),
-            max_tokens=_env_int("PROJECTREADY_REVISION_MAX_TOKENS", _env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000)),
-        )
-        if _accept_rewrite(final_text, revised, min_ratio=0.78):
-            final_text = _polish_generated_text(revised)
-
-    # 5. Safe local humanisation, never touches references/tables/equations.
-    final_text = _apply_light_humanisation(final_text)
-
-    # 6. Final cleanup.
-    final_text = _polish_generated_text(final_text)
-    return final_text, "deepseek_planned_expanded_revised_light_humanised"
-
-
-# ----------------------------------------------------------------------
-# FALLBACK CHAPTER GENERATION (local template)
-# ----------------------------------------------------------------------
 
 def generate_fallback_chapter(
     profile: dict[str, Any],
@@ -1058,12 +894,22 @@ def generate_fallback_chapter(
     effective_chapter_title = _effective_chapter_title(chapter, profile, chapter_number)
     sections = selected_sections(chapter_number, selected_section_ids)
     answers = answers or {}
+
     title = profile.get("title", "[Project Title]")
-    lines = [f"# CHAPTER {chapter_number}", f"# {effective_chapter_title.upper()}", "", f"Study title: {title}", ""]
-    for idx, section in enumerate(sections, 1):
+    level_info = _level_depth_requirements(profile)
+    ref_info = _reference_currency_requirements()
+    lines = [
+        f"# CHAPTER {chapter_number}",
+        f"# {effective_chapter_title.upper()}",
+        "",
+        f"Study title: {title}",
+        "",
+    ]
+
+    for index, section in enumerate(sections, 1):
         section_title = section["section_title"]
         section_answers = answers.get(section["section_id"], {})
-        lines.append(f"## {chapter_number}.{idx} {section_title}")
+        lines.append(f"## {chapter_number}.{index} {section_title}")
         lines.append("")
         if section["section_id"] == "ch2_gap_table":
             lines.append(_fallback_literature_gap_table(section_answers, profile))
@@ -1084,15 +930,16 @@ def _draft_from_answers(
     profile: dict[str, Any],
     chapter_number: int,
 ) -> str:
-    joined = []
-    for k, v in section_answers.items():
-        if isinstance(v, list):
-            v = "; ".join(str(x) for x in v if str(x).strip())
-        if str(v).strip():
-            joined.append(f"{k}: {v}")
-    answer_text = " ".join(joined)
+    joined_answers = []
+    for key, value in section_answers.items():
+        if isinstance(value, list):
+            value = "; ".join(str(v) for v in value if str(v).strip())
+        if str(value).strip():
+            joined_answers.append(f"{key}: {value}")
+    answer_text = " ".join(joined_answers)
     if not answer_text:
         return _placeholder_paragraph(section_title, rules, profile, chapter_number)
+
     rules_text = " ".join(rules[:3])
     if chapter_number == 3:
         return (
@@ -1100,6 +947,7 @@ def _draft_from_answers(
             f"The section should be refined into a fully evidenced account of the procedures actually used, including dates, instruments, approvals, and verified methodological citations where required. "
             f"The discussion should remain aligned with these expectations: {rules_text}."
         )
+
     return (
         f"The section should be developed from the following study details: {answer_text}. "
         f"The discussion should connect these details to the study problem, objectives, context, and evidence base, while addressing these expectations: {rules_text}. "
@@ -1110,12 +958,14 @@ def _draft_from_answers(
 def _placeholder_paragraph(section_title: str, rules: list[str], profile: dict[str, Any], chapter_number: int) -> str:
     title = profile.get("title", "the study")
     requirements = " ".join(rules[:4]) if rules else "Follow the selected institutional requirements."
+
     if chapter_number == 3:
         return (
             f"This section requires the project-specific methodological details that were actually used in {title}. "
             f"The account should remain in past tense and should cover these methodological expectations: {requirements} "
             f"[insert study-specific methods, approvals, evidence, and citations here]."
         )
+
     return (
         f"This section requires further project-specific detail for {title}. "
         f"The discussion should be evidence-led and should address these expectations: {requirements} "
@@ -1129,10 +979,17 @@ def _fallback_literature_gap_table(section_answers: dict[str, Any], profile: dic
         objectives = [obj.strip() for obj in re.split(r"\n|;", objectives) if obj.strip()]
     if not objectives:
         objectives = ["[insert research objective 1]", "[insert research objective 2]"]
-    rows = ["| Research Objective | Key Authors and Year | Context of Study | Method Used | Key Findings | Identified Gap | Relevance to Current Study |", "|---|---|---|---|---|---|---|"]
-    for obj in objectives:
-        rows.append(f"| {obj} | [insert author and year] | [insert study context] | [insert method] | [insert key finding] | [insert objective-specific gap] | [explain relevance to the present study] |")
+
+    rows = [
+        "| Research Objective | Key Authors and Year | Context of Study | Method Used | Key Findings | Identified Gap | Relevance to Current Study |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for objective in objectives:
+        rows.append(
+            f"| {objective} | [insert author and year] | [insert study context] | [insert method] | [insert key finding] | [insert objective-specific gap] | [explain relevance to the present study] |"
+        )
     return "\n".join(rows)
+
 
 
 def _fallback_results_section(section_answers: dict[str, Any], profile: dict[str, Any], chapter_number: int) -> str:
@@ -1142,19 +999,29 @@ def _fallback_results_section(section_answers: dict[str, Any], profile: dict[str
         objectives = [obj.strip() for obj in re.split(r"\n|;", objectives) if obj.strip()]
     if not objectives:
         objectives = ["[insert research objective 1]", "[insert research objective 2]"]
-    lines = []
+
+    lines: list[str] = []
     extracted = str((uploaded or {}).get("extracted_text") or (uploaded or {}).get("preview") or "").strip()
     if extracted:
-        lines.append("The chapter should convert the supplied analysis evidence into clean academic results tables and interpretation. Do not mention the file upload in the final prose.")
+        lines.append(
+            "The chapter should convert the supplied analysis evidence into clean academic results tables and interpretation. "
+            "Do not mention the file upload in the final prose; present the evidence as normal thesis results."
+        )
         lines.append("\n**Available analysis evidence for drafting use only:**\n")
         lines.append(extracted[:2200])
     else:
-        lines.append("The results required for this section were not supplied. The chapter should contain placeholder tables in red bracketed text and should tell the user exactly which analysis output is needed.")
+        lines.append(
+            "The results required for this section were not supplied. The chapter should contain placeholder tables in red bracketed text and should tell the user exactly which analysis output is needed."
+        )
+
     lines.append("\n**Objective-to-results table:**\n")
     lines.append("| Research Objective | Required Analysis/Table | Result to Report | Interpretation | Required Action if Missing |")
     lines.append("|---|---|---|---|---|")
-    for obj in objectives:
-        lines.append(f"| {obj} | [insert analysis method] | [insert statistic/coefficient/theme/result] | [insert interpretation] | [obtain the exact software/output table needed for this objective] |")
+    for objective in objectives:
+        lines.append(
+            f"| {objective} | [insert analysis method aligned with methodology] | [insert statistic/coefficient/theme/result] | [insert interpretation linked to objective] | [obtain the exact software/output table needed for this objective] |"
+        )
+
     lines.append("\n**Suggested missing-results placeholders:**\n")
     lines.append("| Required Table/Figure | Purpose | Placeholder | User Action |")
     lines.append("|---|---|---|---|")
@@ -1162,15 +1029,18 @@ def _fallback_results_section(section_answers: dict[str, Any], profile: dict[str
     lines.append("| Descriptive statistics | Summarise variables/constructs | [insert means, standard deviations, frequencies or theme counts] | Provide descriptive output |")
     lines.append("| Main analysis table | Answer objectives/hypotheses | [insert coefficients, p-values, path estimates, themes or comparison statistics] | Provide regression/SEM/econometric/qualitative output |")
     lines.append("| Figure or diagram | Visualise key results/model | [insert Figure: results chart/path diagram/conceptual model here] | Provide chart, model output or diagram data |")
+
+    lines.append("\n**Appendix guidance:** raw software output, long diagnostic tables, full questionnaires, interview transcripts, full correlation matrices, detailed coding sheets and robustness checks should normally go to the appendix unless a supervisor requires them in the main text.")
+
     if section_answers:
         joined = []
-        for k, v in section_answers.items():
-            if str(v).strip():
-                joined.append(f"{k}: {v}")
+        for key, value in section_answers.items():
+            if str(value).strip():
+                joined.append(f"{key}: {value}")
         if joined:
             lines.append("\n**Student guidance supplied:** " + " ".join(joined))
-    return "\n\n".join(lines)
 
+    return "\n\n".join(lines)
 
 def split_paragraphs(text: str) -> list[str]:
     blocks = [b.strip() for b in re.split(r"\n\s*\n", text or "") if b.strip()]
