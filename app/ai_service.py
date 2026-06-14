@@ -20,7 +20,6 @@ load_dotenv()
 # ----------------------------------------------------------------------
 
 def _safe_get_deepseek_client():
-    """Return a DeepSeek client using the OpenAI-compatible SDK interface."""
     api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
     if not api_key:
         return None
@@ -76,7 +75,7 @@ def _env_int(name: str, default: int) -> int:
 
 
 # ----------------------------------------------------------------------
-# THESIS‑SPECIFIC REQUIREMENTS (unchanged but adapted)
+# THESIS REQUIREMENTS (unchanged)
 # ----------------------------------------------------------------------
 
 def _reference_currency_requirements() -> dict[str, Any]:
@@ -333,7 +332,6 @@ def _retrieved_sources_for_prompt(profile: dict[str, Any], chapter_number: int |
             "reference_entry_hint": src.get("apa_hint", ""),
         })
     compact_sources.sort(key=lambda x: ({"highly_relevant":3, "partly_relevant":2}.get(x.get("relevance_tier",""), 0)), reverse=True)
-    target = min(compact_sources, key=lambda x: len(x)) if compact_sources else 0
     return {
         "query": retrieved.get("query", ""),
         "source_count": len(compact_sources),
@@ -488,7 +486,7 @@ def build_drafting_prompt(
 
 
 # ----------------------------------------------------------------------
-# STYLE TEXTURE AND HUMANISATION (Extreme – passes AI detectors)
+# LIGHT HUMANISATION (only safe, non‑mechanical transformations)
 # ----------------------------------------------------------------------
 
 def _body_and_reference_tail(text: str) -> tuple[str, str]:
@@ -538,85 +536,24 @@ def _map_prose_paragraphs(text: str, func) -> str:
     return "".join(out)
 
 
-def _force_extreme_burstiness(text: str) -> str:
-    """Insert a very short sentence (2‑5 words) after any sentence longer than 25 words (80% probability)."""
-    def transform(para: str) -> str:
-        sentences = re.split(r'(?<=[.!?])\s+', para)
-        new = []
-        for s in sentences:
-            new.append(s)
-            if len(s.split()) > 25 and random.random() < 0.8:
-                new.append(random.choice([" That matters. ", " It is so. ", " Not trivial. ", " This is key. ", " Consider that. "]))
-        return " ".join(new)
-    return _map_prose_paragraphs(text, transform)
-
-
-def _extreme_lexical_richness(text: str) -> str:
-    """Replace common words with rare, unusual synonyms (25% probability per replacement)."""
+def _remove_ai_transition_words(text: str) -> str:
+    """Replace obvious AI transition words with simpler alternatives."""
     replacements = {
-        r'\bshows that\b': 'attests that',
-        r'\bsuggests that\b': 'points to the possibility that',
-        r'\bdemonstrates that\b': 'evidences that',
-        r'\bimportant role\b': 'non‑trivial function',
-        r'\bsignificant\b': 'consequential',
-        r'\bhowever\b': 'yet',
-        r'\btherefore\b': 'consequently',
-        r'\bfor example\b': 'as an illustration',
-        r'\bbecause\b': 'insofar as',
-        r'\bthe study\b': 'the present investigation',
-        r'\bits findings\b': 'the results obtained',
-        r'\bmany studies\b': 'a substantial body of work',
-        r'\bhas been shown\b': 'has been demonstrated',
-        r'\bin contrast\b': 'by contrast',
-        r'\bdifferent\b': 'divergent',
-        r'\bsimilar\b': 'analogous',
-        r'\bproblem\b': 'conundrum',
-        r'\bevidence\b': 'corroboration',
-        r'\bresult\b': 'outcome',
-        r'\bweak\b': 'tenuous',
-        r'\bstrong\b': 'robust',
-        r'\bchange\b': 'shift',
-        r'\buse\b': 'employ',
+        r"\bFurthermore\b": "Also",
+        r"\bMoreover\b": "Also",
+        r"\bIn addition\b": "Additionally",
+        r"\bConsequently\b": "As a result",
+        r"\bIt is important to note that\b": "",
+        r"\bIt is worth noting that\b": "",
+        r"\bIt should be noted that\b": "",
     }
-    def transform(para: str) -> str:
-        updated = para
-        for pattern, repl in replacements.items():
-            if random.random() < 0.25:
-                updated = re.sub(pattern, repl, updated, flags=re.IGNORECASE)
-        return updated
-    return _map_prose_paragraphs(text, transform)
-
-
-def _add_drafting_artefacts(text: str, probability_per_500_words: float = 0.35) -> str:
-    """Add mild connective variations (like 'That said,' or 'The qualification matters.')."""
-    if not text or len(text.split()) < 220:
-        return text
-    def transform(para: str) -> str:
-        if random.random() > probability_per_500_words:
-            return para
-        replacements = [
-            (r"\.\s+(However|Nevertheless),\s+", r". That said, "),
-            (r"\.\s+(Moreover|Furthermore|In addition),\s+", r". By the same logic, "),
-            (r"\.\s+This means that\s+", r". Put differently, "),
-            (r"\.\s+This suggests that\s+", r". This more cautiously suggests that "),
-        ]
-        updated = para
-        for pattern, repl in replacements:
-            if re.search(pattern, updated, flags=re.IGNORECASE):
-                updated = re.sub(pattern, repl, updated, count=1, flags=re.IGNORECASE)
-                break
-        if updated == para and random.random() < 0.35:
-            sentences = re.split(r"(?<=[.!?])\s+", para)
-            if len(sentences) >= 3:
-                idx = min(2, len(sentences) - 1)
-                sentences[idx] = "The qualification matters. " + sentences[idx]
-                updated = " ".join(sentences)
-        return updated
-    return _map_prose_paragraphs(text, transform)
+    for pat, repl in replacements.items():
+        text = re.sub(pat, repl, text, flags=re.IGNORECASE)
+    return text
 
 
 def _cluster_citations(text: str) -> str:
-    """Combine adjacent parenthetical citations (e.g., (Smith, 2020) (Jones, 2021) → (Smith, 2020; Jones, 2021))."""
+    """Combine adjacent parenthetical citations that are already present."""
     if not text:
         return text
     def combine(m: re.Match) -> str:
@@ -627,12 +564,52 @@ def _cluster_citations(text: str) -> str:
         if first == second:
             return f"({first})"
         return f"({first}; {second})"
-    pattern = r"(\([A-Z][A-Za-z'’\-]+(?:\s+et\s+al\.)?,\s*\d{4}\))\s*(?:;|,|and)?\s*(\([A-Z][A-Za-z'’\-]+(?:\s+et\s+al\.)?,\s*\d{4}\))"
+    pattern = r"(\([A-Z][A-Za-z'’\-]+(?:\s+et\s+al\.)?,\s*\d{4}[a-z]?\))\s*(?:;|,|and)?\s*(\([A-Z][A-Za-z'’\-]+(?:\s+et\s+al\.)?,\s*\d{4}[a-z]?\))"
     return re.sub(pattern, combine, text)
 
 
+def _add_occasional_short_sentence(text: str) -> str:
+    """
+    Very occasionally (once per ~600 words) insert a short, natural punch sentence.
+    No forced regularity. The phrases are varied and placed in a random sentence position.
+    """
+    words = text.split()
+    if len(words) < 500:
+        return text
+    # Only run with low probability
+    if random.random() > 0.25:
+        return text
+
+    # Find a suitable paragraph (not too short, not too long)
+    paragraphs = re.split(r"(\n\s*\n)", text)
+    prose_paras = [p for p in paragraphs if not re.match(r"\n\s*\n", p or "") and not _looks_like_protected_block(p) and len(p.split()) > 50]
+    if not prose_paras:
+        return text
+
+    para = random.choice(prose_paras)
+    sentences = re.split(r"(?<=[.!?])\s+", para)
+    if len(sentences) < 2:
+        return text
+
+    # Choose a random sentence position (not first, not last)
+    pos = random.randint(1, len(sentences)-1)
+    short_phrases = [
+        "That matters.", "This is not accidental.", "Consider that.", 
+        "The implication is not trivial.", "Yet this pattern is not universal.",
+        "A closer look suggests otherwise.", "This observation is key."
+    ]
+    short = random.choice(short_phrases)
+    sentences.insert(pos, short)
+    new_para = " ".join(sentences)
+
+    # Replace the original paragraph
+    idx = paragraphs.index(para)
+    paragraphs[idx] = new_para
+    return "".join(paragraphs)
+
+
 def _vary_paragraph_openings(text: str) -> str:
-    """Prepend a transition word to a paragraph if it starts the same as the previous paragraph."""
+    """If two consecutive prose paragraphs start with the same word, prepend a light transition."""
     paragraphs = re.split(r"(\n\s*\n)", text or "")
     transitions = ["Yet, ", "Still, ", "In this respect, ", "At the same time, ", "More specifically, "]
     prev_start = ""
@@ -643,78 +620,29 @@ def _vary_paragraph_openings(text: str) -> str:
             continue
         words = para.strip().split()
         curr = words[0].lower() if words else ""
-        if curr and curr == prev_start and not para.lstrip().startswith(tuple(transitions)):
+        if curr and curr == prev_start and not para.lstrip().startswith(tuple(transitions)) and random.random() < 0.3:
             para = random.choice(transitions) + para.strip()
         prev_start = curr
         out.append(para)
     return "".join(out)
 
 
-def _inject_tangent(text: str) -> str:
-    """Add a parenthetical aside in the second sentence of a long paragraph (20% chance)."""
-    if not text or len(text.split()) < 350:
-        return text
-    asides = [
-        " (a qualification that matters for interpreting the evidence)",
-        " (especially where the local context differs from the national pattern)",
-        " (although this point still requires context-specific evidence)",
-        " (a point that should be read alongside the study's own data)",
-    ]
-    def transform(para: str) -> str:
-        if random.random() > 0.20 or "(" in para[:250]:
-            return para
-        sentences = re.split(r"(?<=[.!?])\s+", para)
-        if len(sentences) >= 3:
-            sentences[1] = sentences[1].rstrip(".") + random.choice(asides) + "."
-            return " ".join(sentences)
-        return para
-    return _map_prose_paragraphs(text, transform)
-
-
-def _randomise_paragraph_order(text: str) -> str:
-    """Optionally swap two adjacent prose paragraphs (disabled by default, but kept for completeness)."""
-    if not _env_bool("PROJECTREADY_ALLOW_PARAGRAPH_REORDER", False):
+def _apply_light_humanisation(text: str) -> str:
+    """Apply only safe, non‑mechanical transformations to prose."""
+    if not text:
         return text
     body, tail = _body_and_reference_tail(text)
-    paras = re.split(r"(\n\s*\n)", body)
-    prose_idx = [i for i, p in enumerate(paras) if not re.match(r"\n\s*\n", p or "") and not _looks_like_protected_block(p)]
-    for a, b in zip(prose_idx, prose_idx[1:]):
-        if b == a+2 and random.random() < 0.10:
-            paras[a], paras[b] = paras[b], paras[a]
-            break
-    return "".join(paras).rstrip() + ("\n\n" + tail if tail else "")
-
-
-def _aggressive_humaniser_pass(text: str, profile: dict[str, Any], chapter_number: int) -> str:
-    """
-    Use DeepSeek at very high temperature (0.95) to rewrite the text with extreme variation.
-    Only runs when style_texture = extreme.
-    """
-    if not text or len(text) < 200:
-        return text
-    if _style_texture_level(profile) != "extreme":
+    if not body.strip():
         return text
 
-    prompt = f"""You are a brilliant but slightly erratic PhD student editing your own draft. Rewrite the text to sound completely human – with extreme variation. Follow these rules strictly. Do not change any facts, citations, numbers, or bracketed placeholders.
+    body = _remove_ai_transition_words(body)
+    body = _cluster_citations(body)
+    body = _add_occasional_short_sentence(body)
+    body = _vary_paragraph_openings(body)
 
-RULES:
-1. **Extreme sentence length variation**: Alternate between very short (2-5 word) and very long (30-50 word) sentences.
-2. **Very short punch sentences**: Insert at least one 2-4 word sentence every 100 words (e.g., "That matters." "This is key.")
-3. **Rare vocabulary**: Use unusual but correct synonyms: "non‑trivial", "idiosyncratic", "stubborn assumption", "attests", "evidences", "consequential".
-4. **No AI buzzwords**: Remove "furthermore", "moreover", "in addition", "consequently", "however", "crucial", "vital", "delve", "tapestry".
-5. **Vary paragraph openings**: Never start two paragraphs the same way.
-6. **Preserve all citations, placeholders, and facts exactly.
-7. **Output only the rewritten text.
-
-Original text:
-{text}
-
-Rewritten text:"""
-    instructions = "You are an academic editor who improves natural flow with extreme variation. Never change citations or placeholders."
-    rewritten = _call_deepseek(prompt, instructions, temperature=0.95, max_tokens=12000)
-    if rewritten and len(rewritten) >= len(text) * 0.70:
-        return rewritten
-    return text
+    # Final polish to remove any leftover meta‑phrases
+    body = _polish_generated_text(body)
+    return body.rstrip() + ("\n\n" + tail if tail else "")
 
 
 def _polish_generated_text(text: str) -> str:
@@ -775,58 +703,8 @@ def _polish_generated_text(text: str) -> str:
     return polished.strip()
 
 
-def _style_texture_level(profile: dict[str, Any] | None = None) -> str:
-    profile = profile or {}
-    level = str(profile.get("style_texture") or os.getenv("PROJECTREADY_STYLE_TEXTURE", "conservative")).strip().lower()
-    if level not in {"off", "conservative", "moderate", "strong", "extreme"}:
-        level = "conservative"
-    return level
-
-
-def _apply_style_texture(text: str, profile: dict[str, Any], chapter_number: int) -> str:
-    """
-    Apply the selected level of style texture. The 'extreme' level is designed to bypass AI detectors.
-    """
-    level = _style_texture_level(profile)
-    if level == "off" or not text:
-        return text
-    body, tail = _body_and_reference_tail(text)
-    if not body.strip():
-        return text
-    # Seed for reproducibility of random choices
-    random.seed(abs(hash(f"{profile.get('title','')}|{chapter_number}|{level}")) & 0xFFFFFFFF)
-
-    if level == "conservative":
-        body = _add_drafting_artefacts(body, probability_per_500_words=0.12)
-        body = _cluster_citations(body)
-        body = _vary_paragraph_openings(body)
-    elif level == "moderate":
-        body = _add_drafting_artefacts(body, probability_per_500_words=0.20)
-        body = _cluster_citations(body)
-        body = _vary_paragraph_openings(body)
-        body = _inject_tangent(body)
-    elif level == "strong":
-        body = _add_drafting_artefacts(body, probability_per_500_words=0.28)
-        body = _cluster_citations(body)
-        body = _vary_paragraph_openings(body)
-        body = _inject_tangent(body)
-        body = _randomise_paragraph_order(body)
-    else:  # extreme – passes AI detectors
-        body = _aggressive_humaniser_pass(body, profile, chapter_number)
-        body = _force_extreme_burstiness(body)
-        body = _extreme_lexical_richness(body)
-        body = _add_drafting_artefacts(body, probability_per_500_words=0.35)
-        body = _cluster_citations(body)
-        body = _vary_paragraph_openings(body)
-        body = _inject_tangent(body)
-        body = _randomise_paragraph_order(body)
-
-    body = _polish_generated_text(body)
-    return body.rstrip() + ("\n\n" + tail if tail else "")
-
-
 # ----------------------------------------------------------------------
-# MAIN GENERATION FUNCTION (DeepSeek only)
+# MAIN GENERATION FUNCTION (DeepSeek only, light humanisation)
 # ----------------------------------------------------------------------
 
 def generate_chapter(
@@ -838,8 +716,7 @@ def generate_chapter(
     use_ai: bool = True,
 ) -> tuple[str, str]:
     """
-    Generate a chapter using only DeepSeek. If DeepSeek fails, returns a local fallback.
-    The style texture level controls the strength of humanisation.
+    Generate a chapter using only DeepSeek, then apply light humanisation.
     """
     if not use_ai:
         return (
@@ -875,7 +752,8 @@ def generate_chapter(
         indent=2,
     )
 
-    draft = _call_deepseek(draft_prompt, thesis_system, temperature=0.48, max_tokens=12000)
+    # Generate draft with a moderate temperature for natural variation
+    draft = _call_deepseek(draft_prompt, thesis_system, temperature=0.75, max_tokens=12000)
     if not draft:
         return (
             _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)),
@@ -883,8 +761,9 @@ def generate_chapter(
         )
 
     final_text = _polish_generated_text(draft)
-    final_text = _apply_style_texture(final_text, profile, chapter_number)
-    return final_text, "deepseek_only"
+    # Apply only light, safe humanisation (no aggressive burstiness or rare words)
+    final_text = _apply_light_humanisation(final_text)
+    return final_text, "deepseek_light_humanised"
 
 
 # ----------------------------------------------------------------------
