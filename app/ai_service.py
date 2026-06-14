@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 from dotenv import load_dotenv
-from openai import OpenAI
+# OpenAI SDK is imported lazily inside the DeepSeek client helper.
 
 from app.template_store import get_chapter, selected_sections
 
@@ -20,29 +20,66 @@ load_dotenv()
 # ----------------------------------------------------------------------
 
 def _safe_get_deepseek_client():
+    """Return a DeepSeek client using the OpenAI-compatible SDK interface."""
     api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
     if not api_key:
         return None
     try:
+        from openai import OpenAI
         return OpenAI(
             api_key=api_key,
             base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").strip() or "https://api.deepseek.com",
         )
-    except Exception:
+    except Exception as exc:
+        print(f"DeepSeek client setup failed: {exc}")
         return None
 
 
 def _call_deepseek(
     prompt: str,
     instructions: str,
-    temperature: float = 0.7,
-    max_tokens: int = 8000,
+    *,
+    stage: str = "draft",
+    model: str | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
 ) -> str:
-    """Make a call to DeepSeek chat completion. Returns empty string on failure."""
+    """
+    Call DeepSeek safely.
+
+    DeepSeek is OpenAI-compatible, but this wrapper avoids crashing the app when
+    keys, SDK settings, network calls or model names fail. It also lets the main
+    generation flow use different temperatures and token budgets for planning,
+    drafting, revision and expansion.
+    """
     client = _safe_get_deepseek_client()
     if client is None:
         return ""
-    model = os.getenv("DEEPSEEK_FAST_MODEL", "deepseek-chat").strip() or "deepseek-chat"
+
+    if model is None:
+        if stage in {"plan", "review"}:
+            model = os.getenv("DEEPSEEK_REASONER_MODEL", "").strip() or os.getenv("DEEPSEEK_FAST_MODEL", "deepseek-chat").strip() or "deepseek-chat"
+        else:
+            model = os.getenv("DEEPSEEK_DRAFT_MODEL", "").strip() or os.getenv("DEEPSEEK_FAST_MODEL", "deepseek-chat").strip() or "deepseek-chat"
+
+    if temperature is None:
+        temperature = {
+            "plan": _env_float("PROJECTREADY_PLAN_TEMPERATURE", 0.25),
+            "draft": _env_float("PROJECTREADY_DRAFT_TEMPERATURE", 0.62),
+            "expand": _env_float("PROJECTREADY_EXPANSION_TEMPERATURE", 0.56),
+            "review": _env_float("PROJECTREADY_REVISION_TEMPERATURE", 0.54),
+        }.get(stage, 0.55)
+
+    if max_tokens is None:
+        max_tokens = {
+            "plan": _env_int("PROJECTREADY_PLAN_MAX_TOKENS", 2500),
+            "draft": _env_int("PROJECTREADY_DRAFT_MAX_TOKENS", _env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000)),
+            "expand": _env_int("PROJECTREADY_EXPANSION_MAX_TOKENS", _env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000)),
+            "review": _env_int("PROJECTREADY_REVISION_MAX_TOKENS", _env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000)),
+        }.get(stage, _env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000))
+
+    timeout = _env_int("OPENAI_TIMEOUT_SECONDS", 90)
+
     try:
         response = client.chat.completions.create(
             model=model,
@@ -52,11 +89,14 @@ def _call_deepseek(
             ],
             temperature=temperature,
             max_tokens=max_tokens,
-            timeout=90,
+            timeout=timeout,
         )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        print(f"DeepSeek call failed: {e}")
+        try:
+            return str(response.choices[0].message.content or "").strip()
+        except Exception:
+            return ""
+    except Exception as exc:
+        print(f"DeepSeek call failed at {stage} using {model}: {exc}")
         return ""
 
 
@@ -70,6 +110,13 @@ def _env_bool(name: str, default: bool = False) -> bool:
 def _env_int(name: str, default: int) -> int:
     try:
         return int(str(os.getenv(name, default)).strip())
+    except Exception:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(str(os.getenv(name, default)).strip())
     except Exception:
         return default
 
@@ -537,19 +584,30 @@ def _map_prose_paragraphs(text: str, func) -> str:
 
 
 def _remove_ai_transition_words(text: str) -> str:
-    """Replace obvious AI transition words with simpler alternatives."""
-    replacements = {
-        r"\bFurthermore\b": "Also",
-        r"\bMoreover\b": "Also",
-        r"\bIn addition\b": "Additionally",
-        r"\bConsequently\b": "As a result",
-        r"\bIt is important to note that\b": "",
-        r"\bIt is worth noting that\b": "",
-        r"\bIt should be noted that\b": "",
-    }
-    for pat, repl in replacements.items():
-        text = re.sub(pat, repl, text, flags=re.IGNORECASE)
-    return text
+    """Reduce obvious template transitions without damaging sentence grammar."""
+    if not text:
+        return text
+
+    phrase_replacements = [
+        (r"\b[Ff]urthermore,?\s+", ""),
+        (r"\b[Mm]oreover,?\s+", ""),
+        (r"\b[Ii]n addition,?\s+", "Also, "),
+        (r"\b[Cc]onsequently,?\s+", "As a result, "),
+        (r"\b[Hh]owever,?\s+", "Yet, "),
+        (r"\b[Nn]evertheless,?\s+", "Still, "),
+        (r"\b[Ii]t is important to note that\s+", ""),
+        (r"\b[Ii]t is worth noting that\s+", ""),
+        (r"\b[Ii]t should be noted that\s+", ""),
+        (r"\b[Tt]his highlights the importance of\s+", "This draws attention to "),
+        (r"\b[Pp]lays a crucial role in\s+", "is central to "),
+    ]
+
+    updated = text
+    for pattern, replacement in phrase_replacements:
+        updated = re.sub(pattern, replacement, updated)
+    updated = re.sub(r"\s+([,.;:])", r"\1", updated)
+    updated = re.sub(r"[ \t]{2,}", " ", updated)
+    return updated
 
 
 def _cluster_citations(text: str) -> str:
@@ -570,41 +628,40 @@ def _cluster_citations(text: str) -> str:
 
 def _add_occasional_short_sentence(text: str) -> str:
     """
-    Very occasionally (once per ~600 words) insert a short, natural punch sentence.
-    No forced regularity. The phrases are varied and placed in a random sentence position.
+    Add one occasional anchor sentence to long prose only.
+    This is deliberately restrained. Too many punch sentences can make a thesis
+    draft sound artificial.
     """
     words = text.split()
-    if len(words) < 500:
-        return text
-    # Only run with low probability
-    if random.random() > 0.25:
+    if len(words) < 700 or random.random() > 0.18:
         return text
 
-    # Find a suitable paragraph (not too short, not too long)
     paragraphs = re.split(r"(\n\s*\n)", text)
-    prose_paras = [p for p in paragraphs if not re.match(r"\n\s*\n", p or "") and not _looks_like_protected_block(p) and len(p.split()) > 50]
-    if not prose_paras:
-        return text
-
-    para = random.choice(prose_paras)
-    sentences = re.split(r"(?<=[.!?])\s+", para)
-    if len(sentences) < 2:
-        return text
-
-    # Choose a random sentence position (not first, not last)
-    pos = random.randint(1, len(sentences)-1)
-    short_phrases = [
-        "That matters.", "This is not accidental.", "Consider that.", 
-        "The implication is not trivial.", "Yet this pattern is not universal.",
-        "A closer look suggests otherwise.", "This observation is key."
+    candidate_indices = [
+        i for i, p in enumerate(paragraphs)
+        if not re.match(r"\n\s*\n", p or "")
+        and not _looks_like_protected_block(p)
+        and 80 <= len(p.split()) <= 220
+        and not re.search(r"\b(That matters|This matters|The point is simple)\.", p)
     ]
-    short = random.choice(short_phrases)
-    sentences.insert(pos, short)
-    new_para = " ".join(sentences)
+    if not candidate_indices:
+        return text
 
-    # Replace the original paragraph
-    idx = paragraphs.index(para)
-    paragraphs[idx] = new_para
+    idx = random.choice(candidate_indices)
+    para = paragraphs[idx]
+    sentences = re.split(r"(?<=[.!?])\s+", para)
+    if len(sentences) < 4:
+        return text
+
+    anchor_sentences = [
+        "This matters.",
+        "The point is simple.",
+        "That distinction matters.",
+        "The implication is practical.",
+    ]
+    insert_at = random.randint(1, min(len(sentences) - 2, 3))
+    sentences.insert(insert_at, random.choice(anchor_sentences))
+    paragraphs[idx] = " ".join(sentences)
     return "".join(paragraphs)
 
 
@@ -703,6 +760,164 @@ def _polish_generated_text(text: str) -> str:
     return polished.strip()
 
 
+
+# ----------------------------------------------------------------------
+# PLANNING, REVISION AND QUALITY-GATE HELPERS
+# ----------------------------------------------------------------------
+
+def _has_source_bank(profile: dict[str, Any]) -> bool:
+    return bool(_merged_source_bank(profile))
+
+
+def _word_count(text: str) -> int:
+    return len(re.findall(r"\b\w+(?:[-']\w+)?\b", text or ""))
+
+
+def _short_draft_threshold(
+    profile: dict[str, Any],
+    chapter_number: int,
+    selected_section_count: int = 0,
+) -> int:
+    requirements = _chapter_length_depth_requirements(profile, chapter_number, selected_section_count)
+    minimum = int(requirements.get("minimum_words", 2200))
+    # DeepSeek token limits may prevent very long chapters in one call, so the
+    # quality gate uses a realistic floor rather than the full target.
+    return max(900, int(minimum * _env_float("PROJECTREADY_MIN_WORD_RATIO", 0.70)))
+
+
+def _build_source_argument_plan_prompt(
+    base_prompt: str,
+    profile: dict[str, Any],
+    chapter_number: int,
+) -> str:
+    return json.dumps(
+        {
+            "task": "Prepare a compact chapter plan before drafting. Do not write the chapter.",
+            "chapter_number": chapter_number,
+            "project_title": profile.get("title", ""),
+            "required_output": [
+                "Central argument for the chapter.",
+                "Section-by-section development plan.",
+                "Relevant supplied/source-bank citations to use, with the exact section where each fits.",
+                "Sources to exclude because they are not directly relevant.",
+                "Missing evidence, statistics, methods details, results, ethical approvals or references that require placeholders.",
+                "A short note on tone: natural supervisor-ready academic prose, not template-like prose.",
+            ],
+            "rules": [
+                "Do not invent sources or facts.",
+                "Do not draft paragraphs.",
+                "Keep the plan compact and useful for the drafting pass.",
+            ],
+            "base_drafting_prompt": base_prompt,
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
+def _build_revision_prompt(
+    draft: str,
+    base_prompt: str,
+    plan: str,
+    profile: dict[str, Any],
+    chapter_number: int,
+) -> str:
+    return json.dumps(
+        {
+            "task": "Revise this chapter into a cleaner, more human-supervised academic draft. Revise, do not restart.",
+            "chapter_number": chapter_number,
+            "project_title": profile.get("title", ""),
+            "revision_goals": [
+                "Strengthen paragraph development and academic reasoning.",
+                "Remove template-like transitions and generic filler.",
+                "Vary sentence length and paragraph shape naturally without becoming informal.",
+                "Use supplied or source-bank citations only where they directly support the claim.",
+                "Keep placeholders where evidence is missing instead of inventing facts.",
+                "Preserve headings, tables, equations, citations, references and any Source Use Audit.",
+                "Use formal British English.",
+            ],
+            "non_negotiable_rules": [
+                "Do not fabricate citations, statistics, sample sizes, approvals, coefficients, findings or reference entries.",
+                "Do not add model, provider, AI, detector or internal-process notes.",
+                "Do not replace bracketed placeholders with invented information.",
+                "Do not remove the References section if the draft contains citations.",
+            ],
+            "source_and_argument_plan": plan,
+            "base_drafting_prompt": base_prompt,
+            "draft_to_revise": draft,
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
+def _build_expansion_prompt(
+    draft: str,
+    base_prompt: str,
+    plan: str,
+    profile: dict[str, Any],
+    chapter_number: int,
+    minimum_words: int,
+) -> str:
+    return json.dumps(
+        {
+            "task": "Expand this chapter because it is too short. Revise and expand, do not restart.",
+            "chapter_number": chapter_number,
+            "project_title": profile.get("title", ""),
+            "current_word_count": _word_count(draft),
+            "minimum_word_floor": minimum_words,
+            "expansion_rules": [
+                "Expand through explanation, evidence, local context, concept clarification, theory/method alignment and careful interpretation.",
+                "Do not pad with repetition.",
+                "Do not invent sources, facts, statistics, ethics approvals, sample sizes or results.",
+                "Use precise placeholders where evidence is missing.",
+                "Preserve headings, tables, equations, citations and references.",
+                "Keep the style natural, supervisor-ready and thesis-appropriate.",
+            ],
+            "source_and_argument_plan": plan,
+            "base_drafting_prompt": base_prompt,
+            "draft_to_expand": draft,
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
+def _basic_structure_score(text: str) -> int:
+    score = 0
+    if re.search(r"(?im)^#{1,3}\s+", text or ""):
+        score += 1
+    if re.search(r"(?im)^#{0,3}\s*references\b", text or ""):
+        score += 1
+    if len(re.findall(r"\n\s*\n", text or "")) >= 3:
+        score += 1
+    return score
+
+
+def _accept_rewrite(original: str, revised: str, min_ratio: float = 0.72) -> bool:
+    """Reject revision outputs that accidentally truncate or strip structure."""
+    if not revised or not revised.strip():
+        return False
+    if len(revised) < max(600, int(len(original or "") * min_ratio)):
+        return False
+    if _basic_structure_score(revised) < max(1, _basic_structure_score(original) - 1):
+        return False
+    if "[insert" in (original or "").lower() and "[insert" not in revised.lower():
+        # A revision that removes all placeholders is risky because it may have
+        # filled missing evidence with invented content.
+        return False
+    return True
+
+
+def _ensure_source_audit_instruction(profile: dict[str, Any]) -> str:
+    if not _has_source_bank(profile):
+        return ""
+    return (
+        "Because retrieved or supplied source-bank records are present, include a short Source Use Audit after the References section. "
+        "Use columns: Source Key, Relevance Tier, Decision, Reason. Mark sources as Cited, Not cited - not relevant, or Not cited - not needed for this chapter."
+    )
+
+
 # ----------------------------------------------------------------------
 # MAIN GENERATION FUNCTION (DeepSeek only, light humanisation)
 # ----------------------------------------------------------------------
@@ -716,7 +931,13 @@ def generate_chapter(
     use_ai: bool = True,
 ) -> tuple[str, str]:
     """
-    Generate a chapter using only DeepSeek, then apply light humanisation.
+    Generate a chapter using DeepSeek, then run planning, expansion, revision
+    and safe light humanisation.
+
+    This version keeps the app cost-friendly while fixing the main weakness in
+    the earlier DeepSeek-only version: the draft was generated once and then only
+    lightly polished. Here, the model first plans, then drafts, then expands if
+    the output is too thin, then revises for supervisor-ready academic quality.
     """
     if not use_ai:
         return (
@@ -726,34 +947,62 @@ def generate_chapter(
 
     try:
         base_prompt = build_drafting_prompt(profile, chapter_number, selected_section_ids, answers, extra_instructions)
-    except Exception:
+    except Exception as exc:
+        print(f"Prompt build failed: {exc}")
         return (
             _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)),
             "local_fallback_prompt_error",
         )
 
+    source_audit_rule = _ensure_source_audit_instruction(profile)
+
     thesis_system = (
         "You are a human-supervised academic thesis drafting assistant. "
         "Write thesis-standard, evidence-led, formal British English. "
-        "Use supplied/retrieved references actively, with author-year in-text citations and an APA-style References section. "
-        "Do not cite irrelevant sources and do not invent sources, statistics, ethical approvals, sample sizes, results or reference details. "
+        "Use supplied and source-bank references only when they directly support the claim. "
+        "Use author-year in-text citations and an APA-style References section. "
+        "Do not cite irrelevant sources. Do not invent sources, statistics, ethical approvals, sample sizes, results or reference details. "
         "Where evidence is missing, insert a precise bracketed placeholder. "
-        "Vary sentence length, paragraph shape, and transitions naturally. "
-        "Do not add AI-detection, humanisation, provider, model or internal-process notes."
-    )
+        "Vary sentence length, paragraph shape and transitions naturally without becoming informal. "
+        "Do not add provider, model, AI, detector or internal-process notes. "
+        + source_audit_rule
+    ).strip()
 
+    # 1. Compact planning pass. This helps DeepSeek avoid generic structure.
+    plan = ""
+    if _env_bool("PROJECTREADY_USE_PLANNER", True):
+        plan = _call_deepseek(
+            _build_source_argument_plan_prompt(base_prompt, profile, chapter_number),
+            thesis_system,
+            stage="plan",
+            temperature=_env_float("PROJECTREADY_PLAN_TEMPERATURE", 0.25),
+            max_tokens=_env_int("PROJECTREADY_PLAN_MAX_TOKENS", 2500),
+        )
+
+    # 2. Draft pass.
     draft_prompt = json.dumps(
         {
             "task": "Draft the full thesis chapter now.",
             "chapter_number": chapter_number,
+            "source_and_argument_plan": plan,
             "base_drafting_prompt": base_prompt,
+            "final_instruction": (
+                "Write a complete chapter with developed paragraphs. Do not produce an outline. "
+                "Use placeholders for missing evidence. Keep references accurate and limited to sources cited."
+            ),
         },
         ensure_ascii=False,
         indent=2,
     )
 
-    # Generate draft with a moderate temperature for natural variation
-    draft = _call_deepseek(draft_prompt, thesis_system, temperature=0.75, max_tokens=12000)
+    draft = _call_deepseek(
+        draft_prompt,
+        thesis_system,
+        stage="draft",
+        temperature=_env_float("PROJECTREADY_DRAFT_TEMPERATURE", 0.62),
+        max_tokens=_env_int("PROJECTREADY_DRAFT_MAX_TOKENS", _env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000)),
+    )
+
     if not draft:
         return (
             _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)),
@@ -761,9 +1010,38 @@ def generate_chapter(
         )
 
     final_text = _polish_generated_text(draft)
-    # Apply only light, safe humanisation (no aggressive burstiness or rare words)
+
+    # 3. Expansion pass if the chapter is too thin.
+    minimum_words = _short_draft_threshold(profile, chapter_number, len(selected_section_ids or []))
+    if _env_bool("PROJECTREADY_ENABLE_EXPANSION_PASS", True) and _word_count(final_text) < minimum_words:
+        expanded = _call_deepseek(
+            _build_expansion_prompt(final_text, base_prompt, plan, profile, chapter_number, minimum_words),
+            thesis_system,
+            stage="expand",
+            temperature=_env_float("PROJECTREADY_EXPANSION_TEMPERATURE", 0.56),
+            max_tokens=_env_int("PROJECTREADY_EXPANSION_MAX_TOKENS", _env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000)),
+        )
+        if _accept_rewrite(final_text, expanded, min_ratio=0.85):
+            final_text = _polish_generated_text(expanded)
+
+    # 4. Supervisor-quality revision pass. This is the main fix.
+    if _env_bool("PROJECTREADY_ENABLE_QUALITY_REVISION", True):
+        revised = _call_deepseek(
+            _build_revision_prompt(final_text, base_prompt, plan, profile, chapter_number),
+            thesis_system,
+            stage="review",
+            temperature=_env_float("PROJECTREADY_REVISION_TEMPERATURE", 0.54),
+            max_tokens=_env_int("PROJECTREADY_REVISION_MAX_TOKENS", _env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000)),
+        )
+        if _accept_rewrite(final_text, revised, min_ratio=0.78):
+            final_text = _polish_generated_text(revised)
+
+    # 5. Safe local humanisation, never touches references/tables/equations.
     final_text = _apply_light_humanisation(final_text)
-    return final_text, "deepseek_light_humanised"
+
+    # 6. Final cleanup.
+    final_text = _polish_generated_text(final_text)
+    return final_text, "deepseek_planned_expanded_revised_light_humanised"
 
 
 # ----------------------------------------------------------------------
