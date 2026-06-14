@@ -312,14 +312,14 @@ def _build_apply_review_prompt(draft: str, review: str, profile: dict[str, Any],
 
 
 # ----------------------------------------------------------------------
-# HUMANISER PASS – DEEPSEEK ONLY (NO OPENAI FALLBACK)
+# IMPROVED HUMANISER PASS (PRESERVES LENGTH, HIGHER TOKENS)
 # ----------------------------------------------------------------------
 
 def _humaniser_pass(text: str, profile: dict[str, Any], chapter_number: int) -> str:
     """
     Use DeepSeek exclusively to rewrite the text for maximum human‑likeness.
     Only runs if PROJECTREADY_HUMANISER_PASS=true and DeepSeek is enabled.
-    No OpenAI fallback – if DeepSeek is not available, returns original text.
+    Preserves original length (fails if output becomes too short).
     """
     if not text or len(text) < 200:
         return text
@@ -327,27 +327,27 @@ def _humaniser_pass(text: str, profile: dict[str, Any], chapter_number: int) -> 
     if not _env_bool("PROJECTREADY_HUMANISER_PASS", default=False):
         return text
 
-    # Require DeepSeek to be enabled and have an API key
     if not _deepseek_enabled():
         print("Humaniser pass skipped: DeepSeek not enabled or missing API key.")
         return text
 
     client = _safe_get_deepseek_client()
     if client is None:
-        print("Humaniser pass skipped: DeepSeek client unavailable.")
         return text
 
     model = os.getenv("DEEPSEEK_FAST_MODEL", "deepseek-chat")
 
-    prompt = f"""You are a careful PhD student editing your own academic draft. Rewrite the following text to sound completely human – as if written by a skilled but hurried student. Follow these rules strictly. Do not change any facts, citations, numbers, or bracketed placeholders like [insert ...].
+    # New prompt that forbids shortening and forces natural variation
+    prompt = f"""You are a skilled PhD student editing your own academic draft. Rewrite the following text to sound completely human – as if written by a skilled but hurried student. Follow these rules strictly. Do not change any facts, citations, numbers, or bracketed placeholders like [insert ...].
 
 RULES:
-1. **Very short sentences**: Insert at least one sentence of 3‑5 words every 150 words. Examples: "That matters." "It is not trivial." "This is key."
-2. **No AI buzzwords**: Delete or replace every occurrence of: "furthermore", "moreover", "in addition", "consequently", "however" (replace with "yet", "still", "but"), "crucial", "vital", "delve", "tapestry", "testament", "it is important to note", "plays a crucial role", "various factors", "significant impact".
-3. **Vary paragraph openings**: Do not start consecutive paragraphs with the same word. Use occasional short transitions like "Yet,", "Still,", "Indeed,", "Conversely,".
-4. **Preserve all facts, citations (Author, year), statistics, and bracketed placeholders exactly as given.
-5. **No meta‑comments** about AI or editing.
-6. **Output only the rewritten text, no explanation.
+1. **Keep the original length** – do NOT shorten. You may add a few words but never delete substantive content.
+2. **Very short sentences**: Insert at least one sentence of 3‑5 words every 150 words. Examples: "That matters." "It is not trivial." "This is key."
+3. **No AI buzzwords**: Delete or replace every occurrence of: "furthermore", "moreover", "in addition", "consequently", "however" (replace with "yet", "still", "but"), "crucial", "vital", "delve", "tapestry", "testament", "it is important to note", "plays a crucial role", "various factors", "significant impact".
+4. **Vary paragraph openings**: Do not start consecutive paragraphs with the same word. Use occasional short transitions like "Yet,", "Still,", "Indeed,", "Conversely,".
+5. **Preserve all facts, citations (Author, year), statistics, and bracketed placeholders exactly as given.
+6. **No meta‑comments** about AI or editing.
+7. **Output only the rewritten text, no explanation.
 
 Original text:
 {text}
@@ -358,17 +358,18 @@ Rewritten text:"""
         response = client.chat.completions.create(
             model=model,
             messages=[
-                {"role": "system", "content": "You are an academic editor who improves natural flow without altering content. Use very short sentences, remove AI buzzwords, vary openings, and never change citations or placeholders."},
+                {"role": "system", "content": "You are an academic editor who improves natural flow without altering content or length. Use very short sentences, remove AI buzzwords, vary openings, and never change citations or placeholders."},
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.8,
-            max_tokens=_env_int("OPENAI_MAX_OUTPUT_TOKENS", 8000),
+            temperature=0.85,          # higher creativity
+            max_tokens=_env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000),  # allow longer output
         )
         rewritten = response.choices[0].message.content.strip()
-        if rewritten and len(rewritten) > len(text) * 0.5:
+        # Ensure we didn't lose too much content (85% length retention)
+        if rewritten and len(rewritten) >= len(text) * 0.85:
             return rewritten
         else:
-            print("Humaniser pass produced too short output, keeping original.")
+            print(f"Humaniser output too short ({len(rewritten)} vs {len(text)}), keeping original.")
             return text
     except Exception as e:
         print(f"Humaniser pass failed with DeepSeek: {e}")
@@ -1721,7 +1722,7 @@ def _call_openai_response_safely(client: Any, model: str, instructions: str, pro
 
 
 # ----------------------------------------------------------------------
-# MAIN GENERATION FUNCTION
+# MAIN GENERATION FUNCTION – WITH REORDERED POST-PROCESSING
 # ----------------------------------------------------------------------
 
 def generate_chapter(
@@ -1899,9 +1900,20 @@ def generate_chapter(
                 stage_notes.append(f"final:{final_provider}:{final_model}")
 
     # ------------------------------------------------------------------
-    # HUMANISER PASS – USES DEEPSEEK EXCLUSIVELY (NO OPENAI FALLBACK)
+    # STEP 3: HUMANISER PASS (DeepSeek only)
     # ------------------------------------------------------------------
     final_text = _humaniser_pass(final_text, profile, chapter_number)
+
+    # ------------------------------------------------------------------
+    # STEP 4: Apply all structural and noise passes AFTER the humaniser
+    # ------------------------------------------------------------------
+    final_text = _enforce_burstiness(final_text, target_std_dev=12.0)
+    final_text = _add_drafting_artefacts(final_text, probability_per_500_words=0.8)
+    final_text = _boost_lexical_richness(final_text, replacement_probability=0.5)
+    final_text = _cluster_citations(final_text)
+    final_text = _vary_paragraph_openings(final_text)
+    final_text = _force_short_sentences(final_text, target_every_n_words=200)
+    final_text = _add_human_noise(final_text, error_probability=0.015)
 
     # Final polish to remove any residual meta‑phrases
     final_text = _polish_generated_text(final_text)
