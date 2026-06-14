@@ -998,104 +998,6 @@ def build_drafting_prompt(
 # HUMANISER POST-PROCESSING FUNCTIONS
 # ----------------------------------------------------------------------
 
-def _increase_natural_variation(text: str) -> str:
-    """Post‑process to improve sentence length std dev and break repetitive trigrams."""
-    if not text:
-        return text
-
-    sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text)
-    if len(sentences) < 4:
-        return text
-
-    first_200 = text[:200]
-    if not re.search(r'(?<![A-Z][a-z]\.)[.!?]\s+\b\w{1,4}\b', first_200):
-        match = re.search(r'([^.?!]+[.!?])\s+', first_200)
-        if match:
-            short_clause = " That matters. "
-            text = text[:match.end()] + short_clause + text[match.end():]
-
-    trigram_replacements = {
-        r'\bin order to\b': 'to',
-        r'\bthe fact that\b': 'that',
-        r'\bas well as\b': 'and also',
-        r'\bdue to the fact that\b': 'because',
-        r'\bit is important to note that\b': '',
-        r'\bas a result of\b': 'from',
-    }
-    for pattern, repl in trigram_replacements.items():
-        text = re.sub(pattern, repl, text, flags=re.IGNORECASE)
-
-    short_pair = re.search(r'([^.?!]{5,20}[.!?])\s+([^.?!]{5,20}[.!?])', text)
-    if short_pair and random.random() < 0.3:
-        joined = short_pair.group(1).rstrip('.!?') + ', and ' + short_pair.group(2).lstrip()
-        text = text[:short_pair.start()] + joined + text[short_pair.end():]
-
-    return text
-
-
-def _enforce_burstiness(text: str, target_std_dev: float = 12.0, max_uniform: int = 3) -> str:
-    """Post‑process to guarantee sentence length variance."""
-    if not text or len(text) < 200:
-        return text
-
-    sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text)
-    if len(sentences) < 4:
-        return text
-
-    lengths = [len(s.split()) for s in sentences]
-    mean_len = sum(lengths) / len(lengths)
-    std_dev = (sum((l - mean_len) ** 2 for l in lengths) / len(lengths)) ** 0.5
-
-    if std_dev >= target_std_dev:
-        new_sentences = []
-        run_len = 1
-        for i in range(1, len(sentences)):
-            if abs(lengths[i] - lengths[i-1]) <= 3:
-                run_len += 1
-            else:
-                run_len = 1
-            if run_len > max_uniform:
-                insert_pos = i - run_len//2
-                short_clause = " That is, it matters. "
-                sentences[insert_pos] += short_clause
-                run_len = 0
-        return " ".join(sentences)
-
-    new_sentences = []
-    for s in sentences:
-        word_count = len(s.split())
-        if word_count > 25 and random.random() < 0.6:
-            split_points = [m.start() for m in re.finditer(r'(,|;|and|but|or)\s+', s)]
-            if split_points:
-                split_at = split_points[len(split_points)//2]
-                first = s[:split_at].rstrip()
-                second = s[split_at:].lstrip()
-                if second and second[0].islower():
-                    second = second[0].upper() + second[1:]
-                new_sentences.append(first + ".")
-                new_sentences.append(second)
-                continue
-        new_sentences.append(s)
-
-    merged = []
-    skip = False
-    for i in range(len(new_sentences)):
-        if skip:
-            skip = False
-            continue
-        if i + 1 < len(new_sentences):
-            len_i = len(new_sentences[i].split())
-            len_j = len(new_sentences[i+1].split())
-            if len_i <= 7 and len_j <= 7 and random.random() < 0.6:
-                combined = new_sentences[i].rstrip('.!?') + ', ' + new_sentences[i+1].lower()
-                merged.append(combined)
-                skip = True
-                continue
-        merged.append(new_sentences[i])
-
-    return " ".join(merged)
-
-
 def _body_and_reference_tail(text: str) -> tuple[str, str]:
     """Separate chapter body from References/Source Use Audit so style texture never damages bibliographic details."""
     if not text:
@@ -1143,12 +1045,124 @@ def _map_prose_paragraphs(text: str, func) -> str:
     return "".join(out)
 
 
+# ----------------------------------------------------------------------
+# AGGRESSIVE HUMANISER PASS (High temperature, extreme variation)
+# ----------------------------------------------------------------------
+
+def _aggressive_humaniser_pass(text: str, profile: dict[str, Any], chapter_number: int) -> str:
+    """
+    Use DeepSeek at high temperature to force extreme burstiness and rare vocabulary.
+    Only runs if PROJECTREADY_AGGRESSIVE_HUMANISER=true (or when style_texture=extreme).
+    """
+    if not text or len(text) < 200:
+        return text
+
+    # Only run if explicitly enabled or if extreme texture level is set
+    if not (_env_bool("PROJECTREADY_AGGRESSIVE_HUMANISER", False) or _style_texture_level(profile) == "extreme"):
+        return text
+
+    if not _deepseek_enabled():
+        print("Aggressive humaniser skipped: DeepSeek not enabled.")
+        return text
+
+    client = _safe_get_deepseek_client()
+    if client is None:
+        return text
+
+    model = os.getenv("DEEPSEEK_FAST_MODEL", "deepseek-chat")
+
+    prompt = f"""You are a brilliant but slightly erratic PhD student editing your own draft. Rewrite the text to sound completely human – with extreme variation. Follow these rules strictly. Do not change any facts, citations, numbers, or bracketed placeholders.
+
+RULES:
+1. **Extreme sentence length variation**: Alternate between very short (2-5 word) and very long (30-50 word) sentences. Example: "That matters. Retirement planning has increasingly shifted from a mainly employer-managed arrangement to a matter of individual financial decision-making, especially for workers outside stable salaried employment."
+2. **Very short punch sentences**: Insert at least one 2-4 word sentence every 100 words (e.g., "It matters." "This is key." "Not trivial.")
+3. **Rare vocabulary**: Replace common words with unusual but correct synonyms. Use words like "non‑trivial", "idiosyncratic", "stubborn assumption", "generous sample", "friction", "leaky", "messy", "conundrum", "attests", "evidences".
+4. **No AI buzzwords**: Completely remove: "furthermore", "moreover", "in addition", "consequently", "however" (replace with "yet", "still", "but"), "crucial", "vital", "delve", "tapestry", "testament", "it is important to note".
+5. **Vary paragraph openings aggressively**: Never start two paragraphs the same way. Use "Yet,", "Still,", "Indeed,", "Conversely,", "Oddly,", "Importantly,".
+6. **Preserve all citations, placeholders, and facts exactly.
+7. **Output only the rewritten text.
+
+Original text:
+{text}
+
+Rewritten text:"""
+
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "You are an academic editor who improves natural flow with extreme variation. Use very short and very long sentences, rare vocabulary, and varied openings. Never change citations or placeholders."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.95,          # very high creativity
+            max_tokens=_env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000),
+        )
+        rewritten = response.choices[0].message.content.strip()
+        # Accept if at least 70% of original length (aggressive)
+        if rewritten and len(rewritten) >= len(text) * 0.70:
+            return rewritten
+        else:
+            print(f"Aggressive humaniser output too short ({len(rewritten)} vs {len(text)}), keeping original.")
+            return text
+    except Exception as e:
+        print(f"Aggressive humaniser failed with DeepSeek: {e}")
+        return text
+
+
+def _force_extreme_burstiness(text: str) -> str:
+    """Force a very short (2‑5 word) sentence after any sentence longer than 25 words, with high probability."""
+    def transform(para: str) -> str:
+        sentences = re.split(r'(?<=[.!?])\s+', para)
+        new = []
+        for s in sentences:
+            new.append(s)
+            if len(s.split()) > 25 and random.random() < 0.8:
+                new.append(random.choice([" That matters. ", " It is so. ", " Not trivial. ", " This is key. ", " Consider that. "]))
+        return " ".join(new)
+    return _map_prose_paragraphs(text, transform)
+
+
+def _extreme_lexical_richness(text: str) -> str:
+    """Replace common words with rare, unusual synonyms."""
+    replacements = {
+        r'\bshows that\b': 'attests that',
+        r'\bsuggests that\b': 'points to the possibility that',
+        r'\bdemonstrates that\b': 'evidences that',
+        r'\bimportant role\b': 'non‑trivial function',
+        r'\bsignificant\b': 'consequential',
+        r'\bhowever\b': 'yet',
+        r'\btherefore\b': 'consequently',
+        r'\bfor example\b': 'as an illustration',
+        r'\bbecause\b': 'insofar as',
+        r'\bthe study\b': 'the present investigation',
+        r'\bits findings\b': 'the results obtained',
+        r'\bmany studies\b': 'a substantial body of work',
+        r'\bhas been shown\b': 'has been demonstrated',
+        r'\bin contrast\b': 'by contrast',
+        r'\bimportant\b': 'consequential',
+        r'\bdifferent\b': 'divergent',
+        r'\bsimilar\b': 'analogous',
+        r'\bproblem\b': 'conundrum',
+        r'\bsolution\b': 'resolution',
+        r'\bevidence\b': 'corroboration',
+        r'\bresult\b': 'outcome',
+        r'\bweak\b': 'tenuous',
+        r'\bstrong\b': 'robust',
+        r'\bchange\b': 'shift',
+        r'\buse\b': 'employ',
+    }
+    def transform(para: str) -> str:
+        updated = para
+        for pattern, repl in replacements.items():
+            if random.random() < 0.25:
+                updated = re.sub(pattern, repl, updated, flags=re.IGNORECASE)
+        return updated
+    return _map_prose_paragraphs(text, transform)
+
+
 def _add_drafting_artefacts(text: str, probability_per_500_words: float = 0.25) -> str:
     """
     Add restrained drafting texture to prose only.
-
-    This preserves thesis quality: it does not add typos, fake claims, fake statistics,
-    random citations, or disorder. It only varies connective rhythm in ordinary prose.
     """
     if not text or len(text.split()) < 220:
         return text
@@ -1156,7 +1170,6 @@ def _add_drafting_artefacts(text: str, probability_per_500_words: float = 0.25) 
     def transform(paragraph: str) -> str:
         if random.random() > probability_per_500_words:
             return paragraph
-        # Use gentle academic qualifiers, not gimmicky false starts.
         replacements = [
             (r"\.\s+(However|Nevertheless),\s+", r". That said, "),
             (r"\.\s+(Moreover|Furthermore|In addition),\s+", r". By the same logic, "),
@@ -1209,10 +1222,6 @@ def _boost_lexical_richness(text: str, replacement_probability: float = 0.18) ->
 def _cluster_citations(text: str) -> str:
     """
     Safely cluster only citations that already exist in adjacent text.
-
-    The old version created placeholder citations such as [Author2]. This version never
-    fabricates citations; it only combines neighbouring real author-year citations when
-    they are already present.
     """
     if not text:
         return text
@@ -1269,103 +1278,6 @@ def _force_short_sentences(text: str, target_every_n_words: int = 260) -> str:
     return _map_prose_paragraphs(text, transform)
 
 
-def _force_extreme_burstiness(text: str) -> str:
-    """Force a very short (2‑5 word) sentence after any sentence longer than 30 words."""
-    def transform(para: str) -> str:
-        sentences = re.split(r'(?<=[.!?])\s+', para)
-        new = []
-        for s in sentences:
-            new.append(s)
-            if len(s.split()) > 30 and random.random() < 0.6:
-                new.append(random.choice([" That matters. ", " It is so. ", " Not trivial. ", " This is key. "]))
-        return " ".join(new)
-    return _map_prose_paragraphs(text, transform)
-
-
-def _add_human_noise(text: str, error_probability: float = 0.0) -> str:
-    """
-    Compatibility hook for surface texture.
-
-    By default this deliberately does nothing because thesis drafts should not contain
-    artificial typos. If PROJECTREADY_ALLOW_SURFACE_NOISE=1, it applies only harmless
-    spacing variation in prose paragraphs at a very low probability.
-    """
-    if not text or not _env_bool("PROJECTREADY_ALLOW_SURFACE_NOISE", False):
-        return text
-    error_probability = min(max(error_probability, 0.0), 0.005)
-    if error_probability <= 0:
-        return text
-
-    def transform(paragraph: str) -> str:
-        if random.random() < error_probability:
-            return re.sub(r"\.\s+", ".  ", paragraph, count=1)
-        return paragraph
-
-    return _map_prose_paragraphs(text, transform)
-
-
-# ----------------------------------------------------------------------
-# CONTROLLED TEXTURE HELPERS
-# ----------------------------------------------------------------------
-
-def _split_long_paragraphs(text: str, max_paragraph_words: int = 150) -> str:
-    """Split overly long prose paragraphs while preserving protected blocks."""
-    def transform(paragraph: str) -> str:
-        words = paragraph.split()
-        if len(words) <= max_paragraph_words:
-            return paragraph
-        sentence_ends = [m.end() for m in re.finditer(r"[.!?]\s+", paragraph)]
-        if not sentence_ends:
-            return paragraph
-        target = len(paragraph) // 2
-        split_at = min(sentence_ends, key=lambda pos: abs(pos - target))
-        first, second = paragraph[:split_at].strip(), paragraph[split_at:].strip()
-        if first and second:
-            return first + "\n\n" + second
-        return paragraph
-    return _map_prose_paragraphs(text, transform)
-
-
-def _force_very_short_punch(text: str) -> str:
-    """Insert one concise academic anchor where the prose is very dense."""
-    return _force_short_sentences(text, target_every_n_words=320)
-
-
-def _alternate_sentence_lengths(text: str) -> str:
-    """Break very long sentence sequences in prose blocks."""
-    return _enforce_burstiness(text, target_std_dev=10.0)
-
-
-def _remove_trigger_words(text: str) -> str:
-    replacements = {
-        r"\bFurthermore\b": "Also",
-        r"\bMoreover\b": "More specifically",
-        r"\bIn conclusion\b": "In summary",
-        r"\btapestry\b": "range",
-        r"\btestament\b": "indication",
-        r"\bdelve\b": "examine",
-        r"\bcrucial\b": "central",
-        r"\bIt is important to note that\b": "Notably,",
-        r"\bvital\b": "necessary",
-    }
-    updated = text
-    for pattern, repl in replacements.items():
-        updated = re.sub(pattern, repl, updated, flags=re.IGNORECASE)
-    return updated
-
-
-def _break_rule_of_three(text: str) -> str:
-    """Soften over-neat three-part phrasing without changing meaning."""
-    def transform(paragraph: str) -> str:
-        return re.sub(
-            r"\b([A-Za-z]{4,})\s*,\s*([A-Za-z]{4,})\s*,\s*(?:and\s+)?([A-Za-z]{4,})\b",
-            r"\1, \2, and in some respects \3",
-            paragraph,
-            count=1,
-        )
-    return _map_prose_paragraphs(text, transform)
-
-
 def _inject_tangent(text: str) -> str:
     """
     Add a cautious contextual aside without inventing statistics or external facts.
@@ -1393,148 +1305,18 @@ def _inject_tangent(text: str) -> str:
 
 def _randomise_paragraph_order(text: str) -> str:
     """
-    Compatibility hook for paragraph-order variation.
-
-    It is intentionally conservative: by default it does not reorder paragraphs because
-    a thesis chapter depends on logical sequence. Set PROJECTREADY_ALLOW_PARAGRAPH_REORDER=1
-    to swap adjacent prose paragraphs only within the body, never headings, tables,
-    references, lists, equations or audit sections.
+    Compatibility hook for paragraph-order variation. Disabled by default.
     """
     if not _env_bool("PROJECTREADY_ALLOW_PARAGRAPH_REORDER", False):
         return text
     body, tail = _body_and_reference_tail(text)
     paragraphs = re.split(r"(\n\s*\n)", body)
     prose_indices = [i for i, p in enumerate(paragraphs) if not re.match(r"\n\s*\n", p or "") and not _looks_like_protected_block(p)]
-    # Swap only neighbouring prose paragraphs and only once.
     for a, b in zip(prose_indices, prose_indices[1:]):
         if b == a + 2 and random.random() < 0.10:
             paragraphs[a], paragraphs[b] = paragraphs[b], paragraphs[a]
             break
     return "".join(paragraphs).rstrip() + ("\n\n" + tail if tail else "")
-
-
-def _humanize_structural(text: str, seed: int | None = None) -> str:
-    """Apply controlled structural variation while preserving scholarly order and evidence."""
-    if seed is not None:
-        random.seed(seed)
-    if not text or len(text) < 200:
-        return text
-    text = _split_long_paragraphs(text)
-    text = _force_very_short_punch(text)
-    text = _alternate_sentence_lengths(text)
-    text = _remove_trigger_words(text)
-    text = _break_rule_of_three(text)
-    text = _inject_tangent(text)
-    text = _randomise_paragraph_order(text)
-    return text
-
-
-def _humanize_with_small_model(text: str, model: str | None = None) -> str:
-    """
-    Optional low-cost style rewrite using DeepSeek/OpenAI-compatible provider.
-
-    Disabled unless PROJECTREADY_SMALL_MODEL_STYLE=1. It rewrites only shorter bodies to
-    avoid truncation/cost and instructs the provider to preserve citations, numbers,
-    headings, placeholders, tables and references exactly.
-    """
-    if not text or not _env_bool("PROJECTREADY_SMALL_MODEL_STYLE", False):
-        return text
-    max_words = _env_int("PROJECTREADY_STYLE_REWRITE_MAX_WORDS", 1400)
-    if len(text.split()) > max_words:
-        return text
-
-    provider = "deepseek" if _deepseek_enabled() else "openai"
-    if model is None:
-        model = os.getenv("DEEPSEEK_FAST_MODEL", "deepseek-chat") if provider == "deepseek" else os.getenv("OPENAI_FALLBACK_MODEL", "gpt-4.1-mini")
-    prompt = json.dumps(
-        {
-            "task": "Lightly revise prose rhythm only.",
-            "non_negotiable_rules": [
-                "Preserve all headings, citations, numbers, tables, equations, placeholders, URLs, DOIs and reference entries exactly.",
-                "Do not add facts, statistics, sources, claims, typos, provider notes or AI-related notes.",
-                "Improve only sentence rhythm, transitions, paragraph flow and academic naturalness.",
-            ],
-            "text": text,
-        },
-        ensure_ascii=False,
-        indent=2,
-    )
-    revised = _call_provider_safely(
-        provider,
-        model,
-        "You are a cautious academic copy-editor. Preserve evidence and citation integrity exactly.",
-        prompt,
-        stage="style_texture_small_model",
-        max_tokens=min(_env_int("PROJECTREADY_STYLE_REWRITE_MAX_TOKENS", 3500), _env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000)),
-        temperature=0.25,
-    )
-    return revised.strip() if revised and len(revised.split()) > max(80, int(len(text.split()) * 0.55)) else text
-
-
-def _style_texture_level(profile: dict[str, Any] | None = None) -> str:
-    profile = profile or {}
-    level = str(profile.get("style_texture") or os.getenv("PROJECTREADY_STYLE_TEXTURE", "conservative")).strip().lower()
-    if level not in {"off", "conservative", "moderate", "strong", "extreme"}:
-        level = "conservative"
-    return level
-
-
-def _apply_style_texture(text: str, profile: dict[str, Any], chapter_number: int) -> str:
-    """
-    Seamlessly integrate the requested texture functions as a final controlled stage.
-
-    The stage is safe for thesis work: it preserves references, citation integrity,
-    headings, tables, equations and placeholders. It does not fabricate citations or facts.
-    """
-    level = _style_texture_level(profile)
-    if level == "off" or not text:
-        return text
-
-    body, tail = _body_and_reference_tail(text)
-    if not body.strip():
-        return text
-
-    seed_basis = f"{profile.get('title','')}|{chapter_number}|{level}"
-    random.seed(abs(hash(seed_basis)) & 0xFFFFFFFF)
-
-    if level == "conservative":
-        body = _add_drafting_artefacts(body, probability_per_500_words=0.12)
-        body = _cluster_citations(body)
-        body = _vary_paragraph_openings(body)
-        body = _force_short_sentences(body, target_every_n_words=320)
-    elif level == "moderate":
-        body = _humanize_structural(body)
-        body = _add_drafting_artefacts(body, probability_per_500_words=0.20)
-        body = _boost_lexical_richness(body, replacement_probability=0.12)
-        body = _cluster_citations(body)
-        body = _vary_paragraph_openings(body)
-        body = _force_short_sentences(body, target_every_n_words=260)
-        body = _inject_tangent(body)
-    elif level == "strong":
-        body = _humanize_structural(body)
-        body = _add_drafting_artefacts(body, probability_per_500_words=0.28)
-        body = _boost_lexical_richness(body, replacement_probability=0.18)
-        body = _cluster_citations(body)
-        body = _vary_paragraph_openings(body)
-        body = _force_short_sentences(body, target_every_n_words=220)
-        body = _inject_tangent(body)
-        body = _randomise_paragraph_order(body)
-        body = _humanize_with_small_model(body)
-        body = _add_human_noise(body, error_probability=0.003)
-    else:  # extreme – for beating institutional detectors
-        body = _humanize_structural(body)
-        body = _add_drafting_artefacts(body, probability_per_500_words=0.35)
-        body = _boost_lexical_richness(body, replacement_probability=0.30)
-        body = _cluster_citations(body)
-        body = _vary_paragraph_openings(body)
-        body = _force_extreme_burstiness(body)          # forces very short sentences after long ones
-        body = _inject_tangent(body)
-        body = _randomise_paragraph_order(body)
-        body = _humanize_with_small_model(body)         # optional high‑temp rewrite
-        body = _add_human_noise(body, error_probability=0.005)
-
-    body = _polish_generated_text(body)
-    return body.rstrip() + ("\n\n" + tail if tail else "")
 
 
 def _polish_generated_text(text: str) -> str:
@@ -1600,6 +1382,65 @@ def _polish_generated_text(text: str) -> str:
     polished = re.sub(r"[ \t]{2,}", " ", polished)
     polished = re.sub(r"\n{3,}", "\n\n", polished)
     return polished.strip()
+
+
+def _style_texture_level(profile: dict[str, Any] | None = None) -> str:
+    profile = profile or {}
+    level = str(profile.get("style_texture") or os.getenv("PROJECTREADY_STYLE_TEXTURE", "conservative")).strip().lower()
+    if level not in {"off", "conservative", "moderate", "strong", "extreme"}:
+        level = "conservative"
+    return level
+
+
+def _apply_style_texture(text: str, profile: dict[str, Any], chapter_number: int) -> str:
+    """
+    Seamlessly integrate the requested texture functions as a final controlled stage.
+    """
+    level = _style_texture_level(profile)
+    if level == "off" or not text:
+        return text
+
+    body, tail = _body_and_reference_tail(text)
+    if not body.strip():
+        return text
+
+    seed_basis = f"{profile.get('title','')}|{chapter_number}|{level}"
+    random.seed(abs(hash(seed_basis)) & 0xFFFFFFFF)
+
+    if level == "conservative":
+        body = _add_drafting_artefacts(body, probability_per_500_words=0.12)
+        body = _cluster_citations(body)
+        body = _vary_paragraph_openings(body)
+        body = _force_short_sentences(body, target_every_n_words=320)
+    elif level == "moderate":
+        body = _add_drafting_artefacts(body, probability_per_500_words=0.20)
+        body = _boost_lexical_richness(body, replacement_probability=0.12)
+        body = _cluster_citations(body)
+        body = _vary_paragraph_openings(body)
+        body = _force_short_sentences(body, target_every_n_words=260)
+        body = _inject_tangent(body)
+    elif level == "strong":
+        body = _add_drafting_artefacts(body, probability_per_500_words=0.28)
+        body = _boost_lexical_richness(body, replacement_probability=0.18)
+        body = _cluster_citations(body)
+        body = _vary_paragraph_openings(body)
+        body = _force_short_sentences(body, target_every_n_words=220)
+        body = _inject_tangent(body)
+        body = _randomise_paragraph_order(body)
+    else:  # extreme – for passing institutional detectors
+        # First, apply aggressive DeepSeek humaniser (high temperature)
+        body = _aggressive_humaniser_pass(body, profile, chapter_number)
+        # Then apply structural extreme passes
+        body = _force_extreme_burstiness(body)
+        body = _extreme_lexical_richness(body)
+        body = _add_drafting_artefacts(body, probability_per_500_words=0.35)
+        body = _cluster_citations(body)
+        body = _vary_paragraph_openings(body)
+        body = _inject_tangent(body)
+        body = _randomise_paragraph_order(body)
+
+    body = _polish_generated_text(body)
+    return body.rstrip() + ("\n\n" + tail if tail else "")
 
 
 # ----------------------------------------------------------------------
@@ -1700,7 +1541,6 @@ def _review_source_integration(
         "draft_to_revise": draft,
     }
     try:
-        # Use chat completion for the review pass as well (replaces responses.create)
         response = client.chat.completions.create(
             model=model,
             messages=[
@@ -1831,10 +1671,6 @@ def generate_chapter(
 ) -> tuple[str, str]:
     """
     Generate a chapter with a cost-aware multi-provider workflow.
-
-    Standard mode keeps cost low by using DeepSeek for planning/source mapping and
-    OpenAI GPT-4.1 for the full thesis-standard chapter. Premium mode adds a short
-    GPT-5.5 review and a final GPT-4.1 revision. Economy mode can draft with DeepSeek.
     """
     try:
         base_prompt = build_drafting_prompt(profile, chapter_number, selected_section_ids, answers, extra_instructions)
@@ -1938,7 +1774,7 @@ def generate_chapter(
 
     final_text = _polish_generated_text(draft)
 
-    # Stage 3/4: Optional premium compact review + final application. Disabled by default to control cost/time.
+    # Stage 3/4: Optional premium compact review + final application. Disabled by default.
     premium_review = mode == "premium" or _env_bool("PROJECTREADY_PREMIUM_REVIEW", False)
     extra_passes = _env_int("PROJECTREADY_EXTRA_AI_PASSES", 0)
     if premium_review and extra_passes > 0:
