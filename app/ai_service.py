@@ -25,6 +25,292 @@ def _safe_get_openai_client():
         return None
 
 
+# ----------------------------------------------------------------------
+# MULTI-PROVIDER MODEL ROUTING: OPENAI + DEEPSEEK
+# ----------------------------------------------------------------------
+
+def _safe_get_deepseek_client():
+    """Return a DeepSeek client using the OpenAI-compatible SDK interface."""
+    api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
+    if not api_key:
+        return None
+    try:
+        from openai import OpenAI
+        return OpenAI(
+            api_key=api_key,
+            base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").strip() or "https://api.deepseek.com",
+        )
+    except Exception:
+        return None
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name, "").strip().lower()
+    if not value:
+        return default
+    return value in {"1", "true", "yes", "on", "y"}
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(str(os.getenv(name, default)).strip())
+    except Exception:
+        return default
+
+
+def _normalise_generation_mode(profile: dict[str, Any] | None = None) -> str:
+    """Return economy, standard, enhanced or premium."""
+    profile = profile or {}
+    mode = (
+        profile.get("generation_mode")
+        or profile.get("model_mode")
+        or os.getenv("PROJECTREADY_DEFAULT_MODE", "standard")
+    )
+    mode = str(mode or "standard").strip().lower()
+    if mode not in {"economy", "standard", "enhanced", "premium"}:
+        mode = "standard"
+    return mode
+
+
+def _deepseek_enabled() -> bool:
+    return _env_bool("PROJECTREADY_ENABLE_DEEPSEEK", False) and bool(os.getenv("DEEPSEEK_API_KEY", "").strip())
+
+
+def _provider_model_for_stage(stage: str, mode: str) -> tuple[str, str]:
+    """
+    Stage router.
+
+    economy  = DeepSeek plan + DeepSeek draft
+    standard = DeepSeek plan/source work + OpenAI draft
+    enhanced = DeepSeek plan + OpenAI draft + optional OpenAI/DeepSeek review
+    premium  = DeepSeek plan + OpenAI draft + GPT-5.5 review + OpenAI final
+    """
+    deepseek_fast = os.getenv("DEEPSEEK_FAST_MODEL", "deepseek-chat").strip() or "deepseek-chat"
+    deepseek_reasoner = os.getenv("DEEPSEEK_REASONER_MODEL", "deepseek-reasoner").strip() or "deepseek-reasoner"
+
+    openai_draft = os.getenv("OPENAI_DRAFT_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-4.1"
+    openai_review = os.getenv("OPENAI_REVIEW_MODEL") or os.getenv("OPENAI_PLANNER_MODEL") or "gpt-5.5"
+    openai_final = os.getenv("OPENAI_FINAL_MODEL") or openai_draft
+    openai_fallback = os.getenv("OPENAI_FALLBACK_MODEL") or "gpt-4.1-mini"
+
+    ds_on = _deepseek_enabled()
+
+    if mode == "economy":
+        if ds_on and stage in {"sources", "plan", "draft", "review"}:
+            return "deepseek", deepseek_reasoner if stage in {"plan", "draft"} else deepseek_fast
+        return "openai", openai_fallback
+
+    if mode == "standard":
+        if ds_on and stage in {"sources", "plan"}:
+            return "deepseek", deepseek_fast
+        if stage in {"draft", "final"}:
+            return "openai", openai_draft
+        return "openai", openai_fallback
+
+    if mode == "enhanced":
+        if ds_on and stage in {"sources", "plan"}:
+            return "deepseek", deepseek_reasoner
+        if stage in {"draft", "final"}:
+            return "openai", openai_draft
+        if stage == "review":
+            return "openai", openai_review
+        return "openai", openai_fallback
+
+    if mode == "premium":
+        if ds_on and stage in {"sources", "plan"}:
+            return "deepseek", deepseek_reasoner
+        if stage == "review":
+            return "openai", openai_review
+        if stage in {"draft", "final"}:
+            return "openai", openai_final if stage == "final" else openai_draft
+        return "openai", openai_fallback
+
+    return "openai", openai_draft
+
+
+def _client_for_provider(provider: str):
+    if provider == "deepseek":
+        return _safe_get_deepseek_client()
+    return _safe_get_openai_client()
+
+
+def _extract_text_from_chat_response(response: Any) -> str:
+    try:
+        return str(response.choices[0].message.content or "").strip()
+    except Exception:
+        return ""
+
+
+def _extract_text_from_responses_api(response: Any) -> str:
+    text = str(getattr(response, "output_text", "") or "").strip()
+    if text:
+        return text
+    try:
+        parts: list[str] = []
+        for item in getattr(response, "output", []) or []:
+            for content in getattr(item, "content", []) or []:
+                maybe = getattr(content, "text", "") or ""
+                if maybe:
+                    parts.append(str(maybe))
+        return "\n".join(parts).strip()
+    except Exception:
+        return ""
+
+
+def _call_provider_safely(
+    provider: str,
+    model: str,
+    instructions: str,
+    prompt: str,
+    *,
+    stage: str = "draft",
+    max_tokens: int | None = None,
+    temperature: float = 0.45,
+) -> str:
+    """
+    Safe multi-provider call.
+    OpenAI tries Responses API first, then Chat Completions. DeepSeek uses Chat Completions.
+    """
+    client = _client_for_provider(provider)
+    if client is None:
+        return ""
+
+    timeout_seconds = _env_int("OPENAI_TIMEOUT_SECONDS", 90)
+    max_tokens = max_tokens or _env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000)
+
+    # DeepSeek and most OpenAI-compatible providers use chat completions.
+    if provider == "deepseek":
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": instructions},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=timeout_seconds,
+            )
+            return _extract_text_from_chat_response(response)
+        except Exception as e:
+            print(f"DeepSeek API error at {stage}: {e}")
+            return ""
+
+    # OpenAI: Responses API first, because long-context models are better supported there.
+    try:
+        response = client.responses.create(
+            model=model,
+            instructions=instructions,
+            input=prompt,
+            temperature=temperature,
+            max_output_tokens=max_tokens,
+            timeout=timeout_seconds,
+        )
+        text = _extract_text_from_responses_api(response)
+        if text:
+            return text
+    except Exception as e:
+        print(f"OpenAI Responses API error at {stage}: {e}")
+
+    # Fallback to Chat Completions for models/accounts where Responses is unavailable.
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": instructions},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=timeout_seconds,
+        )
+        return _extract_text_from_chat_response(response)
+    except Exception as e:
+        print(f"OpenAI Chat Completions error at {stage}: {e}")
+        fallback_model = os.getenv("OPENAI_FALLBACK_MODEL", "").strip()
+        if fallback_model and fallback_model != model:
+            try:
+                response = client.chat.completions.create(
+                    model=fallback_model,
+                    messages=[
+                        {"role": "system", "content": instructions},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    timeout=timeout_seconds,
+                )
+                return _extract_text_from_chat_response(response)
+            except Exception as e2:
+                print(f"OpenAI fallback model error at {stage}: {e2}")
+        return ""
+
+
+def _build_source_and_argument_plan_prompt(profile: dict[str, Any], chapter_number: int, drafting_prompt: str) -> str:
+    """Compact planning prompt usually handled by DeepSeek to reduce OpenAI token cost."""
+    return json.dumps(
+        {
+            "task": "Prepare a compact thesis-chapter plan, source-use map and evidence-gap list before drafting.",
+            "chapter_number": chapter_number,
+            "project_title": profile.get("title", ""),
+            "rules": [
+                "Do not draft the full chapter.",
+                "Identify the central argument for the selected chapter.",
+                "List which supplied/retrieved sources appear relevant and where they should be used.",
+                "Flag not_relevant sources that should be excluded.",
+                "Identify missing statistics, policy evidence, sample details, variables, methods or results that need placeholders.",
+                "Return a compact plan under 1,500 words.",
+            ],
+            "drafting_prompt": drafting_prompt,
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
+def _build_final_review_prompt(draft: str, profile: dict[str, Any], chapter_number: int, source_plan: str = "") -> str:
+    return json.dumps(
+        {
+            "task": "Review this thesis chapter for supervisor-ready quality. Return a compact actionable review, not a rewrite.",
+            "chapter_number": chapter_number,
+            "project_title": profile.get("title", ""),
+            "checks": [
+                "Is the writing thesis-standard, substantive and not scanty?",
+                "Are in-text citations used across substantive paragraphs where supplied sources support the claims?",
+                "Are references limited to sources actually cited?",
+                "Are source-finder records used only when relevant?",
+                "Are unsupported claims replaced with precise placeholders instead of invented facts?",
+                "Are headings, tables, equations, results and methodology tense appropriate?",
+            ],
+            "source_and_argument_plan": source_plan,
+            "draft": draft,
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
+def _build_apply_review_prompt(draft: str, review: str, profile: dict[str, Any], chapter_number: int) -> str:
+    return json.dumps(
+        {
+            "task": "Apply the review to produce a final clean thesis chapter. Revise, do not restart.",
+            "chapter_number": chapter_number,
+            "project_title": profile.get("title", ""),
+            "rules": [
+                "Keep accurate citations, source-use audit, references, tables and placeholders.",
+                "Improve thesis-standard depth and paragraph development.",
+                "Do not fabricate citations, statistics, methods, sample sizes, approvals, results or references.",
+                "Do not mention AI, models, providers or internal review.",
+                "Use British English and APA-style author-year citations by default.",
+            ],
+            "review": review,
+            "draft": draft,
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
 def _reference_currency_requirements() -> dict[str, Any]:
     """Return the reference currency rule used across generated chapters."""
     current_year = datetime.now().year
@@ -807,7 +1093,7 @@ def _add_human_noise(text: str, error_probability: float = 0.02) -> str:
 
 
 # ----------------------------------------------------------------------
-# STRUCTURAL ANTI-DETECTION TRANSFORMATIONS (Five-point method)
+# UNUSED LEGACY TEXT-VARIATION HELPERS (NOT CALLED BY GENERATION)
 # ----------------------------------------------------------------------
 
 def _split_long_paragraphs(text: str, max_paragraph_words: int = 120) -> str:
@@ -926,7 +1212,7 @@ def _randomise_paragraph_order(text: str) -> str:
 
 
 def _humanize_structural(text: str, seed: int = None) -> str:
-    """Apply the five‑point structural humanisation to break AI detection patterns."""
+    """Legacy helper retained for backward compatibility; not called by generation."""
     if seed is not None:
         random.seed(seed)
     if not text or len(text) < 200:
@@ -1209,36 +1495,16 @@ def _human_academic_revision_pass(
 
 
 def _call_openai_response_safely(client: Any, model: str, instructions: str, prompt: str) -> str:
-    """Call OpenAI chat completion API (works with gpt-3.5-turbo, gpt-4, etc.)."""
-    try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": instructions},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.7,
-            max_tokens=4000,
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        print(f"OpenAI API error: {e}")
-        fallback_model = os.getenv("OPENAI_FALLBACK_MODEL", "").strip()
-        if fallback_model and fallback_model != model:
-            try:
-                response = client.chat.completions.create(
-                    model=fallback_model,
-                    messages=[
-                        {"role": "system", "content": instructions},
-                        {"role": "user", "content": prompt},
-                    ],
-                    temperature=0.7,
-                    max_tokens=4000,
-                )
-                return response.choices[0].message.content.strip()
-            except Exception:
-                return ""
-        return ""
+    """Backward-compatible wrapper used by older helper functions."""
+    return _call_provider_safely(
+        "openai",
+        model,
+        instructions,
+        prompt,
+        stage="legacy_openai_call",
+        max_tokens=_env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000),
+        temperature=0.45,
+    )
 
 
 # ----------------------------------------------------------------------
@@ -1254,92 +1520,149 @@ def generate_chapter(
     use_ai: bool = True,
 ) -> tuple[str, str]:
     """
-    Generate a chapter using OpenAI (if available) or fallback to local templates.
-    Incorporates high‑burstiness, randomised humaniser and multiple human‑quality passes.
+    Generate a chapter with a cost-aware multi-provider workflow.
+
+    Standard mode keeps cost low by using DeepSeek for planning/source mapping and
+    OpenAI GPT-4.1 for the full thesis-standard chapter. Premium mode adds a short
+    GPT-5.5 review and a final GPT-4.1 revision. Economy mode can draft with DeepSeek.
     """
     try:
-        prompt = build_drafting_prompt(profile, chapter_number, selected_section_ids, answers, extra_instructions)
+        base_prompt = build_drafting_prompt(profile, chapter_number, selected_section_ids, answers, extra_instructions)
     except Exception:
         return (
             _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)),
-            "local_template_fallback_prompt_error"
+            "local_template_fallback_prompt_error",
         )
 
-    client = _safe_get_openai_client()
-    if use_ai and client:
-        # Use gpt-3.5-turbo (set OPENAI_MODEL env var, default to gpt-3.5-turbo)
-        model = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
-        instructions = (
-            "You are ProjectReady AI, an academic project‑work drafting and compliance assistant. "
-            "Write in a natural, high‑standard scholarly voice that sounds like a carefully supervised draft, "
-            "built from the student's own evidence, context, supervisor comments and project decisions. "
-            "Apply controlled high‑burstiness and high‑perplexity: vary sentence/paragraph length, transitions, vocabulary, "
-            "and argumentative rhythm while keeping clarity, evidence‑led reasoning, and disciplinary precision. "
-            "Never mention the selected academic level, template, or checklist. Avoid generic AI phrasing, filler, overclaiming, "
-            "and perfectly balanced paragraphs. Use grounded verbs (suggests, indicates, complicates, qualifies). "
-            "Do not begin problem statements with 'The research problem is that'. Frame problems through evidence, tension, or gap. "
-            "Do not fabricate sources, results, approvals, or evidence. Use clear [bracketed placeholders] when information is missing. "
-            "Write as a completed final project (past tense for methodology, future only for suggested research in Ch5). "
-            "For Ch2: use clean markdown gap tables and Mermaid flowcharts for diagrams. For equations: display blocks with $$. "
-            "For Ch4: never invent output; present only supplied results. Apply reference currency (≥70% recent, but allow older where needed). "
-            "Include accurate in‑text citations. For source‑finder results: integrate only highly_relevant/partly_relevant records, "
-            "exclude not_relevant, and add a Source Use Audit after References. Do not add any AI‑detection or humanisation notes – "
-            "just produce normal scholarly prose."
+    if not use_ai:
+        return (
+            _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)),
+            "local_template_fallback_ai_disabled",
         )
 
-        text = _call_openai_response_safely(client, model, instructions, prompt)
-        if text:
-            # 1. Basic polish
-            polished = _polish_generated_text(text)
+    mode = _normalise_generation_mode(profile)
+    source_plan = ""
+    stage_notes: list[str] = []
 
-            # 2. Increase natural variation
-            polished = _increase_natural_variation(polished)
-
-            # 3. Relevance‑gated source integration
-            polished = _review_source_integration(
-                client=client,
-                model=model,
-                instructions=instructions,
-                original_prompt=prompt,
-                draft=polished,
-                profile=profile,
-                chapter_number=chapter_number,
-            )
-
-            # 4. Final human‑academic revision pass
-            polished = _human_academic_revision_pass(
-                client=client,
-                model=model,
-                instructions=instructions,
-                original_prompt=prompt,
-                draft=polished,
-                profile=profile,
-                chapter_number=chapter_number,
-            )
-
-            # 5. Core humanisation passes (burstiness, artefacts, lexical richness)
-            polished = _enforce_burstiness(polished, target_std_dev=12.0)
-            polished = _add_drafting_artefacts(polished, probability_per_500_words=0.8)
-            polished = _boost_lexical_richness(polished, replacement_probability=0.5)
-
-            # 6. Additional high‑quality humanisation
-            polished = _cluster_citations(polished)
-            polished = _vary_paragraph_openings(polished)
-            polished = _force_short_sentences(polished, target_every_n_words=200)
-
-            # 7. Final subtle noise (typos, spacing errors)
-            polished = _add_human_noise(polished, error_probability=0.015)
-
-            # 8. Structural anti-detection pass (five-point method)
-            polished = _humanize_structural(polished)
-
-            return polished, "openai_chat_completion"
-
-    # Fallback when AI is disabled or fails
-    return (
-        _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)),
-        "local_template_fallback"
+    thesis_system = (
+        "You are ProjectReady AI, a human-supervised academic thesis drafting assistant. "
+        "Write thesis-standard, evidence-led, formal British English. Produce substantive paragraphs, not checklist notes. "
+        "Use supplied/retrieved references actively where relevant, with author-year in-text citations and an APA-style References section. "
+        "Do not cite irrelevant sources and do not invent sources, statistics, ethical approvals, sample sizes, results or reference details. "
+        "Where evidence is missing, insert a precise bracketed placeholder. "
+        "Use controlled high-burstiness scholarly prose only as natural academic rhythm: varied sentence length, paragraph shape and transitions, while preserving clarity and methodological precision. "
+        "Do not add AI-detection, humanisation, provider, model or internal-process notes to the chapter. "
+        "Do not introduce deliberate errors, typos, false facts, fake citations or random paragraph order."
     )
+
+    # Stage 1: Cheap source/argument planning, usually DeepSeek.
+    if _deepseek_enabled() and mode in {"economy", "standard", "enhanced", "premium"}:
+        provider, model = _provider_model_for_stage("plan", mode)
+        plan_prompt = _build_source_and_argument_plan_prompt(profile, chapter_number, base_prompt)
+        source_plan = _call_provider_safely(
+            provider,
+            model,
+            thesis_system + " Prepare only a compact plan and source map; do not draft the chapter.",
+            plan_prompt,
+            stage="plan",
+            max_tokens=_env_int("PROJECTREADY_PLAN_MAX_TOKENS", 2500),
+            temperature=0.25,
+        )
+        if source_plan:
+            stage_notes.append(f"plan:{provider}:{model}")
+
+    # Stage 2: Full draft. Economy may use DeepSeek; standard/premium use OpenAI.
+    provider, model = _provider_model_for_stage("draft", mode)
+    draft_prompt = json.dumps(
+        {
+            "task": "Draft the full thesis chapter now.",
+            "chapter_number": chapter_number,
+            "generation_mode": mode,
+            "source_and_argument_plan": source_plan,
+            "mandatory_quality_rules": [
+                "The output must be a full thesis-standard chapter, not an outline, worksheet, or placeholder-only draft.",
+                "Each substantive section must contain developed paragraphs with analysis and citation support where supplied sources are relevant.",
+                "Use the source bank/retrieved sources in the base prompt. Cite relevant sources in the body and include only cited sources in References.",
+                "If the source bank is available, add a short Source Use Audit after References.",
+                "Use placeholders only for genuinely missing evidence, statistics, methodological decisions, results, or source details.",
+                "Do not mention uploaded files, AI provider, internal plan, or this instruction in the chapter body.",
+            ],
+            "base_drafting_prompt": base_prompt,
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+    draft = _call_provider_safely(
+        provider,
+        model,
+        thesis_system,
+        draft_prompt,
+        stage="draft",
+        max_tokens=_env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000),
+        temperature=0.48,
+    )
+
+    # If selected draft provider failed, try sensible fallback paths before local fallback.
+    if not draft and provider == "deepseek":
+        fallback_model = os.getenv("OPENAI_FALLBACK_MODEL", os.getenv("OPENAI_MODEL", "gpt-4.1-mini"))
+        draft = _call_provider_safely(
+            "openai",
+            fallback_model,
+            thesis_system,
+            draft_prompt,
+            stage="draft_openai_fallback_after_deepseek",
+            max_tokens=_env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000),
+            temperature=0.45,
+        )
+        if draft:
+            stage_notes.append(f"draft:openai:{fallback_model}")
+    elif draft:
+        stage_notes.append(f"draft:{provider}:{model}")
+
+    if not draft:
+        return (
+            _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)),
+            "local_template_fallback_provider_failed",
+        )
+
+    final_text = _polish_generated_text(draft)
+
+    # Stage 3/4: Optional premium compact review + final application. Disabled by default to control cost/time.
+    premium_review = mode == "premium" or _env_bool("PROJECTREADY_PREMIUM_REVIEW", False)
+    extra_passes = _env_int("PROJECTREADY_EXTRA_AI_PASSES", 0)
+    if premium_review and extra_passes > 0:
+        review_provider, review_model = _provider_model_for_stage("review", mode)
+        review_prompt = _build_final_review_prompt(final_text, profile, chapter_number, source_plan)
+        review = _call_provider_safely(
+            review_provider,
+            review_model,
+            thesis_system + " Return only a compact academic review report; do not rewrite the chapter.",
+            review_prompt,
+            stage="review",
+            max_tokens=_env_int("PROJECTREADY_REVIEW_MAX_TOKENS", 2500),
+            temperature=0.25,
+        )
+        if review:
+            stage_notes.append(f"review:{review_provider}:{review_model}")
+            final_provider, final_model = _provider_model_for_stage("final", mode)
+            final_prompt = _build_apply_review_prompt(final_text, review, profile, chapter_number)
+            revised = _call_provider_safely(
+                final_provider,
+                final_model,
+                thesis_system + " Apply the review and produce the final chapter. Revise, do not restart.",
+                final_prompt,
+                stage="final",
+                max_tokens=_env_int("OPENAI_MAX_OUTPUT_TOKENS", 12000),
+                temperature=0.38,
+            )
+            if revised:
+                final_text = _polish_generated_text(revised)
+                stage_notes.append(f"final:{final_provider}:{final_model}")
+
+    # Safe final polish only. Do not run artificial noise, anti-detection, random paragraph order, or fake citation clustering.
+    final_text = _polish_generated_text(final_text)
+    source = "multi_provider_" + mode + "_" + "|".join(stage_notes) if stage_notes else "multi_provider_" + mode
+    return final_text, source
 
 
 # ----------------------------------------------------------------------
