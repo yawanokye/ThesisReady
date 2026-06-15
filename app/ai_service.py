@@ -54,7 +54,7 @@ def _citation_and_evidence_requirements(chapter_number: int) -> dict[str, Any]:
         "Include relevant and accurate in-text citations in every substantive section of the write-up.",
         "Use author-year citation style unless the user or institution requests another style.",
         "Do not cite a source unless the source was supplied by the student, included in the profile/reference notes, present in uploaded material, or can be stated confidently without guessing.",
-        "Where a citation is needed but no reliable source details are available, insert a red bracketed placeholder in the draft, such as [insert verified source for this claim] rather than inventing a citation.",
+        "Where a citation is needed but no reliable source details are available, insert a clean bracketed action placeholder in the draft, such as [ACTION REQUIRED: insert verified source for this claim] rather than inventing a citation.",
         "Support factual claims with evidence. Use statistics, policy evidence, institutional records, peer-reviewed studies, official reports, or credible datasets where available.",
         f"Prioritise recent references from {start_year}-{current_year}, but use older sources when they are foundational theories, classic models, or the best credible evidence available.",
         "Do not create a reference list entry for any source unless enough accurate bibliographic information is supplied or known with confidence.",
@@ -289,17 +289,17 @@ def _human_scholarly_style_requirements(seed: Optional[int] = None) -> dict[str,
 
     full_rules = {
         "syntactic_burstiness": [
-            "Vary sentence length with target std dev 12–18 words (mean ~20). Never use uniform lengths for >3 consecutive sentences.",
+            "Vary sentence length with target std dev 12-18 words (mean ~20). Never use uniform lengths for >3 consecutive sentences.",
             "Insert at least one very short sentence (3–7 words) every 100–150 words. Use it to deliver a conceptual punch or blunt concession.",
-            "Every 2–3 paragraphs, write one deliberately over‑nested sentence (4+ clauses) followed immediately by a terse rephrasing (e.g., 'Or, more simply: X.')",
+            "Every 2-3 paragraphs, write one deliberately over‑nested sentence (4+ clauses) followed immediately by a terse rephrasing (e.g., 'Or, more simply: X.')",
             "Avoid the three‑part parallel structure (e.g., 'First, X. Second, Y. Third, Z.') more than once per 500 words.",
-            "When listing evidence, vary formats: run‑in lists, dashed interruptions, parenthetical asides, occasionally no list marker."
+            "When listing evidence, vary formats naturally, using run-in lists, parenthetical asides, or concise prose. Avoid long dash interruptions unless they are clearly needed."
         ],
         "argumentative_authenticity": [
             "Inject a genuine doubt or counterargument in every section except conclusion. Frame as 'One might object that...' then rebut.",
             "Never write a paragraph that only summarises a source. Always append an interpretive sentence: extends, limits, compares, or applies to your own problem.",
-            "Introduce one 'self‑interruption' per 800 words: a sentence beginning with 'But wait –' or 'That said, a closer look reveals...'",
-            "Do not resolve every tension immediately. Let one theoretical or empirical contradiction persist across 2–3 paragraphs.",
+            "Use cautious qualification sparingly, for example with 'That said, a closer look reveals...' rather than long dash interruptions",
+            "Do not resolve every tension immediately. Let one theoretical or empirical contradiction persist across 2-3 paragraphs.",
             "Use hedging that varies in strength: 'strongly suggests', 'weakly implies', 'raises the possibility that' depending on evidence."
         ],
         "lexical_vernacular": [
@@ -310,13 +310,13 @@ def _human_scholarly_style_requirements(seed: Optional[int] = None) -> dict[str,
         ],
         "citation_and_evidence": [
             "Cluster citations to show conceptual mapping: (e.g., Smith 2019; Jones 2020 on tension, but see Lee 2021 for counterview). Never pure parenthetical list without commentary.",
-            "Vary citation density: sometimes one citation per claim; other times 3–6 citations at end of complex sentence to signal well‑established area.",
+            "Vary citation density: sometimes one citation per claim; other times 3-6 citations at end of complex sentence to signal well‑established area.",
             "Use narrative citations with present‑perfect for ongoing debates: 'Smith has argued...' interspersed with simple past for settled findings.",
             "Deliberately include one 'I find X, yet Y suggests the opposite' pattern per literature review subsection."
         ],
         "local_incoherence_and_repair": [
-            "Every 400–600 words, write a sentence that is slightly over‑specified or meandering (extra clause). In the next sentence, explicitly repair with 'To put it more clearly:' or 'What I mean is:'.",
-            "Introduce one false start per 1000 words – a sentence beginning with a wrong direction, then a dash and correction. Example: 'The model predicts – or rather, it does not predict, but accommodates – the anomaly.'",
+            "Every 400-600 words, write a sentence that is slightly over‑specified or meandering (extra clause). In the next sentence, explicitly repair with 'To put it more clearly:' or 'What I mean is:'.",
+            "Avoid forced false starts and long dash corrections. If a qualification is needed, use a clean sentence or comma-based clarification.",
             "Use a footnote or parenthetical remark that is slightly too conversational, e.g., '(a point often missed in the rush to quantification)'."
         ],
         "token_biome": [
@@ -354,7 +354,7 @@ def _student_contribution_requirements(profile: dict[str, Any]) -> dict[str, Any
         "paragraph_development_protocol": [
             "Before writing each substantive paragraph, identify the paragraph purpose, the evidence or user input available, the interpretation required, and the link to the study objective.",
             "Use the student's project-specific context, evidence anchors, supervisor comments, and preferred style wherever supplied.",
-            "If the user has not supplied enough evidence for a confident claim, use a clear red bracketed placeholder instead of writing a generic unsupported claim.",
+            "If the user has not supplied enough evidence for a confident claim, use a clean bracketed action placeholder instead of writing a generic unsupported claim.",
             "Avoid over-polished, perfectly balanced, template-like prose. Use natural scholarly reasoning, varied sentence structure, and context-specific transitions.",
             "Apply controlled high-burstiness and extremely high-perplexity academic style in practical terms: vary rhythm, vocabulary, sentence openings, and paragraph shape while preserving clarity, evidence, and disciplinary precision.",
             "Where a writing sample is supplied, use it only to infer broad tone, sentence rhythm and level of directness; do not copy wording or imitate personal details.",
@@ -421,8 +421,8 @@ def _chapter_specific_requirements(chapter_number: int) -> list[str]:
             "Study any supplied results, statistical output, qualitative coding output, Excel tables, SPSS/Stata/R output, or analysis notes and reorganise them into a coherent chapter aligned with the methods and objectives.",
             "Create all required tables that match the research methods, objectives, questions and hypotheses: response/profile table, descriptive statistics, reliability/validity where applicable, assumptions/diagnostics, objective-by-objective results, model estimates/path coefficients/regression/econometric tables, qualitative theme tables, and hypothesis decision tables where relevant.",
             "Use only results actually supplied in uploaded files or student answers. Do not invent coefficients, p-values, sample sizes, reliability values, model fit statistics, themes, quotations or percentages.",
-            "Where a required result is missing, create a clean placeholder table with bracketed red placeholders such as [insert regression coefficients and p-values here] and add a short advisory sentence telling the user the exact result/output to obtain.",
-            "Where a figure, graph, conceptual/path diagram or visual result is required but missing, insert a red placeholder such as [insert Figure 4.1: Conceptual/path diagram or chart here] and state the output needed to create it.",
+            "Where a required result is missing, create a clean placeholder table with clean bracketed action placeholders such as [ACTION REQUIRED: insert regression coefficients and p-values here] and add a short advisory sentence telling the user the exact result/output to obtain.",
+            "Where a figure, graph, conceptual/path diagram or visual result is required but missing, insert a clean bracketed action placeholder such as [ACTION REQUIRED: insert Figure 4.1: Conceptual/path diagram or chart here] and state the output needed to create it.",
             "Advise what should go to appendix, including raw software output, long diagnostics, full correlation matrices, full interview transcripts, questionnaires, codebooks and lengthy robustness checks. Keep the main text clean.",
             "Map each result to the relevant research objective, question or hypothesis before discussing it.",
             "Interpret results beyond description and link discussion to theory, prior studies and context using relevant citations.",
@@ -448,7 +448,7 @@ def _chapter_specific_requirements(chapter_number: int) -> list[str]:
             "For primary survey or mixed-method studies, include objective-to-construct alignment, instrument development and source traceability, draft questionnaire, draft interview guide where applicable, validation notes and appendix placement guide.",
             "For secondary data, econometrics, time-series or panel-data studies, include a variable/data-source register, operational definition table, preferred data source placeholders, transformation/coding notes, quality checks and appendix guidance.",
             "Use the project source bank where available for questionnaire scales, validated item sources, operational definitions and data-source traceability. Cite only relevant sources.",
-            "Where a questionnaire scale, validated item source, data source, period, frequency, code, transformation, permission note or validation output is missing, insert a red bracketed placeholder such as [insert verified scale source for this construct] or [insert verified data source and access link].",
+            "Where a questionnaire scale, validated item source, data source, period, frequency, code, transformation, permission note or validation output is missing, insert a clean bracketed action placeholder such as [ACTION REQUIRED: insert verified scale source for this construct] or [ACTION REQUIRED: insert verified data source and access link].",
             "Create clean, complete tables for alignment, source traceability, questionnaire items, interview themes, variable/data-source register, coding/transformation notes, quality checks and appendix placement where relevant.",
             "Include an APA-style References section containing only sources cited in the supplementary chapter.",
         ]
@@ -511,16 +511,17 @@ def build_drafting_prompt(
         "chapter_specific_requirements": _chapter_specific_requirements(chapter_number),
         "output_requirements": [
             "Write in formal British English.",
-            "Any text that requires user, student, supervisor, or researcher attention must be shown in red using this exact inline HTML wrapper: <span style=\"color:#c00000\">[instruction or note here]</span>. This includes missing evidence, missing statistics, missing citations, missing outputs, confirmation requests, supervisor decisions, user actions, appendix/action guidance, and any editorial note that is not final chapter prose.",
-            "When you add an advisory explanation after a list of objectives, research questions, hypotheses, methodology choices, or results placeholders, wrap that entire advisory explanation in red. Do not leave such guidance as ordinary black thesis prose.",
+            "Do not use raw HTML tags or style attributes in generated chapter text. The DOCX exporter may not render HTML and may leave tags as visible text.",
+            "When a note truly requires student, supervisor, researcher, or user action, write it as a clean bracketed action note using this format: [ACTION REQUIRED: specific instruction]. Use this only for missing evidence, missing statistics, missing citations, missing outputs, confirmation requests, supervisor decisions, and verification tasks.",
+            "Do not mark ordinary scholarly explanation as an action note. Sentences that justify objectives, explain research-question alignment, describe constructs, or explain methodology should remain normal thesis prose unless they explicitly ask the user to confirm, supply, verify, obtain, decide, or check something.",
             "Use the selected academic level internally to determine depth and sophistication, but never mention the selected level in the generated chapter text.",
             "Follow the human_scholarly_style_requirements and student_contribution_and_style_controls so the writing sounds natural, rigorous, context-specific, evidence-led and carefully supervised rather than generic or mechanical.",
             "In all generated chapters, use controlled high-burstiness and extremely high-perplexity scholarly writing: natural variation in sentence length, paragraph shape, vocabulary, transitions and argumentative movement, without sacrificing clarity, evidence, APA accuracy or methodological precision.",
             "Use the student's central argument, local context notes, evidence anchors, supervisor comments, preferred writing style and supplied writing sample as style/context guidance; do not copy the writing sample verbatim unless the user has written it as content to include.",
             "Use an evidence-to-paragraph method: each substantive paragraph should have a purpose, a claim grounded in supplied evidence or source-bank material, interpretation, and a clear link to the objective or chapter argument.",
-            "Before producing a long paragraph, ask internally whether the user supplied enough context, evidence or source support for that paragraph. If not, write a shorter defensible paragraph and insert a precise red placeholder for the missing evidence.",
+            "Before producing a long paragraph, ask internally whether the user supplied enough context, evidence or source support for that paragraph. If not, write a shorter defensible paragraph and insert a precise bracketed action placeholder for the missing evidence.",
             "Make the writing high-quality and human-supervised by adding discipline-specific reasoning, careful qualifications, context-specific transitions and clear links between evidence and the student's own objectives.",
-            "Where the user has supplied limited information, avoid creating long polished generic prose. Write a focused draft with red bracketed placeholders asking for the exact missing facts, data, citations, institutional details, result tables, or supervisor decisions.",
+            "Where the user has supplied limited information, avoid creating long polished generic prose. Write a focused draft with bracketed action placeholders asking for the exact missing facts, data, citations, institutional details, result tables, or supervisor decisions.",
             "Respect the selected draft maturity: a structured draft can be more schematic; a supervisor-ready or revised academic draft must be more developed, but still grounded in user-supplied evidence and sources.",
             "Avoid very short sentences except where they are necessary for emphasis, transition, or clarity.",
             "Do not write sentences that say the work, chapter, section, depth, or argument is designed to meet the selected level of the project, thesis, or dissertation.",
@@ -550,8 +551,8 @@ def build_drafting_prompt(
             "For Chapter Two tables, use a properly structured markdown table with meaningful column headers and one idea per cell.",
             "For Chapter Three, use past tense for completed project work and avoid future-tense proposal wording.",
             "For Chapter Four, transform supplied result files and answers into a clean thesis chapter. Do not write phrases such as 'the uploaded results', 'uploaded output', 'the output uploaded', or 'the attached file shows'. Present the tables and narrative as normal Results/Data Analysis and Discussion content.",
-            "For Chapter Four, create the tables required by the selected methodology and objectives. If a required table cannot be completed from the supplied results, create a placeholder markdown table with red bracketed placeholders and advise the user exactly which output to obtain.",
-            "For Chapter Four, insert red placeholders for required missing figures, graphs, path diagrams, conceptual diagrams or charts, and advise whether they belong in the main chapter or appendix.",
+            "For Chapter Four, create the tables required by the selected methodology and objectives. If a required table cannot be completed from the supplied results, create a placeholder markdown table with bracketed action placeholders and advise the user exactly which output to obtain.",
+            "For Chapter Four, insert bracketed action placeholders for required missing figures, graphs, path diagrams, conceptual diagrams or charts, and advise whether they belong in the main chapter or appendix.",
             "For Chapter Four, advise which materials should move to appendices, such as raw software output, lengthy diagnostic tables, full correlation matrices, full questionnaires, interview transcripts, codebooks and robustness checks.",
             "For Chapter Four, report only results found in uploaded files or student answers. Do not fabricate numbers, tables, themes, or interpretation.",
             "For the Research Methods/Methodology chapter, produce a complete, clean, submission-ready methodology chapter. Do not present it as a planning note, upload summary, worksheet, or supplementary file.",
@@ -666,42 +667,25 @@ def _enforce_burstiness(text: str, target_std_dev: float = 12.0, max_uniform: in
     return " ".join(merged)
 
 
-def _add_drafting_artefacts(text: str, probability_per_500_words: float = 0.8) -> str:
-    """Inject occasional false starts, dashes, and conversational asides."""
-    if not text or random.random() > probability_per_500_words:
+def _add_drafting_artefacts(text: str, probability_per_500_words: float = 0.18) -> str:
+    """Add restrained drafting texture without long hyphen interruptions."""
+    if not text or len(text.split()) < 350:
         return text
-    if len(text.split()) < 300:
+    if random.random() > probability_per_500_words:
         return text
 
-    artefacts = [
-        (r'(\bThe\s+\w+\s+is\b)', r'The – or rather, the \1 – '),
-        (r'(\b[a-z]+ly\b)', r'\1 (a point often overlooked)'),
-        (r'(\.\s+)(However|Nevertheless|Moreover)', r'\1But wait – \2'),
-        (r'(\b[a-z]{6,}\s+and\s+[a-z]{6,}\b)', r'\1 – or more simply, the central issue – '),
-        (r'([.!?])\s+(\b[A-Z][a-z]{4,}\b)', r'\1 That is, \2'),
+    replacements = [
+        (r'\.\s+(However|Nevertheless),\s+', r'. That said, '),
+        (r'\.\s+(Moreover|Furthermore|In addition),\s+', r'. By the same logic, '),
+        (r'\.\s+This means that\s+', r'. Put differently, '),
+        (r'\.\s+This suggests that\s+', r'. More cautiously, this suggests that '),
     ]
-
-    for pattern, repl in artefacts:
-        if random.random() < 0.5:
-            text = re.sub(pattern, repl, text, count=1, flags=re.IGNORECASE)
-
-    # Additional patterns
-    if random.random() < 0.4:
-        text = re.sub(r'\.\s+', r'. That said, ', text, count=1)
-    if random.random() < 0.4:
-        text = re.sub(r'(\b[A-Z][a-z]{4,}\s+is\b)', r'But consider this: \1', text, count=1)
-
-    if random.random() < 0.5 and "(" not in text[:500]:
-        match = re.search(r'\.\s+', text)
-        if match:
-            insert_pos = match.end()
-            remark = " (a nuance that careful readers will note) "
-            text = text[:insert_pos] + remark + text[insert_pos:]
-
-    if random.random() < 0.7:
-        text = re.sub(r'(\b\w+)\s+(\w+)\s+(\w+)\b', r'\1 \2 – or rather, it does not \2 – \3', text, count=1)
-
-    return text
+    updated = text
+    for pattern, repl in replacements:
+        if re.search(pattern, updated, flags=re.IGNORECASE):
+            updated = re.sub(pattern, repl, updated, count=1, flags=re.IGNORECASE)
+            break
+    return updated
 
 
 def _boost_lexical_richness(text: str, replacement_probability: float = 0.5) -> str:
@@ -713,13 +697,13 @@ def _boost_lexical_richness(text: str, replacement_probability: float = 0.5) -> 
         r'\bshows that\b': 'indicates that',
         r'\bsuggests that\b': 'implies that',
         r'\bdemonstrates that\b': 'exemplifies how',
-        r'\bimportant role\b': 'non‑trivial function',
+        r'\bimportant role\b': 'central function',
         r'\bsignificant\b': 'meaningful',
         r'\bhowever\b': 'nevertheless',
         r'\btherefore\b': 'consequently',
         r'\bfor example\b': 'as an illustration',
-        r'\bbecause\b': 'insofar as',
-        r'\bthe study\b': 'the present investigation',
+        r'\bbecause\b': 'because',
+        r'\bthe study\b': 'the study',
         r'\bits findings\b': 'the results obtained',
         r'\bmany studies\b': 'a substantial body of work',
         r'\bhas been shown\b': 'has been demonstrated',
@@ -734,20 +718,21 @@ def _boost_lexical_richness(text: str, replacement_probability: float = 0.5) -> 
 
 
 def _cluster_citations(text: str) -> str:
-    """Expand single citations into clusters using placeholders (no fabrication)."""
-    if re.search(r'\([A-Z][a-z]+,\s*\d{4};\s*[A-Z][a-z]+,\s*\d{4}', text):
+    """Safely combine only adjacent citations that already exist. Never invent placeholders."""
+    if not text:
         return text
 
-    def repl(match):
-        original = match.group(0)
-        author_year = re.search(r'([A-Z][a-z]+),\s*(\d{4})', original)
-        if author_year:
-            author, year = author_year.groups()
-            return f"({author}, {year}; [Author2, {int(year)+1}]; [Author3, {int(year)-1}])"
-        return original
+    def combine(match: re.Match) -> str:
+        first = match.group(1).strip('()')
+        second = match.group(2).strip('()')
+        if '[' in first + second or 'insert' in (first + second).lower():
+            return match.group(0)
+        if first == second:
+            return f'({first})'
+        return f'({first}; {second})'
 
-    text = re.sub(r'\([A-Z][a-z]+,\s*\d{4}\)', repl, text, count=2)
-    return text
+    pattern = r"(\([A-Z][A-Za-z'’\-]+(?:\s+et\s+al\.)?,\s*\d{4}[a-z]?\))\s*(?:;|,|and)?\s*(\([A-Z][A-Za-z'’\-]+(?:\s+et\s+al\.)?,\s*\d{4}[a-z]?\))"
+    return re.sub(pattern, combine, text)
 
 
 def _vary_paragraph_openings(text: str) -> str:
@@ -861,70 +846,115 @@ def _add_human_noise(text: str, error_probability: float = 0.02) -> str:
 
 
 # ----------------------------------------------------------------------
-# USER-ATTENTION RED TEXT HELPERS
+# USER-ATTENTION CLEAN MARKER HELPERS
 # ----------------------------------------------------------------------
 
-_RED_OPEN = '<span style="color:#c00000">'
-_RED_CLOSE = '</span>'
+_ATTENTION_PREFIX = "ACTION REQUIRED:"
 
 
-def _red_wrap(text: str) -> str:
-    """Wrap a short note in red HTML while avoiding duplicate wrapping."""
+def _strip_raw_html_attention_markup(text: str) -> str:
+    """Remove raw HTML colour tags that may appear in generated text or old drafts."""
     if not text:
         return text
-    stripped = text.strip()
-    if stripped.startswith(_RED_OPEN) and stripped.endswith(_RED_CLOSE):
+    text = re.sub(
+        r'<span\s+style=["\']color\s*:\s*#?c00000["\']\s*>(.*?)</span>',
+        lambda m: m.group(1),
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    text = re.sub(r'</?span\b[^>]*>', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'</?font\b[^>]*>', '', text, flags=re.IGNORECASE)
+    return text
+
+
+def _minimise_long_hyphens(text: str) -> str:
+    """Avoid em/en dash clutter in thesis prose while preserving numeric ranges."""
+    if not text:
         return text
-    leading = text[: len(text) - len(text.lstrip())]
-    trailing = text[len(text.rstrip()) :]
-    core = text.strip()
-    return f"{leading}{_RED_OPEN}{core}{_RED_CLOSE}{trailing}"
+    text = text.replace('‑', '-')
+    text = re.sub(r'(\d)\s*[–—]\s*(\d)', r'\1-\2', text)
+    text = re.sub(r'\s*[–—]\s*', ', ', text)
+    text = re.sub(r'\s+,\s+,\s+', ', ', text)
+    text = re.sub(r'\s+([,.;:])', r'\1', text)
+    text = re.sub(r'([,.;:])(?=[A-Za-z0-9])', r'\1 ', text)
+    text = re.sub(r'\s{2,}', ' ', text)
+    return text
 
 
-def _looks_like_red_context(prefix: str, suffix: str = "") -> bool:
-    """Return True when a candidate is already inside a red span."""
-    last_open = prefix.rfind(_RED_OPEN)
-    last_close = prefix.rfind(_RED_CLOSE)
-    if last_open > last_close:
+def _remove_forced_humaniser_artifacts(text: str) -> str:
+    """Clean artefacts that made the previous output look artificial."""
+    if not text:
+        return text
+    patterns = {
+        r'\s*,\s*or more simply, the central issue\s*,\s*': ' ',
+        r'\bBut wait\s*,\s*nevertheless,?\s*': '',
+        r'\bBut wait\s*,\s*': '',
+        r'\s*\(a nuance that careful readers will note\)\s*': ' ',
+        r'\s*\(a point often overlooked\)\s*': ' ',
+        r'\bThe\s*,\s*or rather,\s*the\s+The\s+': 'The ',
+        r'\bThe\s*,\s*or rather,\s*the\s+': 'The ',
+        r'\bThat is,\s+That is,\s+': 'That is, ',
+    }
+    for pat, repl in patterns.items():
+        text = re.sub(pat, repl, text, flags=re.IGNORECASE)
+    return re.sub(r'\s{2,}', ' ', text)
+
+
+def _normalise_attention_bracket_content(content: str) -> str:
+    """Return clean content for a bracketed action note."""
+    value = (content or '').strip()
+    value = re.sub(r'^ACTION\s+REQUIRED\s*:\s*', '', value, flags=re.IGNORECASE).strip()
+    return value
+
+
+def _is_attention_bracket(content: str) -> bool:
+    """Identify only bracketed notes that require action, not ordinary scholarly explanation."""
+    value = (content or '').strip().lower()
+    if not value:
+        return False
+    if value in {'add', '/add', 'red', '/red'}:
+        return False
+
+    # Strong action markers, these are always user-attention notes.
+    action_markers = (
+        'action required', 'insert ', 'provide ', 'confirm ', 'check ', 'verify ',
+        'clarify ', 'decide ', 'supply ', 'obtain ', 'replace ', 'revise ',
+        'specify ', 'choose ', 'ask the supervisor', 'supervisor should',
+        'student should', 'researcher should', 'user should', 'to be confirmed',
+        'needs confirmation', 'missing ', 'required ', 'not supplied', 'if obtained',
+    )
+    if value.startswith(action_markers) or any(m in value for m in action_markers):
+        return True
+
+    # Evidence/output placeholders that are clearly incomplete.
+    placeholder_terms = (
+        'source', 'citation', 'reference', 'statistic', 'evidence', 'data',
+        'dataset', 'sample', 'approval', 'ethical', 'ethic', 'analysis technique',
+        'result', 'output', 'table', 'figure', 'appendix', 'questionnaire',
+        'interview', 'scale source', 'coefficient', 'p-value', 'theme',
+        'author and year', 'period', 'study context', 'method used',
+    )
+    if any(value.startswith(f'insert {term}') or value.startswith(f'provide {term}') for term in placeholder_terms):
         return True
     return False
 
 
-def _is_attention_bracket(content: str) -> bool:
-    """Identify bracketed placeholders or notes that require user/supervisor attention."""
-    value = (content or "").strip().lower()
-    if not value:
-        return False
-    # Do not treat revision/export markers as visible attention notes.
-    if value in {"add", "/add", "red", "/red"}:
-        return False
-    attention_keywords = [
-        "insert", "provide", "confirm", "check", "verify", "clarify", "decide",
-        "supply", "obtain", "add", "replace", "revise", "specify", "choose",
-        "supervisor", "student", "researcher", "user", "missing", "required",
-        "needed", "source", "citation", "reference", "statistic", "evidence",
-        "data", "dataset", "sample", "approval", "ethic", "method", "analysis",
-        "result", "output", "table", "figure", "appendix", "questionnaire",
-        "interview", "scale", "construct", "coefficient", "p-value", "theme",
-        "author", "year", "objective", "hypothesis", "variable", "period",
-    ]
-    return any(word in value for word in attention_keywords)
-
-
 def _wrap_attention_brackets_red(text: str) -> str:
-    """Wrap bracketed placeholders such as [insert ...] or [Confirm ...] in red."""
+    """
+    Convert action placeholders to clean bracketed ACTION REQUIRED notes.
+
+    No HTML is used here. This keeps the generated text clean. The preview/export
+    layer can style [ACTION REQUIRED: ...] in red without exposing raw HTML.
+    """
     if not text:
         return text
 
-    pattern = re.compile(r"\[([^\[\]\n]{1,500})\]")
+    pattern = re.compile(r'\[([^\[\]\n]{1,700})\]')
 
     def repl(match: re.Match) -> str:
         content = match.group(1)
-        start, end = match.span()
-        if _looks_like_red_context(text[:start], text[end:]):
-            return match.group(0)
         if _is_attention_bracket(content):
-            return _red_wrap(match.group(0))
+            return f'[{_ATTENTION_PREFIX} {_normalise_attention_bracket_content(content)}]'
         return match.group(0)
 
     return pattern.sub(repl, text)
@@ -932,81 +962,52 @@ def _wrap_attention_brackets_red(text: str) -> str:
 
 def _wrap_attention_advisory_lines_red(text: str) -> str:
     """
-    Wrap advisory/explanatory runs that should not appear as ordinary black chapter prose.
-
-    This catches common cases such as:
-    - objective or question list items followed by "These objectives reflect..."
-    - research question list items followed by "The questions were framed..."
-    - fallback guidance beginning "This section requires..." or "The results required..."
+    Mark only whole-line action instructions, not explanatory thesis prose.
     """
     if not text:
         return text
-
-    split_markers = [
-        "These objectives reflect",
-        "The questions were framed",
-        "This alignment was necessary",
-        "What I mean is:",
-        "The first two questions were",
-        "The third, fourth and fifth questions were",
-    ]
-    whole_line_starters = (
-        "Confirm whether", "Check whether", "Verify whether", "Clarify whether",
-        "Decide whether", "Obtain ", "Provide ", "Supply ", "Insert ",
-        "Replace ", "Revise ", "Ask the supervisor", "Supervisor should",
-        "The results required", "This section requires", "The section should",
-        "The chapter should", "The account should", "Where a claim requires support",
-        "Suggested missing-results placeholders", "Appendix guidance:",
+    starters = (
+        'confirm whether', 'check whether', 'verify whether', 'clarify whether',
+        'decide whether', 'obtain ', 'provide ', 'supply ', 'insert ', 'replace ',
+        'revise ', 'ask the supervisor', 'supervisor should', 'student should',
+        'researcher should', 'the student/researcher should', 'user should',
     )
-
-    lines = text.split("\n")
+    lines = text.split('\n')
     out: list[str] = []
     in_code_block = False
-
     for line in lines:
         stripped = line.strip()
-        if stripped.startswith("```"):
+        if stripped.startswith('```'):
             in_code_block = not in_code_block
             out.append(line)
             continue
-        if in_code_block or not stripped:
+        if in_code_block or not stripped or stripped.startswith('#') or stripped.startswith('|'):
             out.append(line)
             continue
-
-        # Do not wrap headings as whole lines, but still allow bracket placeholders later.
-        if stripped.startswith("#"):
+        plain = stripped.lstrip('-*0123456789. )\t').strip()
+        low = plain.lower()
+        if low.startswith(starters) and not low.startswith('['):
+            leading = line[: len(line) - len(line.lstrip())]
+            out.append(f'{leading}[{_ATTENTION_PREFIX} {plain}]')
+        else:
             out.append(line)
-            continue
-
-        # If a list item contains a normal thesis item followed by an advisory note,
-        # keep the item black and make the advisory tail red.
-        did_split = False
-        for marker in split_markers:
-            idx = line.find(marker)
-            if idx > -1 and not _looks_like_red_context(line[:idx], line[idx:]):
-                prefix = line[:idx]
-                tail = line[idx:]
-                line = prefix + _red_wrap(tail)
-                did_split = True
-                break
-
-        if not did_split:
-            plain = stripped.lstrip("-*0123456789. )\t")
-            if plain.startswith(whole_line_starters) and not stripped.startswith(_RED_OPEN):
-                leading = line[: len(line) - len(line.lstrip())]
-                line = leading + _red_wrap(line.strip())
-
-        out.append(line)
-
-    return "\n".join(out)
+    return '\n'.join(out)
 
 
 def _mark_user_attention_text_red(text: str) -> str:
-    """Final safety pass: make all user-attention notes visibly red."""
+    """
+    Final safety pass for attention notes.
+
+    It does not output HTML. It keeps ordinary thesis prose black and marks only
+    true action notes with [ACTION REQUIRED: ...].
+    """
     if not text:
         return text
-    marked = _wrap_attention_advisory_lines_red(text)
+    marked = _strip_raw_html_attention_markup(text)
+    marked = _wrap_attention_advisory_lines_red(marked)
     marked = _wrap_attention_brackets_red(marked)
+    marked = _remove_forced_humaniser_artifacts(marked)
+    marked = _minimise_long_hyphens(marked)
     return marked
 
 
@@ -1238,14 +1239,14 @@ def _human_academic_revision_pass(
             "Increase natural scholarly variation: vary sentence rhythm, paragraph density, transition choices, and analytical movement. Simulate a careful human editor, not a template.",
             "Break any three consecutive sentences that start with the same grammatical pattern (e.g., subject‑verb, 'The', 'This').",
             "Where you see two consecutive paragraphs beginning with the same phrase (e.g., 'Moreover,' 'In addition,'), rewrite one to use a causal or conditional opener.",
-            "Add one deliberate 'self‑correction' per 800 words: a sentence that begins 'But wait –' or 'That said, a closer look reveals...' then qualifies the previous claim.",
+            "Add a cautious qualification only where it improves the argument. Avoid forced self-corrections and avoid long dash interruptions.",
             "Ensure at least one very short sentence (3–7 words) every 150 words. If missing, split a longer sentence or insert a concise anchor.",
             "Replace any 'furthermore', 'moreover', 'in addition' with domain‑specific logical connectors: 'This holds only if', 'By the same logic', 'A corollary is...'.",
             "Do not attempt to evade AI detectors and do not mention AI detection. The purpose is academic quality, specificity, and defensible student‑supervised writing.",
             "Remove generic filler, repetitive transitions, vague claims, inflated language, and over‑polished template‑like phrasing.",
             "Strengthen paragraph‑level reasoning: each paragraph should connect claim, evidence or placeholder, interpretation, and relevance to the study objective or chapter argument.",
             "Use the student's central argument, local context notes, evidence anchors, supervisor comments and preferred style where supplied.",
-            "Where evidence is missing, keep or add red bracketed placeholders instead of inventing claims, statistics, results, ethical approvals, sources, sample sizes or institutional facts.",
+            "Where evidence is missing, keep or add bracketed action placeholders instead of inventing claims, statistics, results, ethical approvals, sources, sample sizes or institutional facts.",
             "Do not add a visible humanisation note, contribution log or detector note to the chapter body.",
             "Keep APA references complete and limited to sources cited in the chapter body.",
         ],
@@ -1326,8 +1327,9 @@ def generate_chapter(
             "Include accurate in‑text citations. For source‑finder results: integrate only highly_relevant/partly_relevant records, "
             "exclude not_relevant, and add a Source Use Audit after References. Do not add any AI‑detection or humanisation notes – "
             "just produce normal scholarly prose. "
-            "Any user-facing note that asks the student, supervisor, or researcher to confirm, supply, verify, obtain, decide, or check something must be wrapped in <span style=\"color:#c00000\">...</span>. "
-            "If an advisory explanation is added after objectives, research questions, hypotheses, tables, figures, missing outputs, or appendix guidance, wrap the advisory part in red so it is visibly separate from final chapter prose."
+            "Do not output raw HTML tags or style attributes. "
+            "If a note requires the student, supervisor, or researcher to confirm, supply, verify, obtain, decide, or check something, write it as [ACTION REQUIRED: specific instruction]. "
+            "Keep ordinary objective explanations, research-question explanations, construct explanations, and methodological rationale as normal thesis prose unless they contain an actual action for the user."
         )
 
         text = _call_openai_response_safely(client, model, instructions, prompt)
@@ -1362,7 +1364,7 @@ def generate_chapter(
 
             # 5. Core humanisation passes (burstiness, artefacts, lexical richness)
             polished = _enforce_burstiness(polished, target_std_dev=12.0)
-            polished = _add_drafting_artefacts(polished, probability_per_500_words=0.8)
+            polished = _add_drafting_artefacts(polished, probability_per_500_words=0.18)
             polished = _boost_lexical_richness(polished, replacement_probability=0.5)
 
             # 6. Additional high‑quality humanisation
@@ -1375,7 +1377,7 @@ def generate_chapter(
             # polished = _humanize_with_small_model(polished)
 
             # 8. Final subtle noise (typos, spacing errors)
-            polished = _add_human_noise(polished, error_probability=0.015)
+            polished = _add_human_noise(polished, error_probability=0.0)
 
             # 9. Final red-marking pass for all user/supervisor attention notes
             polished = _mark_user_attention_text_red(polished)
@@ -1517,7 +1519,7 @@ def _fallback_results_section(section_answers: dict[str, Any], profile: dict[str
         lines.append(extracted[:2200])
     else:
         lines.append(
-            "The results required for this section were not supplied. The chapter should contain placeholder tables in red bracketed text and should tell the user exactly which analysis output is needed."
+            "The results required for this section were not supplied. The chapter should contain placeholder tables with bracketed action notes and should tell the user exactly which analysis output is needed."
         )
 
     lines.append("\n**Objective-to-results table:**\n")
