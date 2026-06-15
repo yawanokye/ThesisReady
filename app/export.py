@@ -64,37 +64,51 @@ def _set_paragraph_spacing(paragraph) -> None:
     paragraph.paragraph_format.space_after = Pt(6)
 
 
-def _add_runs(paragraph, text: str, *, bold_default: bool = False, italic_default: bool = False) -> None:
-    """Add markdown-ish runs, colouring placeholders and [[ADD]] insertions red."""
+def _attention_placeholder_pattern() -> re.Pattern:
+    return re.compile(
+        r"(\[(?:insert|verify|confirm|provide|supply|complete|replace|check|add|update|obtain|state|specify|include)\b[^\]]*\])",
+        flags=re.IGNORECASE,
+    )
+
+
+def _clean_inline_markup(text: str) -> str:
     text = str(text or "")
-    # Split on add markers first so additions can be red.
-    parts = re.split(r"(\[\[ADD\]\].*?\[\[/ADD\]\])", text, flags=re.DOTALL)
-    for part in parts:
-        if not part:
+    text = re.sub(r"<span\s+[^>]*color\s*:\s*#?(?:c00000|ff0000|red)[^>]*>(.*?)</span>", r"\1", text, flags=re.I | re.S)
+    text = re.sub(r"</?span[^>]*>", "", text, flags=re.I)
+    text = text.replace("[[ADD]]", "").replace("[[/ADD]]", "")
+    return text
+
+
+def _add_plain_or_attention_runs(paragraph, token: str, *, bold: bool = False, italic: bool = False) -> None:
+    for part in _attention_placeholder_pattern().split(token):
+        if part == "":
             continue
-        is_add = part.startswith("[[ADD]]") and part.endswith("[[/ADD]]")
-        if is_add:
-            part = part[7:-8]
-        # basic **bold** and *italic* parsing while preserving placeholders
-        tokens = re.split(r"(\*\*[^*]+\*\*|\*[^*]+\*)", part)
-        for token in tokens:
-            if token == "":
-                continue
-            bold = bold_default
-            italic = italic_default
-            if token.startswith("**") and token.endswith("**"):
-                token = token[2:-2]
-                bold = True
-            elif token.startswith("*") and token.endswith("*"):
-                token = token[1:-1]
-                italic = True
-            run = paragraph.add_run(token)
-            run.bold = bold
-            run.italic = italic
-            run.font.name = "Times New Roman"
-            run.font.size = Pt(12)
-            if is_add or re.search(r"\[(?:insert|provide|add|verify|complete|replace|include)\b[^\]]*\]", token, flags=re.I):
-                run.font.color.rgb = RGBColor(192, 0, 0)
+        run = paragraph.add_run(part)
+        run.bold = bold
+        run.italic = italic
+        run.font.name = "Times New Roman"
+        run.font.size = Pt(12)
+        if _attention_placeholder_pattern().fullmatch(part):
+            run.font.color.rgb = RGBColor(192, 0, 0)
+
+
+def _add_runs(paragraph, text: str, *, bold_default: bool = False, italic_default: bool = False) -> None:
+    """Add markdown-ish runs. Only bracketed attention placeholders are red."""
+    text = _clean_inline_markup(text)
+    # basic **bold** and *italic* parsing while preserving placeholders
+    tokens = re.split(r"(\*\*[^*]+\*\*|\*[^*]+\*)", text)
+    for token in tokens:
+        if token == "":
+            continue
+        bold = bold_default
+        italic = italic_default
+        if token.startswith("**") and token.endswith("**"):
+            token = token[2:-2]
+            bold = True
+        elif token.startswith("*") and token.endswith("*"):
+            token = token[1:-1]
+            italic = True
+        _add_plain_or_attention_runs(paragraph, token, bold=bold, italic=italic)
 
 
 def _is_markdown_table(block: str) -> bool:
