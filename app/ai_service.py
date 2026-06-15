@@ -511,6 +511,8 @@ def build_drafting_prompt(
         "chapter_specific_requirements": _chapter_specific_requirements(chapter_number),
         "output_requirements": [
             "Write in formal British English.",
+            "Any text that requires user, student, supervisor, or researcher attention must be shown in red using this exact inline HTML wrapper: <span style=\"color:#c00000\">[instruction or note here]</span>. This includes missing evidence, missing statistics, missing citations, missing outputs, confirmation requests, supervisor decisions, user actions, appendix/action guidance, and any editorial note that is not final chapter prose.",
+            "When you add an advisory explanation after a list of objectives, research questions, hypotheses, methodology choices, or results placeholders, wrap that entire advisory explanation in red. Do not leave such guidance as ordinary black thesis prose.",
             "Use the selected academic level internally to determine depth and sophistication, but never mention the selected level in the generated chapter text.",
             "Follow the human_scholarly_style_requirements and student_contribution_and_style_controls so the writing sounds natural, rigorous, context-specific, evidence-led and carefully supervised rather than generic or mechanical.",
             "In all generated chapters, use controlled high-burstiness and extremely high-perplexity scholarly writing: natural variation in sentence length, paragraph shape, vocabulary, transitions and argumentative movement, without sacrificing clarity, evidence, APA accuracy or methodological precision.",
@@ -857,6 +859,157 @@ def _add_human_noise(text: str, error_probability: float = 0.02) -> str:
     return text
 
 
+
+# ----------------------------------------------------------------------
+# USER-ATTENTION RED TEXT HELPERS
+# ----------------------------------------------------------------------
+
+_RED_OPEN = '<span style="color:#c00000">'
+_RED_CLOSE = '</span>'
+
+
+def _red_wrap(text: str) -> str:
+    """Wrap a short note in red HTML while avoiding duplicate wrapping."""
+    if not text:
+        return text
+    stripped = text.strip()
+    if stripped.startswith(_RED_OPEN) and stripped.endswith(_RED_CLOSE):
+        return text
+    leading = text[: len(text) - len(text.lstrip())]
+    trailing = text[len(text.rstrip()) :]
+    core = text.strip()
+    return f"{leading}{_RED_OPEN}{core}{_RED_CLOSE}{trailing}"
+
+
+def _looks_like_red_context(prefix: str, suffix: str = "") -> bool:
+    """Return True when a candidate is already inside a red span."""
+    last_open = prefix.rfind(_RED_OPEN)
+    last_close = prefix.rfind(_RED_CLOSE)
+    if last_open > last_close:
+        return True
+    return False
+
+
+def _is_attention_bracket(content: str) -> bool:
+    """Identify bracketed placeholders or notes that require user/supervisor attention."""
+    value = (content or "").strip().lower()
+    if not value:
+        return False
+    # Do not treat revision/export markers as visible attention notes.
+    if value in {"add", "/add", "red", "/red"}:
+        return False
+    attention_keywords = [
+        "insert", "provide", "confirm", "check", "verify", "clarify", "decide",
+        "supply", "obtain", "add", "replace", "revise", "specify", "choose",
+        "supervisor", "student", "researcher", "user", "missing", "required",
+        "needed", "source", "citation", "reference", "statistic", "evidence",
+        "data", "dataset", "sample", "approval", "ethic", "method", "analysis",
+        "result", "output", "table", "figure", "appendix", "questionnaire",
+        "interview", "scale", "construct", "coefficient", "p-value", "theme",
+        "author", "year", "objective", "hypothesis", "variable", "period",
+    ]
+    return any(word in value for word in attention_keywords)
+
+
+def _wrap_attention_brackets_red(text: str) -> str:
+    """Wrap bracketed placeholders such as [insert ...] or [Confirm ...] in red."""
+    if not text:
+        return text
+
+    pattern = re.compile(r"\[([^\[\]\n]{1,500})\]")
+
+    def repl(match: re.Match) -> str:
+        content = match.group(1)
+        start, end = match.span()
+        if _looks_like_red_context(text[:start], text[end:]):
+            return match.group(0)
+        if _is_attention_bracket(content):
+            return _red_wrap(match.group(0))
+        return match.group(0)
+
+    return pattern.sub(repl, text)
+
+
+def _wrap_attention_advisory_lines_red(text: str) -> str:
+    """
+    Wrap advisory/explanatory runs that should not appear as ordinary black chapter prose.
+
+    This catches common cases such as:
+    - objective or question list items followed by "These objectives reflect..."
+    - research question list items followed by "The questions were framed..."
+    - fallback guidance beginning "This section requires..." or "The results required..."
+    """
+    if not text:
+        return text
+
+    split_markers = [
+        "These objectives reflect",
+        "The questions were framed",
+        "This alignment was necessary",
+        "What I mean is:",
+        "The first two questions were",
+        "The third, fourth and fifth questions were",
+    ]
+    whole_line_starters = (
+        "Confirm whether", "Check whether", "Verify whether", "Clarify whether",
+        "Decide whether", "Obtain ", "Provide ", "Supply ", "Insert ",
+        "Replace ", "Revise ", "Ask the supervisor", "Supervisor should",
+        "The results required", "This section requires", "The section should",
+        "The chapter should", "The account should", "Where a claim requires support",
+        "Suggested missing-results placeholders", "Appendix guidance:",
+    )
+
+    lines = text.split("\n")
+    out: list[str] = []
+    in_code_block = False
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_code_block = not in_code_block
+            out.append(line)
+            continue
+        if in_code_block or not stripped:
+            out.append(line)
+            continue
+
+        # Do not wrap headings as whole lines, but still allow bracket placeholders later.
+        if stripped.startswith("#"):
+            out.append(line)
+            continue
+
+        # If a list item contains a normal thesis item followed by an advisory note,
+        # keep the item black and make the advisory tail red.
+        did_split = False
+        for marker in split_markers:
+            idx = line.find(marker)
+            if idx > -1 and not _looks_like_red_context(line[:idx], line[idx:]):
+                prefix = line[:idx]
+                tail = line[idx:]
+                line = prefix + _red_wrap(tail)
+                did_split = True
+                break
+
+        if not did_split:
+            plain = stripped.lstrip("-*0123456789. )\t")
+            if plain.startswith(whole_line_starters) and not stripped.startswith(_RED_OPEN):
+                leading = line[: len(line) - len(line.lstrip())]
+                line = leading + _red_wrap(line.strip())
+
+        out.append(line)
+
+    return "\n".join(out)
+
+
+def _mark_user_attention_text_red(text: str) -> str:
+    """Final safety pass: make all user-attention notes visibly red."""
+    if not text:
+        return text
+    marked = _wrap_attention_advisory_lines_red(text)
+    marked = _wrap_attention_brackets_red(marked)
+    return marked
+
+
 def _polish_generated_text(text: str) -> str:
     """Lightly remove common proposal/meta phrases that weaken scholarly output."""
     if not text:
@@ -1150,7 +1303,7 @@ def generate_chapter(
         prompt = build_drafting_prompt(profile, chapter_number, selected_section_ids, answers, extra_instructions)
     except Exception:
         return (
-            _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)),
+            _mark_user_attention_text_red(_polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers))),
             "local_template_fallback_prompt_error"
         )
 
@@ -1172,7 +1325,9 @@ def generate_chapter(
             "For Ch4: never invent output; present only supplied results. Apply reference currency (≥70% recent, but allow older where needed). "
             "Include accurate in‑text citations. For source‑finder results: integrate only highly_relevant/partly_relevant records, "
             "exclude not_relevant, and add a Source Use Audit after References. Do not add any AI‑detection or humanisation notes – "
-            "just produce normal scholarly prose."
+            "just produce normal scholarly prose. "
+            "Any user-facing note that asks the student, supervisor, or researcher to confirm, supply, verify, obtain, decide, or check something must be wrapped in <span style=\"color:#c00000\">...</span>. "
+            "If an advisory explanation is added after objectives, research questions, hypotheses, tables, figures, missing outputs, or appendix guidance, wrap the advisory part in red so it is visibly separate from final chapter prose."
         )
 
         text = _call_openai_response_safely(client, model, instructions, prompt)
@@ -1222,11 +1377,14 @@ def generate_chapter(
             # 8. Final subtle noise (typos, spacing errors)
             polished = _add_human_noise(polished, error_probability=0.015)
 
+            # 9. Final red-marking pass for all user/supervisor attention notes
+            polished = _mark_user_attention_text_red(polished)
+
             return polished, "openai_responses_api"
 
     # Fallback when AI is disabled or fails
     return (
-        _polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)),
+        _mark_user_attention_text_red(_polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers))),
         "local_template_fallback"
     )
 
