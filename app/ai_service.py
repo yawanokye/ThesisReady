@@ -328,6 +328,67 @@ def _student_contribution_requirements(profile: dict[str, Any]) -> dict[str, Any
     }
 
 
+
+def _supplementary_methods_guide_requirements(profile: dict[str, Any]) -> dict[str, Any]:
+    """Return generic rules for Chapter 7 as a practical guide.
+
+    This must not hard-code any sample topic, sample constructs, sample items or sample sources.
+    The user's previous output is treated only as a formatting and quality guide.
+    """
+    return {
+        "document_type": "Supplementary Methods and Analysis Guide, not a formal thesis chapter",
+        "sample_output_policy": [
+            "Treat any attached/sample supplementary-methods output only as a guide to structure, table compactness and expected level of detail.",
+            "Do not copy, hard-code or reuse the sample study title, sample constructs, sample item codes, sample sources, locations or sector unless the current project profile supplies the same details.",
+            "Generate all constructs, items, variable names, analysis outputs and source suggestions from the current project profile, selected objectives, user answers, uploaded materials and source bank.",
+        ],
+        "primary_purpose": [
+            "help the user prepare for data collection and analysis",
+            "help develop or refine instruments, questionnaires, interview guides, item banks or coding guides",
+            "map objectives to constructs, variables, measures, data sources and statistical outputs",
+            "document scale/source traceability and adaptation decisions",
+            "prepare coding, index construction, reliability, validity and analysis-output checklists",
+            "organise appendix materials without overcrowding the main methodology chapter",
+        ],
+        "recommended_sections": [
+            "Purpose and How to Use This Guide",
+            "Study Inputs to Confirm Before Data Collection or Analysis",
+            "Objective-to-Construct/Variable and Objective-to-Analysis Alignment",
+            "Instrument, Scale and Source Traceability Guide",
+            "Draft Questionnaire/Interview Item Bank or Coding Schedule",
+            "Variable Coding, Transformation and Index Construction Notes",
+            "Analysis Plan, Output Checklist and Decision Rules",
+            "Validation, Reliability and Data Quality Checklist",
+            "Appendix, Dataset and Evidence File Checklist",
+            "References and Source/Scale Traceability Note",
+        ],
+        "source_and_scale_rules": [
+            "Use the project source bank first when suggesting sources for instruments, scales, measures, operational definitions, data sources and analysis methods.",
+            "If a source-bank record clearly contains or reports a validated scale/instrument, label it as a candidate validated scale to review/adapt.",
+            "If a source-bank record supports the concept but does not provide a measurement instrument, label it as conceptual support only.",
+            "If the source bank does not contain a verified scale source for a construct, insert an attention placeholder such as [insert verified scale source for this construct] instead of inventing a source.",
+            "Do not include fixed example sources, sample sectors, sample constructs or sample study contexts unless those details appear in the user's current project profile, uploaded materials or source bank.",
+            "Do not reproduce copyrighted scale items. Where an existing scale is only identified by name, provide an adaptation note and ask the user to verify the exact items from the original source.",
+        ],
+        "table_design_rules": [
+            "Use compact markdown tables with five columns or fewer.",
+            "Split wide tables into smaller tables instead of one crowded table.",
+            "Keep table cells concise; place explanations below the table in prose.",
+            "Never insert transition words inside item codes, table rows, scale points, formulas or equations.",
+            "Use short headings such as Objective, Construct, Items, Output needed and Action required.",
+            "For item banks, use columns such as Item code, Draft item, Response scale, Source/adaptation note and Action required.",
+            "For analysis plans, use columns such as Objective, Variables, Statistical output needed, Decision rule and Attention item.",
+        ],
+        "tone_and_structure_rules": [
+            "Use practical guide language rather than thesis-chapter narrative.",
+            "Do not write 'Chapter Seven', 'this chapter', or long literature-review style paragraphs unless the user explicitly asks for a formal chapter.",
+            "Use 'this guide', 'this analysis guide' or 'this supplementary guide'.",
+            "Keep prose concise and action-oriented, with tables and checklists carrying most of the detail.",
+            "Keep all red/attention material as bracketed placeholders only.",
+        ],
+    }
+
+
 def _chapter_specific_requirements(chapter_number: int) -> list[str]:
     """Return chapter-level drafting rules that apply beyond section rules."""
     common = [
@@ -401,14 +462,24 @@ def _chapter_specific_requirements(chapter_number: int) -> list[str]:
 
     if chapter_number == 7:
         return [
-            "Treat this as a Supplementary Methods Chapter, not the main Research Methods/Methodology chapter. It is a working/support document for gathering analysis inputs, developing instruments, tracing measurement/data sources, preparing coding notes and organising appendix materials.",
-            "Do not rewrite or replace the submission-ready Research Methods/Methodology chapter. Keep the distinction clear in the generated text.",
-            "For primary survey or mixed-method studies, include objective-to-construct alignment, instrument development and source traceability, draft questionnaire, draft interview guide where applicable, validation notes and appendix placement guide.",
-            "For secondary data, econometrics, time-series or panel-data studies, include a variable/data-source register, operational definition table, preferred data source placeholders, transformation/coding notes, quality checks and appendix guidance.",
-            "Use the project source bank where available for questionnaire scales, validated item sources, operational definitions and data-source traceability. Cite only relevant sources.",
-            "Where a questionnaire scale, validated item source, data source, period, frequency, code, transformation, permission note or validation output is missing, insert a bracketed attention placeholder such as [insert verified scale source for this construct] or [insert verified data source and access link].",
-            "Create clean, complete tables for alignment, source traceability, questionnaire items, interview themes, variable/data-source register, coding/transformation notes, quality checks and appendix placement where relevant.",
-            "Include an APA-style References section containing only sources cited in the supplementary chapter.",
+            "Treat this output as a Supplementary Methods and Analysis Guide, not as a formal thesis chapter for submission.",
+            "The guide is a working document for the student, supervisor and analyst. It should help with instrument development, scale/source traceability, coding, reliability and validity checks, analysis planning, and appendix organisation.",
+            "Do not write 'Chapter Seven', 'this chapter', or formal chapter-style narrative unless the user explicitly asks. Use 'this guide', 'this analysis guide', or 'this supplementary guide'.",
+            "Any attached/sample output is only a guide to structure and level of detail. Do not copy or hard-code its title, topic, constructs, items, sources, sector, location or wording into the current output.",
+            "Generate the guide from the current project profile, objectives, questions/hypotheses, variables/constructs, uploaded files, user answers and source bank.",
+            "For primary survey or mixed-method studies, include objective-to-construct alignment, item development, source traceability, proposed questionnaire/interview items, suggested response scales, coding notes, validation checks and analysis outputs needed.",
+            "For secondary, econometric, time-series or panel studies, include a variable/data-source register, operational definitions, expected signs, transformations, coding notes, data-quality checks and model-output checklist.",
+            "Use the project source bank first for instrument/scale suggestions. If a verified or validated scale source is available in the source bank or uploaded notes, cite it beside the relevant construct as a candidate source to review/adapt.",
+            "Where no verified scale source is supplied, use an attention placeholder such as [insert verified scale source for this construct] rather than naming a generic or sample source.",
+            "Clearly distinguish validated scale source, conceptual support, method/source guidance, contextual support, and project-specific evidence.",
+            "Do not claim that a scale has been adopted unless the current project profile or source bank confirms adoption. Use wording such as 'candidate source to review/adapt' or 'conceptual support only' where appropriate.",
+            "Use compact markdown tables with not more than five columns. Split wide tables into smaller tables instead of forcing one large table across the page.",
+            "Use short column headings and concise cells. Avoid long paragraphs inside table cells; put explanations below the table as prose.",
+            "Do not insert transition words such as 'Indeed', 'Conversely', 'Still', 'Yet' or 'Importantly' inside item codes, table rows, scale points, formulas, equations or lists.",
+            "Use clean item-bank tables with columns such as Item code, Draft item, Response scale, Source/adaptation note and Action required.",
+            "Use clean analysis-plan tables with columns such as Objective, Variables, Statistical output needed, Decision rule and Attention item.",
+            "Where a questionnaire scale, data source, period, frequency, code, transformation, permission note or validation output is missing, insert a bracketed attention placeholder such as [insert verified scale source for this construct] or [confirm coding rule].",
+            "Include a References section only for sources actually cited in the guide, followed by a short Source and Scale Traceability Note if source-search records were attached.",
         ]
 
     return common
@@ -422,7 +493,7 @@ def _effective_chapter_title(chapter: dict[str, Any], profile: dict[str, Any], c
             return custom_title
         return "Others"
     if int(chapter_number or 0) == 7:
-        return "Supplementary Methods Chapter"
+        return "Supplementary Methods and Analysis Guide"
     return str(chapter.get("chapter_title") or "").strip() or "Chapter"
 
 
@@ -467,6 +538,7 @@ def build_drafting_prompt(
         "selected_sections": section_payload,
         "extra_instructions": extra_instructions,
         "chapter_specific_requirements": _chapter_specific_requirements(chapter_number),
+        "supplementary_methods_guide_requirements": _supplementary_methods_guide_requirements(profile) if int(chapter_number or 0) == 7 else {},
         "output_requirements": [
             "Write in formal British English.",
             "Use the selected academic level internally to determine depth and sophistication, but never mention the selected level in the generated chapter text.",
@@ -495,6 +567,9 @@ def build_drafting_prompt(
             "Do not use raw HTML colour tags such as <span style=...>. Do not colour normal academic prose; only attention placeholders should be highlighted by the DOCX exporter. The only text requiring user attention should appear as bracketed placeholders such as [insert current statistic], [verify citation], [confirm sample size], or [provide supervisor-approved wording].",
             "Minimise the use of em dashes and en dashes. Use commas, semicolons, colons, parentheses, or separate sentences instead unless a dash is unavoidable.",
             "Draft only the selected sections.",
+            "For the Supplementary Methods and Analysis Guide, use any attached/sample output only as a guide to structure and table compactness. Do not copy its topic, constructs, sources, item wording or sample context unless those details are supplied in the current project profile.",
+            "For the Supplementary Methods and Analysis Guide, suggest verified scale/instrument sources only from the current source bank, uploaded materials or verified project notes. If a verified source is not available, use [insert verified scale source for this construct].",
+            "For the Supplementary Methods and Analysis Guide, make the output practical: alignment tables, item banks, coding notes, analysis-output checklist, reliability/validity checklist and appendix checklist should carry the detail.",
             "Use analytical and connective prose: show why each point matters to the study rather than merely naming concepts, authors, variables, or methods.",
             "Avoid weak or unscholarly problem-statement phrasing such as 'The research problem is that...'. Use an evidence-led academic formulation instead.",
             "Write as a completed academic project, dissertation, or thesis. Avoid proposal-style future tense across the write-up, except where Chapter Five legitimately suggests future research using 'should', 'could', or 'may'.",
@@ -516,8 +591,8 @@ def build_drafting_prompt(
             "For Chapter Four, report only results found in uploaded files or student answers. Do not fabricate numbers, tables, themes, or interpretation.",
             "For the Research Methods/Methodology chapter, produce a complete, clean, submission-ready methodology chapter. Do not present it as a planning note, upload summary, worksheet, or supplementary file.",
             "For questionnaire or interview-guide outputs, build draft instruments from the constructs, variables and objectives supplied in the project profile rather than giving only a generic structure.",
-            "Keep a clear distinction between the main Research Methods/Methodology chapter and the Supplementary Methods Chapter. The main methodology chapter is the clean submission-ready chapter; the supplementary chapter is a separate support document for instruments, data sources, scale traceability, coding, validation checks and appendix materials.",
-            "Do not overload the main Research Methods/Methodology chapter with a full questionnaire, interview guide, scale bank, secondary-data register, or data-source codebook. Those details belong in the separate Supplementary Methods Chapter or appendix unless the institution specifically requires them in the main chapter.",
+            "Keep a clear distinction between the main Research Methods/Methodology chapter and the Supplementary Methods and Analysis Guide. The main methodology chapter is the clean submission-ready chapter; the supplementary guide is a practical working guide for instruments, data sources, scale traceability, coding, validation checks and appendix materials.",
+            "Do not overload the main Research Methods/Methodology chapter with a full questionnaire, interview guide, scale bank, secondary-data register, or data-source codebook. Those details belong in the separate Supplementary Methods and Analysis Guide or appendix unless the institution specifically requires them in the main chapter.",
             "For Chapter Five, base conclusions and recommendations only on findings supplied in the profile or answers.",
         ],
     }
@@ -693,17 +768,8 @@ def _randomise_paragraph_order(text: str) -> str:
 
 
 def _vary_paragraph_openings(text: str) -> str:
-    """Avoid repetitive paragraph starts by prepending a transitional adverb."""
-    lines = text.split('\n')
-    transitions = ["Yet, ", "Still, ", "Indeed, ", "Conversely, ", "Importantly, "]
-    for i in range(1, len(lines)):
-        if not lines[i].strip() or lines[i].startswith('#'):
-            continue
-        prev_words = lines[i-1].strip().split()[:2] if lines[i-1].strip() else []
-        curr_words = lines[i].strip().split()[:2]
-        if prev_words and curr_words and prev_words[0].lower() == curr_words[0].lower():
-            lines[i] = random.choice(transitions) + lines[i].strip()
-    return '\n'.join(lines)
+    """Compatibility hook. Do not add transition words that can leak into tables or item codes."""
+    return text or ""
 
 
 def _force_short_sentences(text: str, target_every_n_words: int = 200) -> str:
@@ -898,11 +964,26 @@ def _protect_thesis_structure(text: str) -> str:
     return text.strip()
 
 
+
+def _remove_stray_transition_prefixes(text: str) -> str:
+    """Remove transition words that sometimes leak into table rows, item codes and scale points."""
+    if not text:
+        return text
+    words = r"(?:Indeed|Conversely|Still|Yet|Importantly|Besides)"
+    # Beginning of line before item codes, scale points, table text or equations
+    text = re.sub(rf"(?m)^\s*{words},\s+(?=(?:[A-Z]{{2,5}}\d+|SQ\d+|OUT\d+|\d\b|[-*•]|\|))", "", text)
+    # Beginning of ordinary lines where the transition is stranded as a prefix
+    text = re.sub(rf"(?m)^\s*{words},\s*$\n", "", text)
+    # Inside markdown table cells
+    text = re.sub(rf"(\|\s*){words},\s+", r"\1", text)
+    return text
+
 def _finalise_output_controls(text: str) -> str:
     """Final pass applied to AI and fallback outputs."""
     text = _strip_colour_markup(text or "")
     text = _normalise_attention_language(text)
     text = _minimise_em_en_dashes(text)
+    text = _remove_stray_transition_prefixes(text)
     text = _protect_thesis_structure(text)
     return text.strip()
 
@@ -1156,6 +1237,8 @@ def generate_chapter(
             "For Ch4: never invent output; present only supplied results. Apply reference currency (≥70% recent, but allow older where needed). "
             "Include accurate in-text citations. For source-finder results: integrate only highly_relevant/partly_relevant records, "
             "exclude not_relevant, and add a Source Use Audit after References. Do not add any AI-detection or humanisation notes. "
+            "For the Supplementary Methods and Analysis Guide, use sample outputs only as structural guides, not as content templates. "
+            "Do not hard-code sample topics, sources, constructs, item wording or contexts. Use only the current project profile and source bank. "
             "just produce normal scholarly prose."
         )
 
@@ -1189,22 +1272,18 @@ def generate_chapter(
                 chapter_number=chapter_number,
             )
 
-            # 5. Core humanisation passes (burstiness, artefacts, lexical richness)
-            polished = _enforce_burstiness(polished, target_std_dev=12.0)
-            polished = _add_drafting_artefacts(polished, probability_per_500_words=0.8)
-            polished = _boost_lexical_richness(polished, replacement_probability=0.5)
+            # 5. Controlled style texture. Do not apply texture to the Supplementary Methods
+            #    and Analysis Guide because it is table/checklist driven and must stay compact.
+            if int(chapter_number or 0) != 7:
+                polished = _enforce_burstiness(polished, target_std_dev=12.0)
+                polished = _add_drafting_artefacts(polished, probability_per_500_words=0.35)
+                polished = _boost_lexical_richness(polished, replacement_probability=0.25)
+                polished = _cluster_citations(polished)
+                polished = _vary_paragraph_openings(polished)
+                polished = _force_short_sentences(polished, target_every_n_words=200)
+                polished = _add_human_noise(polished, error_probability=0.015)
 
-            # 6. Additional high-quality humanisation
-            polished = _cluster_citations(polished)
-            polished = _vary_paragraph_openings(polished)
-            polished = _force_short_sentences(polished, target_every_n_words=200)
-
-            # 7. Cloud-based small-model rewrite disabled (was causing degradation)
-            #    Keep _humanize_with_small_model() defined for compatibility, but do not call it here.
-            # polished = _humanize_with_small_model(polished)
-
-            # 8. Final subtle noise (typos, spacing errors)
-            polished = _add_human_noise(polished, error_probability=0.015)
+            # 6. Final output controls for structure, dashes, attention placeholders and table noise.
             polished = _finalise_output_controls(polished)
 
             return polished, "openai_responses_api"

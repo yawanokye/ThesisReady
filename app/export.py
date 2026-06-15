@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from docx import Document
-from docx.enum.section import WD_SECTION
+from docx.enum.section import WD_SECTION, WD_ORIENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -76,7 +76,16 @@ def _clean_inline_markup(text: str) -> str:
     text = re.sub(r"<span\s+[^>]*color\s*:\s*#?(?:c00000|ff0000|red)[^>]*>(.*?)</span>", r"\1", text, flags=re.I | re.S)
     text = re.sub(r"</?span[^>]*>", "", text, flags=re.I)
     text = text.replace("[[ADD]]", "").replace("[[/ADD]]", "")
-    return text
+    return _clean_supplementary_table_noise(text)
+
+def _clean_supplementary_table_noise(text: str) -> str:
+    """Remove style-transition tokens that should not appear inside tables or item codes."""
+    text = str(text or "")
+    text = re.sub(r"^\s*(Indeed|Conversely|Importantly|Still|Yet),\s+", "", text, flags=re.I)
+    text = re.sub(r"\b(Indeed|Conversely|Importantly|Still|Yet),\s+(?=(SQ|A|COM|INV|COL|OUT|OC)\d+\b)", "", text, flags=re.I)
+    text = re.sub(r"\s*That matters\.\s*", " ", text, flags=re.I)
+    return text.strip()
+
 
 
 def _add_plain_or_attention_runs(paragraph, token: str, *, bold: bool = False, italic: bool = False) -> None:
@@ -125,6 +134,16 @@ def _parse_table_row(line: str) -> list[str]:
     return [cell.strip() for cell in line.split("|")]
 
 
+def _set_repeat_table_header(row) -> None:
+    try:
+        tr_pr = row._tr.get_or_add_trPr()
+        tbl_header = OxmlElement("w:tblHeader")
+        tbl_header.set(qn("w:val"), "true")
+        tr_pr.append(tbl_header)
+    except Exception:
+        pass
+
+
 def _add_markdown_table(doc: Document, block: str) -> None:
     lines = [ln.strip() for ln in block.splitlines() if ln.strip()]
     rows = [_parse_table_row(lines[0])]
@@ -132,14 +151,17 @@ def _add_markdown_table(doc: Document, block: str) -> None:
         if re.search(r"^\s*\|?\s*:?-{3,}:?", ln):
             continue
         rows.append(_parse_table_row(ln))
+    rows = [[_clean_supplementary_table_noise(cell) for cell in row] for row in rows]
     if not rows or not rows[0]:
         return
     cols = max(len(r) for r in rows)
     table = doc.add_table(rows=len(rows), cols=cols)
+    table.autofit = True
     try:
         table.style = "Table Grid"
     except Exception:
         pass
+    _set_repeat_table_header(table.rows[0])
     for r_idx, row in enumerate(rows):
         for c_idx in range(cols):
             cell = table.cell(r_idx, c_idx)
@@ -147,6 +169,8 @@ def _add_markdown_table(doc: Document, block: str) -> None:
             _set_cell_text(cell, value, bold=(r_idx == 0))
             for p in cell.paragraphs:
                 _set_paragraph_spacing(p)
+                for run in p.runs:
+                    run.font.size = Pt(10 if cols >= 5 else 11)
             if r_idx == 0:
                 _set_cell_shading(cell)
     doc.add_paragraph("")
@@ -238,12 +262,23 @@ def export_chapter_docx(project: dict[str, Any], chapter_number: int, draft: str
 
     doc = Document()
     _apply_document_defaults(doc)
+    if int(chapter_number or 0) == 7:
+        section = doc.sections[0]
+        section.orientation = WD_ORIENT.LANDSCAPE
+        section.page_width, section.page_height = section.page_height, section.page_width
+        section.left_margin = Inches(0.7)
+        section.right_margin = Inches(0.7)
 
     title_p = doc.add_heading(project_title, level=0)
     title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_paragraph(f"Chapter {chapter_number} draft generated with ProjectReady AI.")
+    if int(chapter_number or 0) == 7:
+        doc.add_paragraph("Supplementary methods and analysis guide generated with ProjectReady AI.")
+        guide_note = "Note: This is a working guide for instrument development, coding, validation, analysis planning and appendix organisation. Verify all scale sources, item adaptations, data rules and supervisor requirements before use."
+    else:
+        doc.add_paragraph(f"Chapter {chapter_number} draft generated with ProjectReady AI.")
+        guide_note = "Note: Verify all citations, evidence, statistics, data, page numbers, and supervisor requirements before submission."
     note = doc.add_paragraph()
-    _add_runs(note, "Note: Verify all citations, evidence, statistics, data, page numbers, and supervisor requirements before submission.", italic_default=True)
+    _add_runs(note, guide_note, italic_default=True)
     doc.add_paragraph("")
 
     _markdown_to_docx(doc, draft or "")
@@ -327,9 +362,9 @@ def export_methods_supplement_docx(project: dict[str, Any], chapter_number: int,
     path = out_dir / f"{safe_title}_supplementary_methods.docx"
     doc = Document()
     _apply_document_defaults(doc)
-    doc.add_heading("Supplementary Methods Chapter", level=0)
+    doc.add_heading("Supplementary Methods and Analysis Guide", level=0)
     doc.add_paragraph(f"Project: {project.get('title') or profile.get('title', '')}")
-    doc.add_paragraph("This supplementary file supports instrument design, source traceability, variable coding, data-source planning, and appendix organisation. It does not replace the main methodology chapter.")
+    doc.add_paragraph("This working guide supports instrument design, source and scale traceability, variable coding, data-source planning, analysis decisions and appendix organisation. It does not replace the main methodology chapter.")
 
     doc.add_heading("Objective-to-Measurement Alignment", level=1)
     objectives = profile.get("objectives") or profile.get("specific_objectives") or []
