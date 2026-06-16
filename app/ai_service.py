@@ -8,8 +8,6 @@ import subprocess
 from datetime import datetime
 from typing import Any, Optional
 
-import requests  # <-- added for external humanizer API
-
 from dotenv import load_dotenv
 
 from app.template_store import get_chapter, selected_sections
@@ -27,65 +25,6 @@ def _safe_get_openai_client():
     except Exception:
         return None
 
-
-# ----------------------------------------------------------------------
-# EXTERNAL HUMANIZER CONFIGURATION AND CLIENT
-# ----------------------------------------------------------------------
-
-def _get_humanizer_config() -> dict[str, Any]:
-    """Read external humanizer settings from environment variables."""
-    return {
-        "enabled": os.getenv("HUMANIZER_ENABLED", "false").lower() == "true",
-        "endpoint": os.getenv("HUMANIZER_ENDPOINT", "https://thehumanizeai.pro/api/v1/humanize").strip(),
-        "api_key": os.getenv("HUMANIZER_API_KEY", "").strip(),
-        "model": os.getenv("HUMANIZER_MODEL", "fast").strip(),
-        "timeout": int(os.getenv("HUMANIZER_TIMEOUT", "60")),
-        "replace_internal": os.getenv("HUMANIZER_REPLACE_INTERNAL", "true").lower() == "true",
-        "fallback_to_internal": os.getenv("HUMANIZER_FALLBACK_TO_INTERNAL", "true").lower() == "true",
-    }
-
-
-def _humanize_with_external_api(text: str, config: dict[str, Any]) -> str:
-    """
-    Send the draft to thehumanizeai.pro API.
-    Returns the humanized text or the original on failure.
-    """
-    if not config["enabled"] or not config["endpoint"] or not config["api_key"]:
-        return text
-
-    payload = {
-        "text": text,
-        "model": config["model"],
-    }
-
-    headers = {
-        "Authorization": f"Bearer {config['api_key']}",
-        "Content-Type": "application/json",
-    }
-
-    try:
-        response = requests.post(
-            config["endpoint"],
-            json=payload,
-            headers=headers,
-            timeout=config["timeout"]
-        )
-        response.raise_for_status()
-        result = response.json()
-        # The API returns 'humanized_text' (observed in your test)
-        humanized = result.get("humanized_text") or result.get("result") or result.get("output") or result.get("text")
-        if humanized and isinstance(humanized, str):
-            return humanized.strip()
-        else:
-            return text
-    except Exception as e:
-        print(f"External humanizer API error: {e}")
-        return text
-
-
-# ----------------------------------------------------------------------
-# ORIGINAL HELPER FUNCTIONS (unchanged)
-# ----------------------------------------------------------------------
 
 def _reference_currency_requirements() -> dict[str, Any]:
     """Return the reference currency rule used across generated chapters."""
@@ -171,6 +110,135 @@ def _level_depth_requirements(profile: dict[str, Any]) -> dict[str, str]:
     }
     guidance = profile.get("academic_level_guidance") or guidance_map.get(level, guidance_map["Bachelors"])
     return {"selected_level": level, "depth_guidance": guidance}
+
+
+# ----------------------------------------------------------------------
+# LEVEL-BASED MODEL ROUTING
+# ----------------------------------------------------------------------
+
+def _normalise_academic_level(profile: dict[str, Any]) -> str:
+    """Normalise the user's selected level into a routing category."""
+    raw = str(
+        profile.get("level")
+        or profile.get("academic_level")
+        or profile.get("study_level")
+        or "Bachelors"
+    ).strip().lower()
+
+    if any(token in raw for token in ["phd", "doctoral", "doctorate", "dba", "ded", "d.ed", "professional doctor"]):
+        return "doctoral"
+    if any(token in raw for token in ["research masters", "research master's", "mphil", "m.phil", "master of philosophy"]):
+        return "research_masters"
+    if any(token in raw for token in ["non-research", "non research", "coursework", "taught masters", "taught master's", "mba", "msc", "ma", "masters", "master's"]):
+        return "nonresearch_masters"
+    return "bachelors"
+
+
+def _is_core_research_chapter(chapter_number: int) -> bool:
+    """Return True for chapters where prose quality and reasoning depth matter most."""
+    return int(chapter_number or 0) in {1, 2, 3, 4, 5}
+
+
+def _level_quality_profile(profile: dict[str, Any], chapter_number: int) -> dict[str, str]:
+    """Return level-specific drafting quality expectations for prompts and routing."""
+    level = _normalise_academic_level(profile)
+    quality = {
+        "bachelors": {
+            "quality_band": "paid_bachelor_draft",
+            "draft_expectation": (
+                "Produce a complete thesis-standard undergraduate draft. It must be clear, well-structured, "
+                "evidence-led and academically credible, but it should not overcomplicate the theory or methodology."
+            ),
+        },
+        "nonresearch_masters": {
+            "quality_band": "paid_nonresearch_masters_draft",
+            "draft_expectation": (
+                "Produce a strong master's-level professional or applied draft. It must show synthesis, practical relevance, "
+                "methodological clarity and implications for practice or institutions."
+            ),
+        },
+        "research_masters": {
+            "quality_band": "paid_research_masters_draft",
+            "draft_expectation": (
+                "Produce a research-master's/MPhil-level draft with deeper theoretical engagement, critical synthesis, "
+                "explicit gaps, strong methodology justification and clear objective-method alignment."
+            ),
+        },
+        "doctoral": {
+            "quality_band": "paid_doctoral_draft",
+            "draft_expectation": (
+                "Produce a doctoral-level draft. It should read as advanced, supervisor-ready academic prose with originality, "
+                "conceptual depth, methodological defensibility, careful critique and a clear contribution to knowledge or practice."
+            ),
+        },
+    }[level]
+    quality["normalised_level"] = level
+    quality["core_research_chapter"] = "yes" if _is_core_research_chapter(chapter_number) else "no"
+    return quality
+
+
+def _select_draft_model(profile: dict[str, Any], chapter_number: int) -> tuple[str, str]:
+    """Select the main writing model according to academic level.
+
+    Default principle:
+    - support work can use cheaper models elsewhere;
+    - paid chapter drafting should use a strong writing model;
+    - Research Masters/MPhil and PhD/DBA/Doctoral default to GPT-5.5;
+    - Bachelors and Non-Research Masters default to GPT-5.4 unless overridden.
+    """
+    routing = os.getenv("PROJECTREADY_MODEL_ROUTING", "level_based").strip().lower()
+    if routing in {"manual", "off", "legacy"}:
+        return os.getenv("OPENAI_MODEL", "gpt-5.5").strip(), "manual"
+
+    level = _normalise_academic_level(profile)
+    chapter_number = int(chapter_number or 0)
+
+    # Optional override for the practical supplementary guide.
+    if chapter_number == 7 and os.getenv("OPENAI_SUPPLEMENTARY_GUIDE_MODEL", "").strip():
+        return os.getenv("OPENAI_SUPPLEMENTARY_GUIDE_MODEL", "").strip(), f"{level}:supplementary_guide"
+
+    if level == "doctoral":
+        return os.getenv("OPENAI_DOCTORAL_DRAFT_MODEL", "gpt-5.5").strip(), "doctoral"
+
+    if level == "research_masters":
+        return os.getenv("OPENAI_RESEARCH_MASTERS_DRAFT_MODEL", "gpt-5.5").strip(), "research_masters"
+
+    if level == "nonresearch_masters":
+        # Allow users to uplift Chapter 2/3/4 for non-research masters without changing the whole plan.
+        if _is_core_research_chapter(chapter_number) and os.getenv("OPENAI_NONRESEARCH_MASTERS_CORE_MODEL", "").strip():
+            return os.getenv("OPENAI_NONRESEARCH_MASTERS_CORE_MODEL", "").strip(), "nonresearch_masters:core"
+        return os.getenv("OPENAI_NONRESEARCH_MASTERS_DRAFT_MODEL", "gpt-5.4").strip(), "nonresearch_masters"
+
+    # Bachelor should still be a good paid draft, not a low-tier model.
+    if _is_core_research_chapter(chapter_number) and os.getenv("OPENAI_BACHELOR_CORE_MODEL", "").strip():
+        return os.getenv("OPENAI_BACHELOR_CORE_MODEL", "").strip(), "bachelors:core"
+    return os.getenv("OPENAI_BACHELOR_DRAFT_MODEL", "gpt-5.4").strip(), "bachelors"
+
+
+def _select_revision_model(profile: dict[str, Any], chapter_number: int, draft_model: str) -> str:
+    """Select the model for the conservative academic revision pass."""
+    routing = os.getenv("PROJECTREADY_REVISION_ROUTING", "same_as_draft").strip().lower()
+    if routing in {"same", "same_as_draft", "draft"}:
+        return draft_model
+    if routing in {"level_based", "level"}:
+        return _select_draft_model(profile, chapter_number)[0]
+    if routing in {"premium", "gpt55", "gpt-5.5"}:
+        return os.getenv("OPENAI_REVIEW_MODEL", "gpt-5.5").strip()
+    return os.getenv("OPENAI_REVISION_MODEL", draft_model).strip()
+
+
+def _model_route_for_prompt(profile: dict[str, Any], chapter_number: int) -> dict[str, Any]:
+    """Return a compact prompt-visible summary of the quality route, without exposing internal pricing."""
+    draft_model, route = _select_draft_model(profile, chapter_number)
+    qp = _level_quality_profile(profile, chapter_number)
+    return {
+        "routing_mode": os.getenv("PROJECTREADY_MODEL_ROUTING", "level_based"),
+        "route": route,
+        "draft_model_family": draft_model,
+        "support_model_role": "Use lower-cost/support models only for source preparation, retraction screening, formatting, table cleanup and DOCX readiness, not for the main paid draft.",
+        "quality_band": qp["quality_band"],
+        "draft_expectation": qp["draft_expectation"],
+    }
 
 
 def _uploaded_results_for_chapter(profile: dict[str, Any], chapter_number: int) -> dict[str, Any]:
@@ -389,6 +457,7 @@ def _student_contribution_requirements(profile: dict[str, Any]) -> dict[str, Any
     }
 
 
+
 def _supplementary_methods_guide_requirements(profile: dict[str, Any]) -> dict[str, Any]:
     """Return generic rules for Chapter 7 as a practical guide.
 
@@ -589,6 +658,7 @@ def build_drafting_prompt(
         },
         "project_profile": profile,
         "selected_academic_level_and_depth": _level_depth_requirements(profile),
+        "level_based_model_quality_route": _model_route_for_prompt(profile, chapter_number),
         "reference_currency_requirements": _reference_currency_requirements(),
         "citation_and_evidence_requirements": _citation_and_evidence_requirements(chapter_number),
         "human_scholarly_style_requirements": _human_scholarly_style_requirements(seed=hash(profile.get("title", "")) & 0xFFFFFFFF),
@@ -602,6 +672,7 @@ def build_drafting_prompt(
         "output_requirements": [
             "Write in formal British English.",
             "Use the selected academic level internally to determine depth and sophistication, but never mention the selected level in the generated chapter text.",
+            "Follow the level_based_model_quality_route: the user is paying for a quality draft, so the main prose must be academically strong at the selected level; do not produce low-tier, shallow or mechanical writing.",
             "Follow the human_scholarly_style_requirements and student_contribution_and_style_controls so the writing sounds natural, rigorous, context-specific, evidence-led and carefully supervised rather than generic or mechanical.",
             "In all generated chapters, use controlled high-burstiness and extremely high-perplexity scholarly writing: natural variation in sentence length, paragraph shape, vocabulary, transitions and argumentative movement, without sacrificing clarity, evidence, APA accuracy or methodological precision.",
             "Use the student's central argument, local context notes, evidence anchors, supervisor comments, preferred writing style and supplied writing sample as style/context guidance; do not copy the writing sample verbatim unless the user has written it as content to include.",
@@ -967,6 +1038,8 @@ def _polish_generated_text(text: str) -> str:
     return polished.strip()
 
 
+
+
 # ----------------------------------------------------------------------
 # FINAL OUTPUT CONTROLS
 # ----------------------------------------------------------------------
@@ -1022,6 +1095,7 @@ def _protect_thesis_structure(text: str) -> str:
     return text.strip()
 
 
+
 def _remove_stray_transition_prefixes(text: str) -> str:
     """Remove transition words that sometimes leak into table rows, item codes and scale points."""
     if not text:
@@ -1045,7 +1119,7 @@ def _finalise_output_controls(text: str) -> str:
     return text.strip()
 
 # ----------------------------------------------------------------------
-# SOURCE INTEGRATION AND OTHER HELPERS
+# SOURCE INTEGRATION AND OTHER HELPERS (unchanged from original)
 # ----------------------------------------------------------------------
 
 def _source_usage_count(text: str, sources: list[dict[str, Any]]) -> int:
@@ -1253,7 +1327,7 @@ def _call_openai_response_safely(client: Any, model: str, instructions: str, pro
 
 
 # ----------------------------------------------------------------------
-# MAIN GENERATION FUNCTION (REFACTORED)
+# MAIN GENERATION FUNCTION
 # ----------------------------------------------------------------------
 
 def generate_chapter(
@@ -1266,122 +1340,96 @@ def generate_chapter(
 ) -> tuple[str, str]:
     """
     Generate a chapter using OpenAI (if available) or fallback to local templates.
-    Applies external humanizer (if enabled) and internal texture to the final draft.
+    Incorporates high-burstiness, randomised humaniser and multiple human-quality passes.
     """
-    # 1. Build the drafting prompt (may raise exception)
     try:
         prompt = build_drafting_prompt(profile, chapter_number, selected_section_ids, answers, extra_instructions)
     except Exception:
-        draft = generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)
-        source = "local_template_fallback_prompt_error"
-        client = None
-        # We won't have `model` or `instructions` – client‑dependent steps will be skipped.
-        model = ""
-        instructions = ""
-    else:
-        # 2. Try to get AI‑generated text
-        client = _safe_get_openai_client()
-        if use_ai and client:
-            model = os.getenv("OPENAI_MODEL", "gpt-5.5")
-            instructions = (
-                "You are ProjectReady AI, an academic project-work drafting and compliance assistant. "
-                "Write in a natural, high-standard scholarly voice that sounds like a carefully supervised draft, "
-                "built from the student's own evidence, context, supervisor comments and project decisions. "
-                "Apply controlled high-burstiness and high-perplexity: vary sentence/paragraph length, transitions, vocabulary, "
-                "and argumentative rhythm while keeping clarity, evidence-led reasoning, and disciplinary precision. "
-                "Never mention the selected academic level, template, or checklist. Avoid generic AI phrasing, filler, overclaiming, "
-                "and perfectly balanced paragraphs. Use grounded verbs (suggests, indicates, complicates, qualifies). "
-                "Do not begin problem statements with 'The research problem is that'. Frame problems through evidence, tension, or gap. "
-                "Do not fabricate sources, results, approvals, or evidence. Use clear [bracketed placeholders] when information is missing. "
-                "Write as a completed final project (past tense for methodology, future only for suggested research in Ch5). "
-                "For Ch2: use clean markdown gap tables and Mermaid flowcharts for diagrams. For equations: display blocks with $$. "
-                "For Ch4: never invent output; present only supplied results. Apply reference currency (≥70% recent, but allow older where needed). "
-                "Include accurate in-text citations. For source-finder results: integrate only highly_relevant/partly_relevant records, "
-                "exclude not_relevant, and add a Source Use Audit after References. Do not add any AI-detection or humanisation notes. "
-                "For the Supplementary Methods and Analysis Guide, use sample outputs only as structural guides, not as content templates. "
-                "Do not hard-code sample topics, sources, constructs, item wording or contexts. Use only the current project profile and source bank. "
-                "just produce normal scholarly prose."
+        return (
+            _finalise_output_controls(_polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers))),
+            "local_template_fallback_prompt_error"
+        )
+
+    client = _safe_get_openai_client()
+    if use_ai and client:
+        model, model_route = _select_draft_model(profile, chapter_number)
+        revision_model = _select_revision_model(profile, chapter_number, model)
+        instructions = (
+            "You are ProjectReady AI, an academic project-work drafting and compliance assistant. "
+            "Write in a natural, high-standard scholarly voice that sounds like a carefully supervised draft, "
+            "built from the student's own evidence, context, supervisor comments and project decisions. "
+            "Apply controlled high-burstiness and high-perplexity: vary sentence/paragraph length, transitions, vocabulary, "
+            "and argumentative rhythm while keeping clarity, evidence-led reasoning, and disciplinary precision. "
+            "Never mention the selected academic level, template, or checklist. Avoid generic AI phrasing, filler, overclaiming, "
+            "and perfectly balanced paragraphs. Use grounded verbs (suggests, indicates, complicates, qualifies). "
+            "Do not begin problem statements with 'The research problem is that'. Frame problems through evidence, tension, or gap. "
+            "Do not fabricate sources, results, approvals, or evidence. Use clear [bracketed placeholders] when information is missing. "
+            "Write as a completed final project (past tense for methodology, future only for suggested research in Ch5). "
+            "For Ch2: use clean markdown gap tables and Mermaid flowcharts for diagrams. For equations: display blocks with $$. "
+            "For Ch4: never invent output; present only supplied results. Apply reference currency (≥70% recent, but allow older where needed). "
+            "Include accurate in-text citations. For source-finder results: integrate only highly_relevant/partly_relevant records, "
+            "exclude not_relevant, and add a Source Use Audit after References. Do not add any AI-detection or humanisation notes. "
+            "For the Supplementary Methods and Analysis Guide, use sample outputs only as structural guides, not as content templates. "
+            "Do not hard-code sample topics, sources, constructs, item wording or contexts. Use only the current project profile and source bank. "
+            "Apply the level-based quality route: Bachelor outputs must still be complete paid thesis drafts; non-research Masters outputs must be stronger and professionally applied; Research Masters/MPhil outputs must show deeper research synthesis; PhD/DBA/doctoral outputs must be GPT-5.5-level doctoral prose with advanced critique and defensible contribution. "
+            "Just produce normal scholarly prose."
+        )
+
+        text = _call_openai_response_safely(client, model, instructions, prompt)
+        if text:
+            # 1. Basic polish
+            polished = _polish_generated_text(text)
+
+            # 2. Increase natural variation
+            polished = _increase_natural_variation(polished)
+
+            # 3. Relevance-gated source integration
+            polished = _review_source_integration(
+                client=client,
+                model=model,
+                instructions=instructions,
+                original_prompt=prompt,
+                draft=polished,
+                profile=profile,
+                chapter_number=chapter_number,
             )
-            text = _call_openai_response_safely(client, model, instructions, prompt)
-            if text:
-                draft = text
-                source = "openai_responses_api"
-            else:
-                draft = generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)
-                source = "local_template_fallback"
-                # Client is still valid, but we won't use it because we are in fallback.
-                # We can keep client as is, but model/instructions are set.
-        else:
-            draft = generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)
-            source = "local_template_fallback"
-            client = None
-            model = ""
-            instructions = ""
 
-    # ------------------------------------------------------------------
-    # 3. POST‑PROCESSING PIPELINE (applied to any draft)
-    # ------------------------------------------------------------------
+            # 4. Final human-academic revision pass
+            polished = _human_academic_revision_pass(
+                client=client,
+                model=revision_model,
+                instructions=instructions,
+                original_prompt=prompt,
+                draft=polished,
+                profile=profile,
+                chapter_number=chapter_number,
+            )
 
-    # 3a. Basic polish (removes meta‑phrases, fixes tense)
-    polished = _polish_generated_text(draft)
+            # 5. Controlled style texture. Do not apply texture to the Supplementary Methods
+            #    and Analysis Guide because it is table/checklist driven and must stay compact.
+            if int(chapter_number or 0) != 7:
+                polished = _enforce_burstiness(polished, target_std_dev=12.0)
+                polished = _add_drafting_artefacts(polished, probability_per_500_words=0.35)
+                polished = _boost_lexical_richness(polished, replacement_probability=0.25)
+                polished = _cluster_citations(polished)
+                polished = _vary_paragraph_openings(polished)
+                polished = _force_short_sentences(polished, target_every_n_words=200)
+                polished = _add_human_noise(polished, error_probability=0.015)
 
-    # 3b. Increase natural variation (sentence‑level)
-    polished = _increase_natural_variation(polished)
+            # 6. Final output controls for structure, dashes, attention placeholders and table noise.
+            polished = _finalise_output_controls(polished)
 
-    # 3c. Source integration and academic revision – only if we have a client and the text came from AI
-    if client is not None and source == "openai_responses_api":
-        # Relevance‑gated source integration (uses client)
-        polished = _review_source_integration(
-            client=client,
-            model=model,
-            instructions=instructions,
-            original_prompt=prompt,
-            draft=polished,
-            profile=profile,
-            chapter_number=chapter_number,
-        )
-        # Human academic revision pass (uses client)
-        polished = _human_academic_revision_pass(
-            client=client,
-            model=model,
-            instructions=instructions,
-            original_prompt=prompt,
-            draft=polished,
-            profile=profile,
-            chapter_number=chapter_number,
-        )
+            return polished, f"openai_responses_api:{model_route}:{model}"
 
-    # 3d. External humanizer (skip for Chapter 7)
-    if int(chapter_number or 0) != 7:
-        humanizer_config = _get_humanizer_config()
-        external_used = False
-        if humanizer_config["enabled"]:
-            try:
-                polished = _humanize_with_external_api(polished, humanizer_config)
-                external_used = True
-            except Exception as e:
-                print(f"External humanizer error: {e}")
-                if not humanizer_config.get("fallback_to_internal", True):
-                    raise
-
-        # 3e. Internal texture – run only if external was not used OR if external is not set to replace internal
-        if not (external_used and humanizer_config.get("replace_internal", True)):
-            polished = _enforce_burstiness(polished, target_std_dev=12.0)
-            polished = _add_drafting_artefacts(polished, probability_per_500_words=0.35)
-            polished = _boost_lexical_richness(polished, replacement_probability=0.25)
-            polished = _cluster_citations(polished)
-            polished = _vary_paragraph_openings(polished)
-            polished = _force_short_sentences(polished, target_every_n_words=200)
-            polished = _add_human_noise(polished, error_probability=0.015)
-
-    # 3f. Final output controls (structure, dashes, attention placeholders, stray transitions)
-    polished = _finalise_output_controls(polished)
-
-    return polished, source
+    # Fallback when AI is disabled or fails
+    return (
+        _finalise_output_controls(_polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers))),
+        "local_template_fallback"
+    )
 
 
 # ----------------------------------------------------------------------
-# FALLBACK CHAPTER GENERATION (unchanged)
+# FALLBACK CHAPTER GENERATION (unchanged from original)
 # ----------------------------------------------------------------------
 
 def generate_fallback_chapter(
