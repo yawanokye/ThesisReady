@@ -12,6 +12,7 @@ from urllib.request import Request, urlopen
 DEFAULT_TIMEOUT_SECONDS = 12
 MAX_QUERY_CHARS = 220
 MAX_ABSTRACT_CHARS = 650
+RETRACTION_PATTERN = re.compile(r"\b(retracted|retraction|withdrawn|withdrawal|expression\s+of\s+concern|removed\s+article)\b", re.IGNORECASE)
 
 
 def build_source_query(profile: dict[str, Any], user_query: str = "") -> str:
@@ -75,18 +76,15 @@ def search_literature_sources(
         except Exception as exc:
             provider_errors.append({"provider": provider.__name__.replace("_search_", ""), "error": str(exc)[:220]})
 
-    deduped = _dedupe_and_rank(records, query=final_query, recent_start_year=recent_start_year)
+    safe_records: list[dict[str, Any]] = []
+    excluded_retracted: list[dict[str, Any]] = []
+    for record in records:
+        if _is_retracted_record(record):
+            excluded_retracted.append(record)
+            continue
+        safe_records.append(record)
 
-    for src in deduped:
-        src.update(_classify_source_relevance(profile, final_query, src))
-
-    deduped.sort(
-        key=lambda item: (
-            _relevance_tier_rank(item.get("relevance_tier")),
-            item.get("relevance_score", 0),
-        ),
-        reverse=True,
-    )
+    deduped = _dedupe_and_rank(safe_records, query=final_query, recent_start_year=recent_start_year)
 
     # Prefer recent sources but keep strong older/foundational sources where needed.
     # Some metadata providers return None, empty strings, ranges, or non-numeric years.
@@ -121,12 +119,13 @@ def search_literature_sources(
         "databases": ["OpenAlex", "Crossref", "Semantic Scholar", "ERIC"],
         "count": len(selected),
         "provider_errors": provider_errors,
-        "relevance_counts": _relevance_counts(selected),
+        "excluded_retracted_count": len(excluded_retracted),
+        "excluded_retracted_titles": [str(r.get("title") or "[untitled]")[:180] for r in excluded_retracted[:10]],
+        "quality_filters": ["retracted/withdrawn/expression-of-concern records excluded", "deduplicated by DOI/title", "ranked by relevance, recency, DOI, abstract and citation count"],
         "sources": selected,
         "usage_note": (
-            "Use these retrieved records as an additional evidence bank. Prioritise records marked highly_relevant and partly_relevant, "
-            "but cite a source only where it directly supports the claim, variable, method, theory, context, finding, or gap being discussed. "
-            "Do not cite sources marked not_relevant. Verify bibliographic details, DOI links, and institutional requirements before final submission. "
+            "Use these retrieved records as preferred citation material, but verify bibliographic details, DOI links, retraction status, and institutional requirements before final submission. "
+            "Retracted, withdrawn, removed, or expression-of-concern records have been excluded and must not be used to support any argument. "
             "If the results do not match the topic well, refine the search terms and run the search again."
         ),
     }
@@ -168,6 +167,8 @@ def _search_openalex(query: str, per_provider: int = 10) -> list[dict[str, Any]]
             "database": "OpenAlex",
             "citation_count": item.get("cited_by_count"),
             "is_open_access": (item.get("open_access") or {}).get("is_oa"),
+            "is_retracted": bool(item.get("is_retracted", False)),
+            "retraction_status": "OpenAlex is_retracted=true" if bool(item.get("is_retracted", False)) else "",
             "apa_hint": _apa_hint(authors, item.get("publication_year"), title, ((item.get("primary_location") or {}).get("source") or {}).get("display_name") or "", doi),
         })
     return records
@@ -177,7 +178,6 @@ def _search_crossref(query: str, per_provider: int = 10) -> list[dict[str, Any]]
     params = {
         "query.bibliographic": query,
         "rows": min(per_provider, 25),
-        "select": "title,author,issued,container-title,DOI,URL,type,is-referenced-by-count,abstract,published-print,published-online",
     }
     mailto = os.getenv("CROSSREF_MAILTO", "").strip()
     if mailto:
@@ -212,6 +212,8 @@ def _search_crossref(query: str, per_provider: int = 10) -> list[dict[str, Any]]
             "database": "Crossref",
             "citation_count": item.get("is-referenced-by-count"),
             "is_open_access": None,
+            "is_retracted": _crossref_is_retracted(item),
+            "retraction_status": _crossref_retraction_status(item),
             "apa_hint": _apa_hint(authors, year, title, source, doi),
         })
     return records
@@ -244,6 +246,8 @@ def _search_semantic_scholar(query: str, per_provider: int = 10) -> list[dict[st
             "database": "Semantic Scholar",
             "citation_count": item.get("citationCount"),
             "is_open_access": item.get("isOpenAccess"),
+            "is_retracted": _looks_retracted({"title": title, "abstract": item.get("abstract") or "", "type": ", ".join(item.get("publicationTypes") or [])}),
+            "retraction_status": "title/abstract/type indicates retraction or withdrawal" if _looks_retracted({"title": title, "abstract": item.get("abstract") or "", "type": ", ".join(item.get("publicationTypes") or [])}) else "",
             "apa_hint": _apa_hint(authors, item.get("year"), title, item.get("venue") or "", doi),
         })
     return records
@@ -280,177 +284,62 @@ def _search_eric(query: str, per_provider: int = 10) -> list[dict[str, Any]]:
             "database": "ERIC",
             "citation_count": None,
             "is_open_access": None,
+            "is_retracted": _looks_retracted({"title": title, "abstract": item.get("description") or item.get("abstract") or "", "type": item.get("publicationtype") or ""}),
+            "retraction_status": "title/abstract/type indicates retraction or withdrawal" if _looks_retracted({"title": title, "abstract": item.get("description") or item.get("abstract") or "", "type": item.get("publicationtype") or ""}) else "",
             "apa_hint": _apa_hint([str(a) for a in authors[:6]], year, title, source, ""),
         })
     return records
 
 
 
-RELEVANCE_STOPWORDS = {
-    "about", "after", "among", "based", "because", "between", "chapter", "could", "from", "project", "research",
-    "role", "selected", "study", "their", "these", "this", "with", "within", "work", "works", "effect", "effects",
-    "relationship", "relationships", "mediating", "mediator", "students", "student", "undergraduate", "institution", "institutions",
-}
 
-DOMAIN_SIGNAL_TERMS = {
-    "regret", "dissatisfaction", "dissatisfied", "satisfaction", "expectation", "expectations", "choice", "decision",
-    "post-choice", "postchoice", "undergraduate", "student", "students", "university", "higher education", "private higher education",
-    "institutional choice", "ghana", "ghanaian", "tertiary", "enrolment", "enrollment", "service quality", "disconfirmation",
-}
-
-LOW_VALUE_RECORD_PATTERNS = [
-    r"^review for\b",
-    r"^decision letter for\b",
-    r"^author response for\b",
-    r"^peer review",
-    r"\bpreprint review\b",
-]
-
-OFF_TOPIC_PATTERNS = [
-    r"\bbody dissatisfaction\b",
-    r"\binstagram\b",
-    r"\balcohol-related regret\b",
-    r"\bwage dissatisfaction\b",
-    r"\bunion expectations\b",
-]
+def _looks_retracted(record: dict[str, Any]) -> bool:
+    haystack = " ".join(str(record.get(k) or "") for k in ["title", "subtitle", "abstract", "type", "source", "retraction_status"])
+    return bool(RETRACTION_PATTERN.search(haystack))
 
 
-def _relevance_counts(sources: list[dict[str, Any]]) -> dict[str, int]:
-    counts = {"highly_relevant": 0, "partly_relevant": 0, "not_relevant": 0}
-    for src in sources:
-        tier = str(src.get("relevance_tier") or "not_relevant")
-        counts[tier] = counts.get(tier, 0) + 1
-    return counts
+def _crossref_retraction_status(item: dict[str, Any]) -> str:
+    """Summarise Crossref/Retraction Watch update metadata where present."""
+    statuses: list[str] = []
+    for key in ["update-to", "updated-by"]:
+        value = item.get(key)
+        if isinstance(value, list):
+            for update in value:
+                if str((update or {}).get("type") or "").lower() == "retraction":
+                    statuses.append(f"Crossref {key} type=retraction")
+        elif isinstance(value, dict):
+            for _, updates in value.items():
+                if isinstance(updates, list):
+                    for update in updates:
+                        if str((update or {}).get("type") or "").lower() == "retraction":
+                            statuses.append(f"Crossref {key} type=retraction")
+    relation = item.get("relation") or {}
+    if isinstance(relation, dict):
+        for rel_key, rel_values in relation.items():
+            if "retract" in str(rel_key).lower():
+                statuses.append(f"Crossref relation {rel_key}")
+            if isinstance(rel_values, list):
+                for rel in rel_values:
+                    if "retract" in json.dumps(rel, ensure_ascii=False).lower():
+                        statuses.append(f"Crossref relation {rel_key} mentions retraction")
+    if _looks_retracted({"title": _first(item.get("title")), "abstract": item.get("abstract") or "", "type": item.get("type") or ""}):
+        statuses.append("title/abstract/type indicates retraction or withdrawal")
+    return "; ".join(dict.fromkeys(statuses))
 
 
-def _relevance_tier_rank(tier: Any) -> int:
-    return {"highly_relevant": 3, "partly_relevant": 2, "not_relevant": 1}.get(str(tier or ""), 0)
+def _crossref_is_retracted(item: dict[str, Any]) -> bool:
+    return bool(_crossref_retraction_status(item))
 
 
-def _classify_source_relevance(profile: dict[str, Any], query: str, record: dict[str, Any]) -> dict[str, str]:
-    """Classify a retrieved record before it reaches the drafting engine.
-
-    This is a conservative relevance gate. It prevents keyword-only matches, review
-    records, decision letters, or unrelated studies from being treated as citable
-    evidence simply because they appeared in a search result.
-    """
-    title = _clean_text(record.get("title") or "")
-    abstract = _clean_text(record.get("abstract") or "")
-    source = _clean_text(record.get("source") or "")
-    record_type = _clean_text(record.get("type") or "")
-    haystack = f"{title} {abstract} {source} {record_type}".lower()
-    title_lower = title.lower()
-
-    if any(re.search(pattern, title_lower) for pattern in LOW_VALUE_RECORD_PATTERNS):
-        return {
-            "relevance_tier": "not_relevant",
-            "relevance_reason": "This is a review, decision letter, author response, or other non-substantive metadata record rather than a citable empirical or theoretical source.",
-            "suggested_use": "Do not cite in the chapter. Use a placeholder or rerun the search with more focused terms.",
-        }
-
-    if any(re.search(pattern, haystack) for pattern in OFF_TOPIC_PATTERNS):
-        return {
-            "relevance_tier": "not_relevant",
-            "relevance_reason": "The record uses similar words but addresses a different topic or population, so it is not suitable evidence for this study.",
-            "suggested_use": "Do not cite unless a human reviewer confirms a specific theoretical or methodological reason for using it.",
-        }
-
-    query_terms = _meaningful_terms(query)
-    profile_terms = _profile_terms(profile)
-    combined_terms = sorted(query_terms | profile_terms)
-    title_hits = [term for term in combined_terms if term in title_lower]
-    body_hits = [term for term in combined_terms if term in haystack]
-    signal_hits = [term for term in DOMAIN_SIGNAL_TERMS if term in haystack]
-
-    has_regret = "regret" in haystack or "post-choice" in haystack or "postchoice" in haystack
-    has_dissatisfaction = "dissatisfaction" in haystack or "dissatisfied" in haystack or "satisfaction" in haystack
-    has_expectation = "expectation" in haystack or "expectations" in haystack or "disconfirmation" in haystack
-    has_higher_ed = any(term in haystack for term in ["higher education", "university", "tertiary", "college", "post-secondary", "undergraduate", "foundation year"])
-    has_student_context = any(term in haystack for term in ["student", "students", "undergraduate", "medical students", "healthcare students"])
-    has_ghana = "ghana" in haystack or "ghanaian" in haystack
-    has_private_he = "private higher education" in haystack or ("private" in haystack and has_higher_ed)
-
-    if has_student_context and has_regret and not has_higher_ed:
-        return {
-            "relevance_tier": "partly_relevant",
-            "relevance_reason": "Addresses regret among students, but not within private higher education or the full study context.",
-            "suggested_use": "Use cautiously for conceptual support on student regret only, not as direct evidence on Ghanaian private higher education.",
-        }
-
-    if has_higher_ed and ((has_regret and has_dissatisfaction) or (has_regret and has_expectation)):
-        return {
-            "relevance_tier": "highly_relevant",
-            "relevance_reason": "Directly addresses the study constructs within a higher education or student-choice context.",
-            "suggested_use": "Consider for conceptual review, empirical review, or discussion where the claim concerns regret, dissatisfaction, expectations, or mediation.",
-        }
-
-    if (has_regret and has_dissatisfaction) or (has_regret and has_expectation):
-        return {
-            "relevance_tier": "partly_relevant",
-            "relevance_reason": "Addresses regret with dissatisfaction or expectations, but outside the exact higher education context.",
-            "suggested_use": "Use only for conceptual support where the argument concerns regret, dissatisfaction, or expectation mechanisms, not for Ghanaian higher education context.",
-        }
-
-    if has_higher_ed and (has_regret or has_dissatisfaction or has_expectation):
-        return {
-            "relevance_tier": "highly_relevant",
-            "relevance_reason": "Directly connects higher education or students with regret, dissatisfaction, expectations, or student experience.",
-            "suggested_use": "Consider for Chapter One context, Chapter Two conceptual/empirical review, or Chapter Four discussion.",
-        }
-
-    if has_ghana and has_higher_ed:
-        return {
-            "relevance_tier": "highly_relevant",
-            "relevance_reason": "Highly relevant to Ghanaian higher education context, even if it does not measure the full model.",
-            "suggested_use": "Use for Ghana-specific background, private higher education context, student choice, or problem framing where appropriate.",
-        }
-
-    if has_private_he or (has_higher_ed and len(signal_hits) >= 2) or len(title_hits) >= 3:
-        return {
-            "relevance_tier": "partly_relevant",
-            "relevance_reason": "Partly relevant to higher education choice, student experience, service evaluation, or one construct in the study.",
-            "suggested_use": "Use only where it supports a specific claim. Do not cite it as evidence for the entire regret-expectation-dissatisfaction model.",
-        }
-
-    if len(body_hits) >= 5 and len(signal_hits) >= 1:
-        return {
-            "relevance_tier": "partly_relevant",
-            "relevance_reason": "Contains several topic terms and at least one construct signal, but the fit appears indirect.",
-            "suggested_use": "Use cautiously if the paragraph concerns the specific construct, method, or context reflected in the source.",
-        }
-
-    return {
-        "relevance_tier": "not_relevant",
-        "relevance_reason": "The record does not clearly support the study topic, constructs, context, theory, method, empirical gap, or discussion.",
-        "suggested_use": "Do not cite. Keep it out of the reference list unless a human reviewer confirms relevance.",
-    }
-
-
-def _meaningful_terms(text: str) -> set[str]:
-    terms = set()
-    lower = (text or "").lower()
-    for phrase in ["post-choice", "post choice", "higher education", "private higher education", "student expectations", "student dissatisfaction", "career choice regret", "student choice", "university choice"]:
-        if phrase in lower:
-            terms.add(phrase)
-    for term in re.findall(r"[a-zA-Z][a-zA-Z\-]{3,}", lower):
-        cleaned = term.strip("-")
-        if cleaned and cleaned not in RELEVANCE_STOPWORDS:
-            terms.add(cleaned)
-    return terms
-
-
-def _profile_terms(profile: dict[str, Any]) -> set[str]:
-    pieces: list[str] = []
-    for key in ["title", "research_area", "study_context", "citation_evidence_notes"]:
-        value = str(profile.get(key) or "").strip()
-        if value:
-            pieces.append(value)
-    objectives = profile.get("objectives") or []
-    if isinstance(objectives, str):
-        pieces.append(objectives)
-    elif isinstance(objectives, list):
-        pieces.extend(str(x) for x in objectives if str(x).strip())
-    return _meaningful_terms(" ".join(pieces))
+def _is_retracted_record(record: dict[str, Any]) -> bool:
+    if not isinstance(record, dict):
+        return False
+    value = record.get("is_retracted")
+    if isinstance(value, bool) and value:
+        return True
+    if str(value).strip().lower() in {"true", "yes", "1", "retracted", "withdrawn"}:
+        return True
+    return _looks_retracted(record)
 
 def _get_json(url: str) -> dict[str, Any]:
     request = Request(url, headers={
@@ -472,6 +361,8 @@ def _dedupe_and_rank(records: list[dict[str, Any]], query: str, recent_start_yea
         key = doi or re.sub(r"[^a-z0-9]+", "", title.lower())[:100]
         if not title or key in seen:
             continue
+        if _is_retracted_record(record):
+            continue
         seen.add(key)
         record["title"] = title
         record["doi"] = doi
@@ -483,6 +374,8 @@ def _dedupe_and_rank(records: list[dict[str, Any]], query: str, recent_start_yea
 
 
 def _relevance_score(record: dict[str, Any], query: str, recent_start_year: int) -> float:
+    if _is_retracted_record(record):
+        return -9999.0
     query_terms = {term for term in re.findall(r"[a-zA-Z]{4,}", query.lower()) if len(term) > 3}
     haystack = " ".join([str(record.get("title") or ""), str(record.get("abstract") or ""), str(record.get("source") or "")]).lower()
     term_hits = sum(1 for term in query_terms if term in haystack)
