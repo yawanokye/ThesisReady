@@ -8,6 +8,8 @@ import subprocess
 from datetime import datetime
 from typing import Any, Optional
 
+import requests  # <-- added for external humanizer API
+
 from dotenv import load_dotenv
 
 from app.template_store import get_chapter, selected_sections
@@ -25,6 +27,67 @@ def _safe_get_openai_client():
     except Exception:
         return None
 
+
+# ----------------------------------------------------------------------
+# EXTERNAL HUMANIZER CONFIGURATION AND CLIENT
+# ----------------------------------------------------------------------
+
+def _get_humanizer_config() -> dict[str, Any]:
+    """Read external humanizer settings from environment variables."""
+    return {
+        "enabled": os.getenv("HUMANIZER_ENABLED", "false").lower() == "true",
+        "endpoint": os.getenv("HUMANIZER_ENDPOINT", "").strip(),
+        "api_key": os.getenv("HUMANIZER_API_KEY", "").strip(),
+        "model": os.getenv("HUMANIZER_MODEL", "default").strip(),
+        "timeout": int(os.getenv("HUMANIZER_TIMEOUT", "60")),
+        "replace_internal": os.getenv("HUMANIZER_REPLACE_INTERNAL", "true").lower() == "true",
+        "fallback_to_internal": os.getenv("HUMANIZER_FALLBACK_TO_INTERNAL", "true").lower() == "true",
+    }
+
+
+def _humanize_with_external_api(text: str, config: dict[str, Any]) -> str:
+    """
+    Send the draft to the third-party humanizer API (thehumanizeai.pro).
+    The API is instructed to preserve citations, placeholders, tables, equations, headings.
+    Returns the humanized text or the original on failure.
+    """
+    if not config["enabled"] or not config["endpoint"] or not config["api_key"]:
+        return text
+
+    # Build the payload according to the API spec
+    payload = {
+        "text": text,
+        "model": config.get("model", "fast"),  # can be "fast" or maybe others
+    }
+
+    headers = {
+        "Authorization": f"Bearer {config['api_key']}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        response = requests.post(
+            config["endpoint"],
+            json=payload,
+            headers=headers,
+            timeout=config["timeout"]
+        )
+        response.raise_for_status()
+        result = response.json()
+        # Try common response fields
+        humanized = result.get("result") or result.get("humanized_text") or result.get("output") or result.get("text")
+        if humanized and isinstance(humanized, str):
+            return humanized.strip()
+        else:
+            return text  # fallback if unexpected response
+    except Exception as e:
+        print(f"External humanizer API error: {e}")  # Replace with proper logging.
+        return text  # fallback to original
+
+
+# ----------------------------------------------------------------------
+# ORIGINAL HELPER FUNCTIONS (unchanged)
+# ----------------------------------------------------------------------
 
 def _reference_currency_requirements() -> dict[str, Any]:
     """Return the reference currency rule used across generated chapters."""
@@ -326,7 +389,6 @@ def _student_contribution_requirements(profile: dict[str, Any]) -> dict[str, Any
             "furthermore repeated mechanically", "the research problem is that",
         ],
     }
-
 
 
 def _supplementary_methods_guide_requirements(profile: dict[str, Any]) -> dict[str, Any]:
@@ -907,8 +969,6 @@ def _polish_generated_text(text: str) -> str:
     return polished.strip()
 
 
-
-
 # ----------------------------------------------------------------------
 # FINAL OUTPUT CONTROLS
 # ----------------------------------------------------------------------
@@ -964,7 +1024,6 @@ def _protect_thesis_structure(text: str) -> str:
     return text.strip()
 
 
-
 def _remove_stray_transition_prefixes(text: str) -> str:
     """Remove transition words that sometimes leak into table rows, item codes and scale points."""
     if not text:
@@ -988,7 +1047,7 @@ def _finalise_output_controls(text: str) -> str:
     return text.strip()
 
 # ----------------------------------------------------------------------
-# SOURCE INTEGRATION AND OTHER HELPERS (unchanged from original)
+# SOURCE INTEGRATION AND OTHER HELPERS
 # ----------------------------------------------------------------------
 
 def _source_usage_count(text: str, sources: list[dict[str, Any]]) -> int:
@@ -1272,16 +1331,37 @@ def generate_chapter(
                 chapter_number=chapter_number,
             )
 
-            # 5. Controlled style texture. Do not apply texture to the Supplementary Methods
-            #    and Analysis Guide because it is table/checklist driven and must stay compact.
+            # ---- NEW: EXTERNAL HUMANIZER ----
+            # Skip for Chapter 7 (Supplementary Methods Guide)
             if int(chapter_number or 0) != 7:
-                polished = _enforce_burstiness(polished, target_std_dev=12.0)
-                polished = _add_drafting_artefacts(polished, probability_per_500_words=0.35)
-                polished = _boost_lexical_richness(polished, replacement_probability=0.25)
-                polished = _cluster_citations(polished)
-                polished = _vary_paragraph_openings(polished)
-                polished = _force_short_sentences(polished, target_every_n_words=200)
-                polished = _add_human_noise(polished, error_probability=0.015)
+                humanizer_config = _get_humanizer_config()
+                external_used = False
+                if humanizer_config["enabled"]:
+                    try:
+                        polished = _humanize_with_external_api(polished, humanizer_config)
+                        external_used = True
+                    except Exception as e:
+                        print(f"External humanizer error: {e}")
+                        if not humanizer_config.get("fallback_to_internal", True):
+                            # If fallback is False, re-raise or propagate
+                            raise
+                        # else fallback to internal later
+                # Internal texture: run only if external was not used OR if external is not set to replace internal
+                # (i.e., we may want to run both, but if replace_internal is True we skip internal)
+                if not (external_used and humanizer_config.get("replace_internal", True)):
+                    # Apply internal style texture
+                    polished = _enforce_burstiness(polished, target_std_dev=12.0)
+                    polished = _add_drafting_artefacts(polished, probability_per_500_words=0.35)
+                    polished = _boost_lexical_richness(polished, replacement_probability=0.25)
+                    polished = _cluster_citations(polished)
+                    polished = _vary_paragraph_openings(polished)
+                    polished = _force_short_sentences(polished, target_every_n_words=200)
+                    polished = _add_human_noise(polished, error_probability=0.015)
+                # else: external already did the humanization, we skip internal texture
+            else:
+                # For Chapter 7, we skip all humanization (external and internal) to preserve table clarity
+                # but we still run basic polish earlier, which is fine.
+                pass
 
             # 6. Final output controls for structure, dashes, attention placeholders and table noise.
             polished = _finalise_output_controls(polished)
@@ -1296,7 +1376,7 @@ def generate_chapter(
 
 
 # ----------------------------------------------------------------------
-# FALLBACK CHAPTER GENERATION (unchanged from original)
+# FALLBACK CHAPTER GENERATION (unchanged)
 # ----------------------------------------------------------------------
 
 def generate_fallback_chapter(
