@@ -36,9 +36,9 @@ def _get_humanizer_config() -> dict[str, Any]:
     """Read external humanizer settings from environment variables."""
     return {
         "enabled": os.getenv("HUMANIZER_ENABLED", "false").lower() == "true",
-        "endpoint": os.getenv("HUMANIZER_ENDPOINT", "").strip(),
+        "endpoint": os.getenv("HUMANIZER_ENDPOINT", "https://thehumanizeai.pro/api/v1/humanize").strip(),
         "api_key": os.getenv("HUMANIZER_API_KEY", "").strip(),
-        "model": os.getenv("HUMANIZER_MODEL", "default").strip(),
+        "model": os.getenv("HUMANIZER_MODEL", "fast").strip(),
         "timeout": int(os.getenv("HUMANIZER_TIMEOUT", "60")),
         "replace_internal": os.getenv("HUMANIZER_REPLACE_INTERNAL", "true").lower() == "true",
         "fallback_to_internal": os.getenv("HUMANIZER_FALLBACK_TO_INTERNAL", "true").lower() == "true",
@@ -47,17 +47,15 @@ def _get_humanizer_config() -> dict[str, Any]:
 
 def _humanize_with_external_api(text: str, config: dict[str, Any]) -> str:
     """
-    Send the draft to the third-party humanizer API (thehumanizeai.pro).
-    The API is instructed to preserve citations, placeholders, tables, equations, headings.
+    Send the draft to thehumanizeai.pro API.
     Returns the humanized text or the original on failure.
     """
     if not config["enabled"] or not config["endpoint"] or not config["api_key"]:
         return text
 
-    # Build the payload according to the API spec
     payload = {
         "text": text,
-        "model": config.get("model", "fast"),  # can be "fast" or maybe others
+        "model": config["model"],
     }
 
     headers = {
@@ -74,15 +72,15 @@ def _humanize_with_external_api(text: str, config: dict[str, Any]) -> str:
         )
         response.raise_for_status()
         result = response.json()
-        # Try common response fields
-        humanized = result.get("result") or result.get("humanized_text") or result.get("output") or result.get("text")
+        # The API returns 'humanized_text' (observed in your test)
+        humanized = result.get("humanized_text") or result.get("result") or result.get("output") or result.get("text")
         if humanized and isinstance(humanized, str):
             return humanized.strip()
         else:
-            return text  # fallback if unexpected response
+            return text
     except Exception as e:
-        print(f"External humanizer API error: {e}")  # Replace with proper logging.
-        return text  # fallback to original
+        print(f"External humanizer API error: {e}")
+        return text
 
 
 # ----------------------------------------------------------------------
@@ -1255,7 +1253,7 @@ def _call_openai_response_safely(client: Any, model: str, instructions: str, pro
 
 
 # ----------------------------------------------------------------------
-# MAIN GENERATION FUNCTION
+# MAIN GENERATION FUNCTION (REFACTORED)
 # ----------------------------------------------------------------------
 
 def generate_chapter(
@@ -1268,111 +1266,118 @@ def generate_chapter(
 ) -> tuple[str, str]:
     """
     Generate a chapter using OpenAI (if available) or fallback to local templates.
-    Incorporates high-burstiness, randomised humaniser and multiple human-quality passes.
+    Applies external humanizer (if enabled) and internal texture to the final draft.
     """
+    # 1. Build the drafting prompt (may raise exception)
     try:
         prompt = build_drafting_prompt(profile, chapter_number, selected_section_ids, answers, extra_instructions)
     except Exception:
-        return (
-            _finalise_output_controls(_polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers))),
-            "local_template_fallback_prompt_error"
-        )
-
-    client = _safe_get_openai_client()
-    if use_ai and client:
-        model = os.getenv("OPENAI_MODEL", "gpt-5.5")
-        instructions = (
-            "You are ProjectReady AI, an academic project-work drafting and compliance assistant. "
-            "Write in a natural, high-standard scholarly voice that sounds like a carefully supervised draft, "
-            "built from the student's own evidence, context, supervisor comments and project decisions. "
-            "Apply controlled high-burstiness and high-perplexity: vary sentence/paragraph length, transitions, vocabulary, "
-            "and argumentative rhythm while keeping clarity, evidence-led reasoning, and disciplinary precision. "
-            "Never mention the selected academic level, template, or checklist. Avoid generic AI phrasing, filler, overclaiming, "
-            "and perfectly balanced paragraphs. Use grounded verbs (suggests, indicates, complicates, qualifies). "
-            "Do not begin problem statements with 'The research problem is that'. Frame problems through evidence, tension, or gap. "
-            "Do not fabricate sources, results, approvals, or evidence. Use clear [bracketed placeholders] when information is missing. "
-            "Write as a completed final project (past tense for methodology, future only for suggested research in Ch5). "
-            "For Ch2: use clean markdown gap tables and Mermaid flowcharts for diagrams. For equations: display blocks with $$. "
-            "For Ch4: never invent output; present only supplied results. Apply reference currency (≥70% recent, but allow older where needed). "
-            "Include accurate in-text citations. For source-finder results: integrate only highly_relevant/partly_relevant records, "
-            "exclude not_relevant, and add a Source Use Audit after References. Do not add any AI-detection or humanisation notes. "
-            "For the Supplementary Methods and Analysis Guide, use sample outputs only as structural guides, not as content templates. "
-            "Do not hard-code sample topics, sources, constructs, item wording or contexts. Use only the current project profile and source bank. "
-            "just produce normal scholarly prose."
-        )
-
-        text = _call_openai_response_safely(client, model, instructions, prompt)
-        if text:
-            # 1. Basic polish
-            polished = _polish_generated_text(text)
-
-            # 2. Increase natural variation
-            polished = _increase_natural_variation(polished)
-
-            # 3. Relevance-gated source integration
-            polished = _review_source_integration(
-                client=client,
-                model=model,
-                instructions=instructions,
-                original_prompt=prompt,
-                draft=polished,
-                profile=profile,
-                chapter_number=chapter_number,
+        draft = generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)
+        source = "local_template_fallback_prompt_error"
+        client = None
+        # We won't have `model` or `instructions` – client‑dependent steps will be skipped.
+        model = ""
+        instructions = ""
+    else:
+        # 2. Try to get AI‑generated text
+        client = _safe_get_openai_client()
+        if use_ai and client:
+            model = os.getenv("OPENAI_MODEL", "gpt-5.5")
+            instructions = (
+                "You are ProjectReady AI, an academic project-work drafting and compliance assistant. "
+                "Write in a natural, high-standard scholarly voice that sounds like a carefully supervised draft, "
+                "built from the student's own evidence, context, supervisor comments and project decisions. "
+                "Apply controlled high-burstiness and high-perplexity: vary sentence/paragraph length, transitions, vocabulary, "
+                "and argumentative rhythm while keeping clarity, evidence-led reasoning, and disciplinary precision. "
+                "Never mention the selected academic level, template, or checklist. Avoid generic AI phrasing, filler, overclaiming, "
+                "and perfectly balanced paragraphs. Use grounded verbs (suggests, indicates, complicates, qualifies). "
+                "Do not begin problem statements with 'The research problem is that'. Frame problems through evidence, tension, or gap. "
+                "Do not fabricate sources, results, approvals, or evidence. Use clear [bracketed placeholders] when information is missing. "
+                "Write as a completed final project (past tense for methodology, future only for suggested research in Ch5). "
+                "For Ch2: use clean markdown gap tables and Mermaid flowcharts for diagrams. For equations: display blocks with $$. "
+                "For Ch4: never invent output; present only supplied results. Apply reference currency (≥70% recent, but allow older where needed). "
+                "Include accurate in-text citations. For source-finder results: integrate only highly_relevant/partly_relevant records, "
+                "exclude not_relevant, and add a Source Use Audit after References. Do not add any AI-detection or humanisation notes. "
+                "For the Supplementary Methods and Analysis Guide, use sample outputs only as structural guides, not as content templates. "
+                "Do not hard-code sample topics, sources, constructs, item wording or contexts. Use only the current project profile and source bank. "
+                "just produce normal scholarly prose."
             )
-
-            # 4. Final human-academic revision pass
-            polished = _human_academic_revision_pass(
-                client=client,
-                model=model,
-                instructions=instructions,
-                original_prompt=prompt,
-                draft=polished,
-                profile=profile,
-                chapter_number=chapter_number,
-            )
-
-            # ---- NEW: EXTERNAL HUMANIZER ----
-            # Skip for Chapter 7 (Supplementary Methods Guide)
-            if int(chapter_number or 0) != 7:
-                humanizer_config = _get_humanizer_config()
-                external_used = False
-                if humanizer_config["enabled"]:
-                    try:
-                        polished = _humanize_with_external_api(polished, humanizer_config)
-                        external_used = True
-                    except Exception as e:
-                        print(f"External humanizer error: {e}")
-                        if not humanizer_config.get("fallback_to_internal", True):
-                            # If fallback is False, re-raise or propagate
-                            raise
-                        # else fallback to internal later
-                # Internal texture: run only if external was not used OR if external is not set to replace internal
-                # (i.e., we may want to run both, but if replace_internal is True we skip internal)
-                if not (external_used and humanizer_config.get("replace_internal", True)):
-                    # Apply internal style texture
-                    polished = _enforce_burstiness(polished, target_std_dev=12.0)
-                    polished = _add_drafting_artefacts(polished, probability_per_500_words=0.35)
-                    polished = _boost_lexical_richness(polished, replacement_probability=0.25)
-                    polished = _cluster_citations(polished)
-                    polished = _vary_paragraph_openings(polished)
-                    polished = _force_short_sentences(polished, target_every_n_words=200)
-                    polished = _add_human_noise(polished, error_probability=0.015)
-                # else: external already did the humanization, we skip internal texture
+            text = _call_openai_response_safely(client, model, instructions, prompt)
+            if text:
+                draft = text
+                source = "openai_responses_api"
             else:
-                # For Chapter 7, we skip all humanization (external and internal) to preserve table clarity
-                # but we still run basic polish earlier, which is fine.
-                pass
+                draft = generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)
+                source = "local_template_fallback"
+                # Client is still valid, but we won't use it because we are in fallback.
+                # We can keep client as is, but model/instructions are set.
+        else:
+            draft = generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)
+            source = "local_template_fallback"
+            client = None
+            model = ""
+            instructions = ""
 
-            # 6. Final output controls for structure, dashes, attention placeholders and table noise.
-            polished = _finalise_output_controls(polished)
+    # ------------------------------------------------------------------
+    # 3. POST‑PROCESSING PIPELINE (applied to any draft)
+    # ------------------------------------------------------------------
 
-            return polished, "openai_responses_api"
+    # 3a. Basic polish (removes meta‑phrases, fixes tense)
+    polished = _polish_generated_text(draft)
 
-    # Fallback when AI is disabled or fails
-    return (
-        _finalise_output_controls(_polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers))),
-        "local_template_fallback"
-    )
+    # 3b. Increase natural variation (sentence‑level)
+    polished = _increase_natural_variation(polished)
+
+    # 3c. Source integration and academic revision – only if we have a client and the text came from AI
+    if client is not None and source == "openai_responses_api":
+        # Relevance‑gated source integration (uses client)
+        polished = _review_source_integration(
+            client=client,
+            model=model,
+            instructions=instructions,
+            original_prompt=prompt,
+            draft=polished,
+            profile=profile,
+            chapter_number=chapter_number,
+        )
+        # Human academic revision pass (uses client)
+        polished = _human_academic_revision_pass(
+            client=client,
+            model=model,
+            instructions=instructions,
+            original_prompt=prompt,
+            draft=polished,
+            profile=profile,
+            chapter_number=chapter_number,
+        )
+
+    # 3d. External humanizer (skip for Chapter 7)
+    if int(chapter_number or 0) != 7:
+        humanizer_config = _get_humanizer_config()
+        external_used = False
+        if humanizer_config["enabled"]:
+            try:
+                polished = _humanize_with_external_api(polished, humanizer_config)
+                external_used = True
+            except Exception as e:
+                print(f"External humanizer error: {e}")
+                if not humanizer_config.get("fallback_to_internal", True):
+                    raise
+
+        # 3e. Internal texture – run only if external was not used OR if external is not set to replace internal
+        if not (external_used and humanizer_config.get("replace_internal", True)):
+            polished = _enforce_burstiness(polished, target_std_dev=12.0)
+            polished = _add_drafting_artefacts(polished, probability_per_500_words=0.35)
+            polished = _boost_lexical_richness(polished, replacement_probability=0.25)
+            polished = _cluster_citations(polished)
+            polished = _vary_paragraph_openings(polished)
+            polished = _force_short_sentences(polished, target_every_n_words=200)
+            polished = _add_human_noise(polished, error_probability=0.015)
+
+    # 3f. Final output controls (structure, dashes, attention placeholders, stray transitions)
+    polished = _finalise_output_controls(polished)
+
+    return polished, source
 
 
 # ----------------------------------------------------------------------
