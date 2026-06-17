@@ -4,9 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ProjectReady AI Workspace</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260613-thesis-quality" />
+  <link rel="stylesheet" href="/static/styles.css?v=20260617-ui-clarity" />
+  <link rel="stylesheet" href="/static/workspace-ui-clarity.css?v=20260617-ui-clarity" />
 </head>
-<body>
+<body class="workspace-clarity-theme">
   <header class="workspace-topbar">
     <a class="workspace-brand" href="/" aria-label="ProjectReady AI home">
       <span class="brand-mark-small">PR</span>
@@ -22,17 +23,29 @@
     <div>
       <p class="eyebrow">ProjectReady AI Workspace</p>
       <h1>Draft project chapters from custom guidelines</h1>
-      <p class="lead">Create a project profile, select chapter sections, generate a draft, then check compliance against the selected rules.</p>
+      <p class="lead">Move through the workspace in sequence. Priority fields are visually highlighted so level, chapter, data type, source search and generation options are not missed.</p>
     </div>
   </header>
+
+  <section class="workflow-strip" aria-label="Workspace workflow guide">
+    <div><strong>1</strong><span>Profile</span></div>
+    <div><strong>2</strong><span>Sources</span></div>
+    <div><strong>3</strong><span>Chapter</span></div>
+    <div><strong>4</strong><span>Guided details</span></div>
+    <div><strong>5</strong><span>Generate</span></div>
+    <div><strong>6</strong><span>Export/check</span></div>
+  </section>
 
   <main class="layout">
     <section class="card">
       <h2>1. Create project profile</h2>
-      <label>Project title
+      <p class="section-kicker">Complete the blue-highlighted fields first. They control chapter quality, model routing and structure.</p>
+      <div class="form-cluster core-cluster">
+        <div class="cluster-title">Core profile and routing</div>
+      <label class="priority-field"><span class="field-label">Project title</span>
         <input id="title" placeholder="e.g. Financial Literacy and Retirement Planning among Informal Workers" />
       </label>
-      <label>Level of thesis/dissertation/project work
+      <label class="priority-field"><span class="field-label">Level of thesis/dissertation/project work</span>
         <select id="level">
           <option value="Bachelors">Bachelors</option>
           <option value="Non-Research Masters">Non-Research Masters</option>
@@ -40,9 +53,10 @@
           <option value="Professional Doctorate (e.g. DBA, DEd)">Professional Doctorate (e.g. DBA, DEd)</option>
           <option value="PhD">PhD</option>
         </select>
+        <span class="field-help">This controls draft depth and model quality. Research Masters and doctoral levels receive stronger routing.</span>
       </label>
       <p id="levelDepthHint" class="hint level-hint" hidden></p>
-      <label>Thesis/dissertation/project format
+      <label class="priority-field"><span class="field-label">Thesis/dissertation/project format</span>
         <select id="thesis_format">
           <option value="Standard five-chapter thesis/dissertation">Standard five-chapter thesis/dissertation</option>
           <option value="Three-chapter project report">Three-chapter project report</option>
@@ -53,7 +67,7 @@
           <option value="Custom school format">Custom school format</option>
         </select>
       </label>
-      <label>Data source and analytical orientation
+      <label class="priority-field"><span class="field-label">Data source and analytical orientation</span>
         <select id="data_type">
           <option value="Primary survey data">Primary survey data</option>
           <option value="Secondary data">Secondary data</option>
@@ -64,6 +78,10 @@
           <option value="Mixed methods">Mixed methods</option>
         </select>
       </label>
+      </div>
+
+      <div class="form-cluster evidence-cluster">
+        <div class="cluster-title">Format, evidence and study context</div>
       <label>School-specific format notes
         <textarea id="format_notes" rows="3" placeholder="Paste or describe your school format, required headings, word limits, citation style, or supervisor instructions. Leave blank if the default structure is suitable."></textarea>
       </label>
@@ -76,6 +94,7 @@
       <label>Verified references, facts and statistics for the study
         <textarea id="citation_evidence_notes" rows="4" placeholder="Paste verified sources, statistics, report details, DOI links, policy evidence, institutional records, or key citation notes. The app will use these to support claims and the problem statement."></textarea>
       </label>
+      </div>
 
       <div class="source-box human-input-box">
         <h3>Student contribution and writing style</h3>
@@ -108,10 +127,10 @@
         <label class="inline"><input type="checkbox" id="humanRevisionPass" checked /> Run academic quality revision pass after drafting</label>
       </div>
 
-      <div class="source-box">
+      <div class="source-box literature-source-box">
         <h3>Find literature sources for this study</h3>
         <p class="hint">Search open scholarly metadata sources and attach relevant papers to the project before drafting. Verify all sources before final submission.</p>
-        <label>Optional source search terms
+        <label class="priority-field"><span class="field-label">Optional source search terms</span>
           <textarea id="sourceSearchQuery" rows="2" placeholder="e.g. procurement literacy ethical behaviour undergraduate students Ghana"></textarea>
         </label>
         <div class="source-controls">
@@ -126,17 +145,18 @@
           <label class="inline source-inline"><input type="checkbox" id="includeOlderFoundational" checked /> Include older foundational sources where relevant</label>
         </div>
         <div class="actions compact-actions">
-          <button id="findSourcesBtn" type="button">Find and attach sources</button>
+          <button id="findSourcesBtn" type="button" class="secondary-action">Find and attach sources</button>
         </div>
         <p id="sourceStatus" class="status"></p>
         <div id="sourceResults" class="source-results"></div>
       </div>
 
-
+      <div class="form-cluster method-cluster">
+        <div class="cluster-title">Variables, approach and objectives</div>
       <label>Key constructs / variables, one per line
         <textarea id="variables_constructs" rows="3" placeholder="e.g. Post-choice regret&#10;Student dissatisfaction&#10;Student expectations"></textarea>
       </label>
-      <label>Research approach
+      <label class="priority-field"><span class="field-label">Research approach</span>
         <select id="research_approach">
           <option>Quantitative</option>
           <option>Qualitative</option>
@@ -146,15 +166,17 @@
       <label>Objectives, one per line
         <textarea id="objectives" rows="4" placeholder="Examine the effect of X on Y&#10;Assess the role of Z"></textarea>
       </label>
-      <button id="createProjectBtn">Create project</button>
+      </div>
+      <button id="createProjectBtn" class="primary-action">Create project</button>
       <p id="projectStatus" class="status"></p>
       <p id="planNotice" class="status plan-notice" hidden></p>
     </section>
 
     <section class="card">
       <h2>2. Select chapter and sections</h2>
-      <label>Chapter
+      <label class="priority-field"><span class="field-label">Chapter</span>
         <select id="chapterSelect"></select>
+        <span class="field-help">Choose the exact chapter before selecting sections. Results and Supplementary Methods show special tools.</span>
       </label>
       <div id="otherChapterBox" class="other-chapter-box" hidden>
         <label>Others chapter title
@@ -183,10 +205,10 @@
         <h3>Revise the selected chapter</h3>
         <p class="hint">Use this when you already have a chapter draft. Upload the existing chapter, add revision instructions, and the app will revise it. Substantive new insertions are marked in red in the preview and DOCX export.</p>
         <label class="inline revision-toggle"><input type="checkbox" id="revisionMode" /> Revise uploaded version instead of drafting from scratch</label>
-        <label>Existing chapter file
+        <label class="priority-field"><span class="field-label">Existing chapter file</span>
           <input id="revisionFile" type="file" accept=".docx,.pdf,.txt,.md" />
         </label>
-        <label>Revision instruction
+        <label class="priority-field"><span class="field-label">Revision instruction</span>
           <textarea id="revisionInstructions" rows="3" placeholder="e.g. Preserve the structure, strengthen the methodology justification, add missing citations, correct tense, and respond to supervisor comments."></textarea>
         </label>
         <div class="actions compact-actions">
@@ -198,7 +220,7 @@
       <div class="upload-box" id="resultsUploadBox" hidden>
         <h3>Upload results output</h3>
         <p class="hint">This option appears only for the Results/Data Analysis and Discussion chapter. Upload SPSS/Excel/CSV/Word/PDF/text output so the app can use the actual results in the write-up.</p>
-        <label>Results file
+        <label class="priority-field"><span class="field-label">Results file</span>
           <input id="resultsFile" type="file" accept=".csv,.tsv,.txt,.md,.docx,.xlsx,.xlsm,.pdf" />
         </label>
         <div class="actions compact-actions">
@@ -207,12 +229,13 @@
         <p id="uploadStatus" class="status"></p>
         <pre id="uploadPreview" class="preview-box"></pre>
       </div>
-      <label>Extra instructions
+      <label class="priority-field"><span class="field-label">Extra instructions</span>
         <textarea id="extraInstructions" rows="2" placeholder="e.g. Use a quantitative explanatory design and British English"></textarea>
       </label>
+      <div class="action-callout">Generate first, then run compliance and export. Disabled buttons become active after output is created.</div>
       <div class="actions">
-        <button id="draftBtn">Generate chapter draft</button>
-        <button id="checkBtn">Run compliance check</button>
+        <button id="draftBtn" class="primary-action">Generate chapter draft</button>
+        <button id="checkBtn" class="secondary-action">Run compliance check</button>
         <button id="downloadDraftBtn" disabled>Download draft DOCX</button>
         <button id="downloadCheckBtn" disabled>Download checklist DOCX</button>
       </div>
@@ -242,6 +265,6 @@
     </section>
   </main>
 
-  <script src="/static/app.js?v=20260613-thesis-quality"></script>
+  <script src="/static/app.js?v=20260617-ui-clarity"></script>
 </body>
 </html>
