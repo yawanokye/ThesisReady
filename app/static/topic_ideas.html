@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ProjectReady AI | Thesis Topic Ideas</title>
+  <link rel="stylesheet" href="/static/styles.css?v=20260617-topic-ideas" />
+  <link rel="stylesheet" href="/static/topic_ideas.css?v=20260617-topic-ideas" />
+</head>
+<body class="topic-page">
+  <header class="workspace-topbar topic-topbar">
+    <a class="workspace-brand" href="/" aria-label="ProjectReady AI home">
+      <span class="brand-mark-small">PR</span>
+      <span>ProjectReady AI</span>
+    </a>
+    <nav class="workspace-nav" aria-label="ProjectReady navigation">
+      <a href="/">Landing page</a>
+      <a href="/topic-ideas" aria-current="page">Topic ideas</a>
+      <a href="/workspace">Workspace</a>
+    </nav>
+  </header>
+
+  <main class="topic-shell">
+    <section class="topic-hero">
+      <div>
+        <p class="eyebrow">Research idea generator</p>
+        <h1>Generate thesis and dissertation titles from current research trends</h1>
+        <p class="lead">Enter a research area and context. ProjectReady AI will search scholarly metadata, exclude detected retracted papers, and suggest researchable titles with brief synopses, possible methods and evidence notes.</p>
+      </div>
+      <aside class="topic-note">
+        <strong>Responsible use</strong>
+        <p>Use these ideas as starting points. Confirm feasibility, data access, supervisor fit and final wording before approval.</p>
+      </aside>
+    </section>
+
+    <section class="topic-layout">
+      <form id="ideaForm" class="topic-card topic-form">
+        <h2>1. Describe the research interest</h2>
+        <label class="priority-field"><span class="field-label">Research area or broad topic</span>
+          <input id="researchArea" required placeholder="e.g. digital financial literacy, green procurement, stakeholder engagement, AI in education" />
+        </label>
+        <label><span class="field-label">Context, sector or population</span>
+          <textarea id="context" rows="3" placeholder="e.g. informal workers in Ghana, private universities, mining-related projects, SMEs, public hospitals"></textarea>
+        </label>
+        <label><span class="field-label">Country, region or institutional setting</span>
+          <input id="countryRegion" placeholder="e.g. Ghana, Cape Coast, Western Region, Sub-Saharan Africa" />
+        </label>
+        <label><span class="field-label">Keywords, variables or concepts</span>
+          <textarea id="keywords" rows="3" placeholder="One per line or comma-separated: trust, adoption, sustainability, performance, financial behaviour"></textarea>
+        </label>
+
+        <div class="two-grid">
+          <label class="priority-field"><span class="field-label">Academic level</span>
+            <select id="level">
+              <option value="Bachelors">Bachelors</option>
+              <option value="Non-Research Masters">Non-Research Masters</option>
+              <option value="Research Masters (e.g. MPhil)">Research Masters / MPhil</option>
+              <option value="Professional Doctorate (e.g. DBA, DEd)">Professional Doctorate / DBA / DEd</option>
+              <option value="PhD">PhD</option>
+            </select>
+          </label>
+          <label><span class="field-label">Preferred methodology</span>
+            <select id="methodology">
+              <option>Not sure</option>
+              <option>Quantitative survey</option>
+              <option>Qualitative case study</option>
+              <option>Mixed methods</option>
+              <option>Secondary data</option>
+              <option>Econometrics</option>
+              <option>Time-series econometrics</option>
+              <option>Panel data econometrics</option>
+              <option>Systematic literature review</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="two-grid">
+          <label><span class="field-label">Data access</span>
+            <select id="dataType">
+              <option>Not sure</option>
+              <option>Primary data available</option>
+              <option>Secondary data available</option>
+              <option>Both primary and secondary data possible</option>
+              <option>Limited data access</option>
+            </select>
+          </label>
+          <label><span class="field-label">Number of title ideas</span>
+            <select id="maxIdeas">
+              <option value="5">5</option>
+              <option value="8" selected>8</option>
+              <option value="10">10</option>
+              <option value="12">12</option>
+            </select>
+          </label>
+        </div>
+
+        <label><span class="field-label">Trend focus, optional</span>
+          <input id="trendFocus" placeholder="e.g. AI, sustainability, governance, inclusion, post-COVID recovery, digitalisation" />
+        </label>
+        <label class="inline topic-inline"><input type="checkbox" id="includeOlderFoundational" checked /> Include older foundational sources where relevant</label>
+        <div class="actions topic-actions">
+          <button id="generateIdeasBtn" type="submit">Generate title ideas</button>
+          <button id="clearIdeasBtn" type="button" class="secondary-action">Clear</button>
+        </div>
+        <p id="ideaStatus" class="status"></p>
+      </form>
+
+      <section class="topic-card topic-results-card">
+        <div class="result-head">
+          <div>
+            <h2>2. Suggested titles and synopses</h2>
+            <p class="hint">Each idea includes a brief synopsis, possible method, variables and the source keys that informed the trend or gap.</p>
+          </div>
+          <button id="copyIdeasBtn" type="button" disabled>Copy results</button>
+        </div>
+        <div id="ideaMeta" class="idea-meta"></div>
+        <div id="ideaResults" class="idea-results empty-state">
+          <p>Generated ideas will appear here.</p>
+        </div>
+      </section>
+    </section>
+
+    <section class="topic-card source-panel">
+      <h2>3. Source records used for trend grounding</h2>
+      <p class="hint">These are metadata records used to ground the topic ideas. Verify each source before citing it in a final thesis or dissertation.</p>
+      <div id="sourceRecords" class="source-records"></div>
+    </section>
+  </main>
+
+  <script src="/static/topic_ideas.js?v=20260617-topic-ideas"></script>
+</body>
+</html>
