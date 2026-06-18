@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ProjectReady AI | Journal Article Drafting</title>
+  <link rel="stylesheet" href="/static/styles.css?v=20260618-suite-ui-verified" />
+  <link rel="stylesheet" href="/static/journal_article.css?v=20260618-suite-ui-verified" />
+  <link rel="stylesheet" href="/static/projectready-suite.css?v=20260618-suite-ui-verified" />
+</head>
+<body class="journal-page suite-page article-suite">
+  <header class="workspace-topbar article-topbar">
+    <a class="workspace-brand" href="/" aria-label="ProjectReady AI home">
+      <span class="brand-mark-small">PR</span>
+      <span>ProjectReady AI</span>
+    </a>
+    <nav class="workspace-nav" aria-label="ProjectReady navigation">
+      <a href="/">Home</a>
+      <a href="/topic-ideas">Topic Ideas</a>
+      <a href="/journal-article" aria-current="page">Journal Article</a>
+      <a href="/workspace">Thesis Workspace</a>
+    </nav>
+  </header>
+
+  <main class="article-shell">
+    <section class="article-hero">
+      <div>
+        <p class="eyebrow">Publishable manuscript drafting</p>
+        <h1>Draft a publishable journal article from your study, results and target journal guidelines</h1>
+        <p class="lead">Paste the article topic, author guidelines, study details, results and verified sources. ProjectReady AI drafts a manuscript-ready article, deepens citation support, excludes detected retracted papers and marks missing information as attention placeholders.</p><div class="suite-capability-strip"><span class="suite-pill purple">Article-ready draft</span><span class="suite-pill">Guideline aware</span><span class="suite-pill green">Citation depth</span><span class="suite-pill amber">Declarations check</span></div>
+      </div>
+      <aside class="article-note">
+        <strong>Best use</strong>
+        <p>Use this for manuscript drafting, not automatic publication. Authors must verify results, citations, journal formatting, authorship, ethics and declarations before submission.</p>
+      </aside>
+    </section>
+
+
+
+    <section class="suite-module-grid" aria-label="ProjectReady AI modules">
+      <a class="suite-module-card green" href="/topic-ideas"><span class="suite-module-tag">Explore</span><strong>Topic Ideas</strong><span>Generate researchable ideas before proposal writing.</span></a>
+      <a class="suite-module-card" href="/workspace"><span class="suite-module-tag">Thesis</span><strong>Thesis Workspace</strong><span>Build chapters and methodology-aligned content.</span></a>
+      <a class="suite-module-card purple active" href="/journal-article"><span class="suite-module-tag">Current module</span><strong>Journal Article</strong><span>Draft article-ready manuscripts from study details.</span></a>
+      <a class="suite-module-card amber" href="#qualityFilters"><span class="suite-module-tag">Integrity</span><strong>Quality Filters</strong><span>Exclude detected retracted papers and mark missing details.</span></a>
+    </section>
+
+    <section class="article-workflow-strip" aria-label="Journal article workflow">
+      <div><strong>1</strong><span>Journal guide</span></div>
+      <div><strong>2</strong><span>Study details</span></div>
+      <div><strong>3</strong><span>Sources</span></div>
+      <div><strong>4</strong><span>Draft article</span></div>
+      <div><strong>5</strong><span>Export DOCX</span></div>
+    </section>
+
+    <section class="article-layout">
+      <form id="articleForm" class="article-card article-form">
+        <h2>1. Article inputs and journal guidelines</h2>
+        <label class="priority-field"><span class="field-label">Working article title or topic</span>
+          <input id="articleTitle" required placeholder="e.g. Financial literacy and retirement planning among informal workers in Ghana" />
+        </label>
+        <label><span class="field-label">Research area</span>
+          <input id="researchArea" placeholder="e.g. finance, project management, education, public health, procurement" />
+        </label>
+        <label class="priority-field"><span class="field-label">Target journal or publisher, optional</span>
+          <input id="targetJournal" placeholder="e.g. Journal of Financial Counseling and Planning, Emerald, Taylor & Francis, Springer" />
+          <span class="field-help">Use the next box to paste author guidelines, aims and scope, word limit, reference style and article format.</span>
+        </label>
+        <label class="priority-field"><span class="field-label">Journal author guidelines, aims and scope</span>
+          <textarea id="authorGuidelines" rows="5" placeholder="Paste the journal's required structure, abstract length, word limit, reference style, tables/figures rules, ethics/declaration rules and manuscript formatting notes."></textarea>
+        </label>
+
+        <div class="two-grid">
+          <label class="priority-field"><span class="field-label">Article type</span>
+            <select id="articleType">
+              <option>Empirical research article</option>
+              <option>Conceptual paper</option>
+              <option>Systematic literature review</option>
+              <option>Scoping review</option>
+              <option>Case study article</option>
+              <option>Methodology paper</option>
+              <option>Policy/practice paper</option>
+            </select>
+          </label>
+          <label class="priority-field"><span class="field-label">Academic level / quality route</span>
+            <select id="academicLevel">
+              <option>Bachelors</option>
+              <option>Non-Research Masters</option>
+              <option selected>Research Masters (e.g. MPhil)</option>
+              <option>Professional Doctorate (e.g. DBA, DEd)</option>
+              <option>PhD</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="two-grid">
+          <label><span class="field-label">Methodology/design</span>
+            <input id="methodology" placeholder="e.g. quantitative survey, PLS-SEM, regression, qualitative case study, systematic review" />
+          </label>
+          <label><span class="field-label">Word limit</span>
+            <input id="wordLimit" value="6000-8000" placeholder="e.g. 6000-8000" />
+          </label>
+        </div>
+
+        <div class="two-grid">
+          <label><span class="field-label">Citation style</span>
+            <select id="citationStyle">
+              <option>APA 7th</option>
+              <option>Harvard</option>
+              <option>Chicago author-date</option>
+              <option>Vancouver</option>
+              <option>IEEE</option>
+              <option>Journal-specific style</option>
+            </select>
+          </label>
+          <label class="inline article-inline"><input type="checkbox" id="includeSourceSearch" checked /> Search current scholarly metadata before drafting</label>
+        </div>
+
+        <label><span class="field-label">Study context, country, sample or sector</span>
+          <textarea id="context" rows="3" placeholder="Describe the population, country, sector, institution, dataset, sample and study period."></textarea>
+        </label>
+        <label><span class="field-label">Research problem, gap or practical issue</span>
+          <textarea id="researchProblem" rows="3" placeholder="What problem, contradiction, gap or unresolved issue should the article address?"></textarea>
+        </label>
+        <label><span class="field-label">Objectives, research questions or hypotheses</span>
+          <textarea id="objectives" rows="4" placeholder="One per line. Include hypotheses if available."></textarea>
+        </label>
+        <label><span class="field-label">Theory, conceptual framework or literature anchor</span>
+          <textarea id="theoryFramework" rows="3" placeholder="e.g. stakeholder theory, expectation-disconfirmation theory, TPB, TAM, agency theory, resource-based view"></textarea>
+        </label>
+        <label><span class="field-label">Variables, constructs or themes</span>
+          <textarea id="variablesConstructs" rows="3" placeholder="One per line or comma-separated. Include IV, DV, mediator, moderator or control variables if known."></textarea>
+        </label>
+        <label class="priority-field"><span class="field-label">Data, analysis output or results summary</span>
+          <textarea id="dataResults" rows="6" placeholder="Paste analysed results, tables, coefficients, p-values, themes, reliability/validity outputs or qualitative findings. Leave blank if you need placeholders."></textarea>
+        </label>
+        <label><span class="field-label">Key findings and contribution</span>
+          <textarea id="keyFindings" rows="4" placeholder="Summarise the main findings and what the article contributes to theory, method, practice, policy or context."></textarea>
+        </label>
+        <label><span class="field-label">Verified references, DOI links and source notes</span>
+          <textarea id="referencesNotes" rows="4" placeholder="Paste verified sources, DOI links, source-bank notes, journal articles, policy reports or reference hints. Retracted papers should not be used."></textarea>
+        </label>
+        <label class="inline article-inline"><input type="checkbox" id="includeOlderFoundational" checked /> Include older foundational theory where relevant</label>
+
+        <div class="actions article-actions">
+          <button id="draftArticleBtn" type="submit">Draft journal article</button>
+          <button id="clearArticleBtn" type="button" class="secondary-action">Clear</button>
+        </div>
+        <p id="articleStatus" class="status"></p>
+      </form>
+
+      <section class="article-card article-output-card">
+        <div class="result-head">
+          <div>
+            <h2>2. Article draft</h2>
+            <p class="hint">Missing evidence appears as bracketed attention placeholders. Verify all citations, results and declarations before submission.</p>
+          </div>
+          <div class="article-output-actions">
+            <button id="copyArticleBtn" type="button" disabled>Copy</button>
+            <button id="downloadArticleBtn" type="button" disabled>Download DOCX</button>
+          </div>
+        </div>
+        <textarea id="articleOutput" class="article-output" rows="28" placeholder="Journal article draft will appear here."></textarea>
+      </section>
+    </section>
+
+    <section class="article-card source-panel">
+      <h2>3. Source records and quality filters</h2>
+      <p class="hint">These records may inform the draft. Detected retracted or withdrawn records are excluded where metadata exposes their status.</p>
+      <div id="qualityFilters" class="quality-filters"></div>
+      <div id="sourceRecords" class="source-records"></div>
+    </section>
+  </main>
+
+  <script src="/static/journal_article.js?v=20260617-journal-article"></script>
+</body>
+</html>
