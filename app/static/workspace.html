@@ -4,10 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ProjectReady AI Workspace</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260617-topic-ideas" />
-  <link rel="stylesheet" href="/static/workspace-ui-clarity.css?v=20260617-topic-ideas" />
+  <link rel="stylesheet" href="/static/styles.css?v=20260618-suite-ui" />
+  <link rel="stylesheet" href="/static/workspace-ui-clarity.css?v=20260618-suite-ui" />
+  <link rel="stylesheet" href="/static/projectready-suite.css?v=20260618-suite-ui" />
 </head>
-<body class="workspace-clarity-theme">
+<body class="workspace-clarity-theme suite-page thesis-suite">
   <header class="workspace-topbar">
     <a class="workspace-brand" href="/" aria-label="ProjectReady AI home">
       <span class="brand-mark-small">PR</span>
@@ -15,19 +16,29 @@
     </a>
     <nav class="workspace-nav" aria-label="Workspace navigation">
       <a href="/">Home</a>
-      <a href="/topic-ideas">Topic ideas Workspace</a>
-      <a href="/journal-article">Journal article Workspace</a>
-      <a href="/workspace" aria-current="page">Thesis/Dissertation Workspace</a>
+      <a href="/topic-ideas">Topic Ideas</a>
+      <a href="/journal-article">Journal Article</a>
+      <a href="/workspace" aria-current="page">Thesis Workspace</a>
     </nav>
   </header>
 
   <header class="hero">
     <div>
       <p class="eyebrow">ProjectReady AI Workspace</p>
-      <h1>Draft your thesis, dissertation or project chapters from suggested guidelines</h1>
-      <p class="eyebrow">Move through the workspace in sequence.</p>
+      <h1>Draft thesis, dissertation and project chapters with evidence, sources and compliance checks</h1>
+      <p class="lead">Use this module for chapter drafting, revision, source attachment, results upload, supplementary methods guidance, compliance review and DOCX export.</p><div class="suite-capability-strip"><span class="suite-pill">Level-based quality</span><span class="suite-pill green">Source finder</span><span class="suite-pill amber">Retracted source exclusion</span><span class="suite-pill purple">DOCX export</span></div>
     </div>
   </header>
+
+
+
+  <section class="suite-module-grid" aria-label="ProjectReady AI modules">
+    <a class="suite-module-card green" href="/topic-ideas"><span class="suite-module-tag">Before drafting</span><strong>Topic Ideas</strong><span>Explore titles, trends, gaps and synopses.</span></a>
+    <a class="suite-module-card active" href="/workspace"><span class="suite-module-tag">Current module</span><strong>Thesis/Dissertation Workspace</strong><span>Draft chapters, revise work, upload results and export checks.</span></a>
+    <a class="suite-module-card purple" href="/journal-article"><span class="suite-module-tag">After results</span><strong>Journal Article</strong><span>Convert a completed study into a manuscript draft.</span></a>
+    <a class="suite-module-card amber" href="#sourceSearchQuery"><span class="suite-module-tag">Quality guard</span><strong>Sources & Evidence</strong><span>Attach literature, avoid retracted papers and strengthen citations.</span></a>
+  </section>
+
 
   <section class="workflow-strip" aria-label="Workspace workflow guide">
     <div><strong>1</strong><span>Profile</span></div>
@@ -129,7 +140,7 @@
         <label class="inline"><input type="checkbox" id="humanRevisionPass" checked /> Run academic quality revision pass after drafting</label>
       </div>
 
-      <div class="source-box literature-source-box">
+      <div class="source-box literature-source-box" id="integrity-tools">
         <h3>Find literature sources for this study</h3>
         <p class="hint">Search open scholarly metadata sources and attach relevant papers to the project before drafting. Verify all sources before final submission.</p>
         <label class="priority-field"><span class="field-label">Optional source search terms</span>

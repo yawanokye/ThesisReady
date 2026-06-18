@@ -5,9 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ProjectReady AI | Academic project-writing and compliance assistant</title>
   <meta name="description" content="ProjectReady AI helps students to generate ideas; draft project work, long essays, dissertations, theses and journal articles based on suggested formats, evidence-based writing, results uploads, source finding and guideline compliance checks." />
-  <link rel="stylesheet" href="/static/landing.css" />
+  <link rel="stylesheet" href="/static/landing.css?v=20260618-suite-ui" />
+  <link rel="stylesheet" href="/static/projectready-suite.css?v=20260618-suite-ui" />
 </head>
-<body>
+<body class="suite-page landing-suite">
   <header class="site-header">
     <a class="brand" href="/" aria-label="ProjectReady AI home">
       <span class="brand-mark">PR</span>
@@ -15,8 +16,8 @@
     </a>
     <nav class="nav-links" aria-label="Primary navigation">
       <a href="#features">Features</a>
-      <a href="/topic-ideas">Topic ideas</a>
-      <a href="/journal-article">Journal article</a>
+      <a href="/topic-ideas">Topic Ideas</a>
+      <a href="/journal-article">Journal Article</a>
       <a href="#formats">Formats</a>
       <a href="#pricing">Pricing</a>
       <a href="#integrity">Responsible use</a>
@@ -65,6 +66,29 @@
           <p>Generate chapters, upload results and export compliance reports.</p>
         </div>
       </div>
+    </section>
+
+    <section class="suite-module-grid" aria-label="ProjectReady AI module switcher">
+      <a class="suite-module-card green" href="/topic-ideas">
+        <span class="suite-module-tag">Explore</span>
+        <strong>Topic Ideas</strong>
+        <span>Generate researchable titles and short synopses from current trends and available literature signals.</span>
+      </a>
+      <a class="suite-module-card active" href="/workspace">
+        <span class="suite-module-tag">Draft</span>
+        <strong>Thesis Workspace</strong>
+        <span>Build chapters, upload results, check guidelines and export DOCX drafts.</span>
+      </a>
+      <a class="suite-module-card purple" href="/journal-article">
+        <span class="suite-module-tag">Publish</span>
+        <strong>Journal Article</strong>
+        <span>Draft manuscript-ready articles from study details, results and author guidelines.</span>
+      </a>
+      <a class="suite-module-card amber" href="/workspace#integrity-tools">
+        <span class="suite-module-tag">Check</span>
+        <strong>Evidence & Compliance</strong>
+        <span>Use source search, retraction exclusion, result upload and checklist review before submission.</span>
+      </a>
     </section>
 
     <section id="how-it-works" class="section">

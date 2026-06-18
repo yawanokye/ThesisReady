@@ -248,3 +248,12 @@ body.topic-page {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Suite refresh refinements */
+.topic-layout { grid-template-columns: minmax(360px, 440px) minmax(0, 1fr); }
+.topic-card { padding: 1.25rem; }
+.topic-results-card { min-height: 560px; }
+.idea-results { line-height: 1.55; }
+.topic-form label { margin-bottom: .25rem; }
+@media (max-width: 900px){ .topic-layout{grid-template-columns:1fr;} .topic-hero{grid-template-columns:1fr;} .two-grid{grid-template-columns:1fr;} }

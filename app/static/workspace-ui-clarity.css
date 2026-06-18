@@ -366,3 +366,13 @@ button:disabled {
   .card { border-radius: 16px; }
   .priority-field { padding: 0.65rem; }
 }
+
+
+/* Suite refresh refinements */
+.layout { max-width: 1280px; }
+.card { padding: 1.2rem; }
+.card.wide { min-width: 0; }
+.source-controls { display: flex; align-items: center; }
+#draftOutput { min-height: 520px; }
+#sectionsBox label { font-weight: 750; }
+@media (max-width: 760px){ .layout{grid-template-columns:1fr;} .source-controls{display:block;} }

@@ -4,10 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ProjectReady AI | Thesis Topic Ideas</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260617-topic-ideas" />
-  <link rel="stylesheet" href="/static/topic_ideas.css?v=20260617-topic-ideas" />
+  <link rel="stylesheet" href="/static/styles.css?v=20260618-suite-ui" />
+  <link rel="stylesheet" href="/static/topic_ideas.css?v=20260618-suite-ui" />
+  <link rel="stylesheet" href="/static/projectready-suite.css?v=20260618-suite-ui" />
 </head>
-<body class="topic-page">
+<body class="topic-page suite-page ideas-suite">
   <header class="workspace-topbar topic-topbar">
     <a class="workspace-brand" href="/" aria-label="ProjectReady AI home">
       <span class="brand-mark-small">PR</span>
@@ -15,9 +16,9 @@
     </a>
     <nav class="workspace-nav" aria-label="ProjectReady navigation">
       <a href="/">Home</a>
-      <a href="/topic-ideas" aria-current="page">Topic ideas Workspace</a>
-      <a href="/journal-article">Journal article Workspace</a>
-      <a href="/workspace">Thesis/Dissertation Workspace</a>
+      <a href="/topic-ideas" aria-current="page">Topic Ideas</a>
+      <a href="/journal-article">Journal Article</a>
+      <a href="/workspace">Thesis Workspace</a>
     </nav>
   </header>
 
@@ -25,13 +26,30 @@
     <section class="topic-hero">
       <div>
         <p class="eyebrow">Research idea generator</p>
-        <h1>Generate thesis and dissertation titles from current research trends</h1>
-        <p class="lead">Enter a research area and context. ProjectReady AI will search scholarly metadata, exclude detected retracted papers, and suggest researchable titles with brief synopses, possible methods and evidence notes.</p>
+        <h1>Generate thesis and dissertation titles from current research trends and feasible data directions</h1>
+        <p class="lead">Enter a research area, context and possible variables. ProjectReady AI uses scholarly metadata signals, excludes detected retracted papers, and suggests researchable titles with brief synopses, possible methods, likely variables and feasibility notes.</p><div class="suite-capability-strip"><span class="suite-pill green">Trend grounded</span><span class="suite-pill">Synopsis included</span><span class="suite-pill amber">Feasibility note</span><span class="suite-pill purple">Source records</span></div>
       </div>
       <aside class="topic-note">
         <strong>Responsible use</strong>
         <p>Use these ideas as starting points. Confirm feasibility, data access, supervisor fit and final wording before approval.</p>
       </aside>
+    </section>
+
+
+
+    <section class="suite-module-grid" aria-label="ProjectReady AI modules">
+      <a class="suite-module-card green active" href="/topic-ideas"><span class="suite-module-tag">Current module</span><strong>Topic Ideas</strong><span>Generate titles, synopses and study directions from trends.</span></a>
+      <a class="suite-module-card" href="/workspace"><span class="suite-module-tag">Next step</span><strong>Thesis Workspace</strong><span>Turn an approved topic into chapter drafts.</span></a>
+      <a class="suite-module-card purple" href="/journal-article"><span class="suite-module-tag">Publish</span><strong>Journal Article</strong><span>Draft a manuscript from a completed study.</span></a>
+      <a class="suite-module-card amber" href="#sourceRecords"><span class="suite-module-tag">Verify</span><strong>Source Records</strong><span>Review metadata used for trend grounding.</span></a>
+    </section>
+
+    <section class="topic-workflow-strip" aria-label="Topic idea workflow">
+      <div><strong>1</strong><span>Research area</span></div>
+      <div><strong>2</strong><span>Context</span></div>
+      <div><strong>3</strong><span>Trend scan</span></div>
+      <div><strong>4</strong><span>Titles</span></div>
+      <div><strong>5</strong><span>Feasibility</span></div>
     </section>
 
     <section class="topic-layout">
