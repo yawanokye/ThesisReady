@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/static/styles.css?v=20260618-suite-ui-verified" />
   <link rel="stylesheet" href="/static/workspace-ui-clarity.css?v=20260618-suite-ui-verified" />
   <link rel="stylesheet" href="/static/projectready-suite.css?v=20260618-suite-ui-verified" />
+  <link rel="stylesheet" href="/static/projectready_payments.css?v=20260622-payments" />
 </head>
 <body class="workspace-clarity-theme suite-page thesis-suite">
   <header class="workspace-topbar">
@@ -245,7 +246,14 @@
       <label class="priority-field"><span class="field-label">Extra instructions</span>
         <textarea id="extraInstructions" rows="2" placeholder="e.g. Use a quantitative explanatory design and British English"></textarea>
       </label>
-      <div class="action-callout">Generate first, then run compliance and export. Disabled buttons become active after output is created.</div>
+      <div class="pr-access-panel" id="chapterAccessPanel">
+        <div>
+          <strong id="chapterPlanTitle">Chapter access</strong>
+          <p id="chapterAccessStatus">Create the project profile to view the chapter plan.</p>
+        </div>
+        <button id="unlockChapterBtn" type="button" class="secondary-action">Unlock this chapter</button>
+      </div>
+      <div class="action-callout">Free Starter covers one Chapter One draft with up to five selected sections. Paid chapters include one draft, one revision, one compliance check and one DOCX export.</div>
       <div class="actions">
         <button id="draftBtn" class="primary-action">Generate chapter draft</button>
         <button id="checkBtn" class="secondary-action">Run compliance check</button>
@@ -278,6 +286,7 @@
     </section>
   </main>
 
-  <script src="/static/app.js?v=20260617-topic-ideas"></script>
+  <script src="/static/projectready_payments.js?v=20260622-payments"></script>
+  <script src="/static/app.js?v=20260622-payments"></script>
 </body>
 </html>

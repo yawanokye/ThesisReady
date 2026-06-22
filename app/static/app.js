@@ -10,6 +10,7 @@ let uploadedRevisionFilename = "";
 const $ = (id) => document.getElementById(id);
 
 const APP_STATIC_VERSION = "20260610-human2";
+const CURRENT_PROJECT_STORAGE_KEY = "projectready-current-project";
 
 const levelDepthGuidance = {
   "Bachelors": "Use clear undergraduate depth: accurate definitions, relevant context, basic critical discussion, and a defensible but not overly complex methodology.",
@@ -29,27 +30,178 @@ function updateLevelHint() {
 }
 
 async function api(path, options = {}) {
+  const actionRoute = /\/(draft|check)$/.test(path);
+  const paymentHeaders = actionRoute && window.ProjectReadyPayments && currentProjectId
+    ? ProjectReadyPayments.paymentHeaders(currentProjectId, currentChapter)
+    : {};
+  const idempotencyHeaders = actionRoute ? {"Idempotency-Key": requestId()} : {};
   const response = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
     ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...paymentHeaders,
+      ...idempotencyHeaders,
+      ...(options.headers || {})
+    },
   });
   if (!response.ok) {
+    let data = null;
     let message = response.statusText || "Request failed";
     try {
-      const data = await response.json();
+      data = await response.json();
       if (data && data.detail) {
-        message = Array.isArray(data.detail) ? data.detail.map(item => item.msg || JSON.stringify(item)).join("; ") : String(data.detail);
+        if (typeof data.detail === "string") message = data.detail;
+        else if (data.detail.message) message = data.detail.message;
+        else if (Array.isArray(data.detail)) message = data.detail.map(item => item.msg || JSON.stringify(item)).join("; ");
+        else message = JSON.stringify(data.detail);
       }
-    } catch (err) {
-      try {
-        const text = await response.text();
-        if (text) message = text;
-      } catch (_) {}
-    }
-    throw new Error(message);
+    } catch (_) {}
+    const error = new Error(message);
+    error.status = response.status;
+    error.detail = data?.detail || data;
+    throw error;
   }
   return response.json();
 }
+
+function requestId() {
+  if (window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
+  return `pr-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function currentChapterTitle() {
+  const select = $("chapterSelect");
+  return select?.options?.[select.selectedIndex]?.text || `Chapter ${currentChapter}`;
+}
+
+async function openCurrentCheckout() {
+  if (!currentProjectId) await createProject();
+  if (!currentProjectId) throw new Error("Create the project profile before checkout.");
+  if (!window.ProjectReadyPayments) throw new Error("The payment interface did not load. Refresh the page and try again.");
+  return ProjectReadyPayments.openCheckout({
+    projectId: currentProjectId,
+    chapterNumber: Number(currentChapter),
+    chapterTitle: currentChapterTitle(),
+    academicLevel: $("level")?.value || "Bachelors"
+  });
+}
+
+async function handleWorkspaceError(error, statusElement) {
+  const status = typeof statusElement === "string" ? $(statusElement) : statusElement;
+  if (status) status.textContent = error.message || "The request could not be completed.";
+  if (Number(error.status) === 402) {
+    try { await openCurrentCheckout(); } catch (checkoutError) {
+      if (status) status.textContent = checkoutError.message;
+    }
+  }
+}
+
+async function protectedDownload(path, chapterNumber = currentChapter) {
+  const headers = {"Idempotency-Key": requestId()};
+  if (window.ProjectReadyPayments && currentProjectId) {
+    Object.assign(headers, ProjectReadyPayments.paymentHeaders(currentProjectId, Number(chapterNumber)));
+  }
+  const response = await fetch(path, {headers});
+  if (!response.ok) {
+    let data = null;
+    try { data = await response.json(); } catch (_) {}
+    const detail = data?.detail;
+    const message = typeof detail === "string" ? detail : (detail?.message || response.statusText || "Download failed");
+    const error = new Error(message);
+    error.status = response.status;
+    error.detail = detail;
+    throw error;
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+  const filename = match ? decodeURIComponent(match[1].replace(/"/g, "").trim()) : `ProjectReady-Chapter-${chapterNumber}.docx`;
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function updatePaymentPanel() {
+  const panel = $("chapterAccessPanel");
+  const title = $("chapterPlanTitle");
+  const status = $("chapterAccessStatus");
+  const button = $("unlockChapterBtn");
+  if (!panel || !title || !status || !button) return;
+  panel.classList.remove("is-active", "is-warning");
+  const level = $("level")?.value || "Bachelors";
+  const planMap = {
+    "Bachelors": ["Bachelors Project", "US$4.99"],
+    "Non-Research Masters": ["Masters Dissertation / MPhil Thesis", "US$9.99"],
+    "Research Masters (e.g. MPhil)": ["Masters Dissertation / MPhil Thesis", "US$9.99"],
+    "Professional Doctorate (e.g. DBA, DEd)": ["Professional Doctorate / PhD", "US$19.99"],
+    "PhD": ["Professional Doctorate / PhD", "US$19.99"]
+  };
+  const plan = planMap[level] || ["Paid chapter", "See checkout"];
+  title.textContent = `${plan[0]} · ${plan[1]} per chapter`;
+  button.disabled = !currentProjectId;
+
+  if (!currentProjectId) {
+    status.textContent = "Create the project profile to activate checkout.";
+    return;
+  }
+
+  const revision = $("revisionMode")?.checked;
+  const selectedCount = selectedSectionIds().length;
+  const freeEligible = currentChapter === 1 && selectedCount > 0 && selectedCount <= 5 && !revision;
+  const credential = window.ProjectReadyPayments?.getCredential(currentProjectId, currentChapter);
+  if (credential) {
+    try {
+      const entitlement = await ProjectReadyPayments.checkEntitlement(currentProjectId, currentChapter);
+      if (entitlement.allowed && entitlement.project_id === currentProjectId && entitlement.chapter_key === `chapter-${currentChapter}`) {
+        const r = entitlement.remaining || {};
+        panel.classList.add("is-active");
+        status.textContent = `Payment confirmed. Remaining: draft ${r.draft ?? 0}, revision ${r.revision ?? 0}, compliance ${r.compliance ?? 0}, export ${r.export ?? 0}.`;
+        button.textContent = "Purchase another chapter access";
+        return;
+      }
+      if (entitlement.status === "pending") {
+        panel.classList.add("is-warning");
+        status.textContent = "Payment is still pending confirmation.";
+        button.textContent = "Restart checkout";
+        return;
+      }
+    } catch (_) {}
+  }
+
+  button.textContent = "Unlock this chapter";
+  if (freeEligible) {
+    panel.classList.add("is-warning");
+    status.textContent = "Free Starter applies to one Chapter One draft with up to five selected sections. Revision, compliance and DOCX export require paid access.";
+  } else {
+    status.textContent = "Unlock this chapter for one draft, one revision, one compliance check and one DOCX export.";
+  }
+}
+
+async function restoreCurrentProject() {
+  const saved = currentProjectId || localStorage.getItem(CURRENT_PROJECT_STORAGE_KEY);
+  if (!saved) return;
+  try {
+    const project = await api(`/api/projects/${saved}`);
+    currentProjectId = project.id;
+    localStorage.setItem(CURRENT_PROJECT_STORAGE_KEY, project.id);
+    const profile = project.profile || {};
+    if ($("title")) $("title").value = project.title || profile.title || "";
+    if ($("level") && profile.level) $("level").value = profile.level;
+    if ($("thesis_format") && profile.thesis_format) $("thesis_format").value = profile.thesis_format;
+    if ($("research_area")) $("research_area").value = profile.research_area || "";
+    if ($("study_context")) $("study_context").value = profile.study_context || "";
+    if ($("projectStatus")) $("projectStatus").textContent = `Project restored: ${project.id}`;
+  } catch (_) {
+    localStorage.removeItem(CURRENT_PROJECT_STORAGE_KEY);
+    currentProjectId = null;
+  }
+}
+
 
 function lines(value) {
   return (value || "").split("\n").map(v => v.trim()).filter(Boolean);
@@ -310,6 +462,7 @@ async function loadTemplate() {
     currentChapter = Number(chapterSelect.value);
     renderSections();
     updateChapterSpecificUi();
+    updatePaymentPanel();
   });
   renderSections();
 }
@@ -340,7 +493,10 @@ function renderSections() {
     `;
     box.appendChild(div);
   }
-  box.querySelectorAll("input[name='section']").forEach(cb => cb.addEventListener("change", renderAnswers));
+  box.querySelectorAll("input[name='section']").forEach(cb => cb.addEventListener("change", () => {
+    renderAnswers();
+    updatePaymentPanel();
+  }));
   renderAnswers();
   updateChapterSpecificUi();
 }
@@ -460,8 +616,10 @@ async function createProject() {
   $("projectStatus").textContent = "Creating project...";
   const result = await api("/api/projects", { method: "POST", body: JSON.stringify(profile) });
   currentProjectId = result.id;
+  localStorage.setItem(CURRENT_PROJECT_STORAGE_KEY, result.id);
   $("projectStatus").textContent = `Project created: ${result.id}`;
   updateChapterSpecificUi();
+  await updatePaymentPanel();
 }
 
 function genericLanguageAudit(text) {
@@ -528,6 +686,7 @@ async function generateDraft() {
     $("draftStatus").textContent = result.warning + " Review and complete the placeholders before export.";
   }
   $("downloadDraftBtn").disabled = false;
+  await updatePaymentPanel();
 }
 
 async function uploadResults() {
@@ -697,10 +856,10 @@ if ($("draftOutput")) {
   $("draftOutput").addEventListener("input", () => renderDraftPreview($("draftOutput").value));
 }
 
-$("createProjectBtn").addEventListener("click", () => createProject().catch(err => $("projectStatus").textContent = err.message));
-$("draftBtn").addEventListener("click", () => generateDraft().catch(err => $("draftStatus").textContent = err.message));
-if ($("uploadResultsBtn")) $("uploadResultsBtn").addEventListener("click", () => uploadResults().catch(err => $("uploadStatus").textContent = err.message));
-if ($("uploadRevisionBtn")) $("uploadRevisionBtn").addEventListener("click", () => uploadRevision().catch(err => $("revisionStatus").textContent = err.message));
+$("createProjectBtn").addEventListener("click", () => createProject().catch(err => handleWorkspaceError(err, "projectStatus")));
+$("draftBtn").addEventListener("click", () => generateDraft().catch(err => handleWorkspaceError(err, "draftStatus")));
+if ($("uploadResultsBtn")) $("uploadResultsBtn").addEventListener("click", () => uploadResults().catch(err => handleWorkspaceError(err, "uploadStatus")));
+if ($("uploadRevisionBtn")) $("uploadRevisionBtn").addEventListener("click", () => uploadRevision().catch(err => handleWorkspaceError(err, "revisionStatus")));
 if ($("downloadInstrumentBtn")) $("downloadInstrumentBtn").addEventListener("click", () => download(`/api/projects/${currentProjectId}/export/instrument/${currentChapter}`));
 if ($("downloadMethodsSupplementBtn")) $("downloadMethodsSupplementBtn").addEventListener("click", () => {
   const status = $("methodsSupplementStatus");
@@ -714,18 +873,61 @@ if ($("downloadMethodsSupplementBtn")) $("downloadMethodsSupplementBtn").addEven
 if ($("data_type")) $("data_type").addEventListener("change", updateChapterSpecificUi);
 if ($("research_approach")) $("research_approach").addEventListener("change", updateChapterSpecificUi);
 if ($("findSourcesBtn")) {
-  $("findSourcesBtn").addEventListener("click", () => findSources().catch(err => $("sourceStatus").textContent = err.message));
+  $("findSourcesBtn").addEventListener("click", () => findSources().catch(err => handleWorkspaceError(err, "sourceStatus")));
 }
-$("checkBtn").addEventListener("click", () => runCheck().catch(err => $("draftStatus").textContent = err.message));
-$("downloadDraftBtn").addEventListener("click", () => download(`/api/projects/${currentProjectId}/export/chapter/${currentChapter}`));
+$("checkBtn").addEventListener("click", () => runCheck().then(updatePaymentPanel).catch(err => handleWorkspaceError(err, "draftStatus")));
+$("downloadDraftBtn").addEventListener("click", () => {
+  protectedDownload(`/api/projects/${currentProjectId}/export/chapter/${currentChapter}`, currentChapter)
+    .then(updatePaymentPanel)
+    .catch(err => handleWorkspaceError(err, "draftStatus"));
+});
 $("downloadCheckBtn").addEventListener("click", () => download(`/api/projects/${currentProjectId}/export/check/${currentChapter}`));
+if ($("unlockChapterBtn")) $("unlockChapterBtn").addEventListener("click", () => openCurrentCheckout().catch(err => handleWorkspaceError(err, "chapterAccessStatus")));
+if ($("revisionMode")) $("revisionMode").addEventListener("change", updatePaymentPanel);
 if ($("level")) {
-  $("level").addEventListener("change", updateLevelHint);
+  $("level").addEventListener("change", () => { updateLevelHint(); updatePaymentPanel(); });
   updateLevelHint();
 }
 
 updateChapterSpecificUi();
 
-loadTemplate().catch(err => {
+async function initialiseWorkspace() {
+  const params = new URLSearchParams(window.location.search);
+  const returnedProject = params.get("project_id");
+  if (returnedProject) {
+    currentProjectId = returnedProject;
+    localStorage.setItem(CURRENT_PROJECT_STORAGE_KEY, returnedProject);
+  }
+  await loadTemplate();
+  await restoreCurrentProject();
+  const returnedChapter = Number(params.get("chapter") || 0);
+  if (returnedChapter && $("chapterSelect")?.querySelector(`option[value="${returnedChapter}"]`)) {
+    $("chapterSelect").value = String(returnedChapter);
+    currentChapter = returnedChapter;
+    renderSections();
+  }
+  const payment = params.get("payment");
+  if (payment === "success") {
+    if ($("planNotice")) {
+      $("planNotice").hidden = false;
+      $("planNotice").textContent = "Payment confirmed. Your chapter access is ready.";
+    }
+  } else if (payment === "failed") {
+    if ($("planNotice")) {
+      $("planNotice").hidden = false;
+      $("planNotice").textContent = "Payment could not be confirmed. No chapter access was used.";
+    }
+  } else if (payment === "cancelled") {
+    if ($("planNotice")) {
+      $("planNotice").hidden = false;
+      $("planNotice").textContent = "Checkout was cancelled. You can restart it when ready.";
+    }
+  }
+  if (payment) history.replaceState({}, document.title, "/workspace");
+  await updatePaymentPanel();
+}
+
+initialiseWorkspace().catch(err => {
   document.body.innerHTML = `<pre>Failed to load app: ${escapeHtml(err.message)}</pre>`;
 });
+
