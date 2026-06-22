@@ -74,9 +74,8 @@ def article_page_alias() -> FileResponse:
     return FileResponse(STATIC_DIR / "journal_article.html")
 
 @app.get("/register")
-def register_redirect() -> FileResponse:
-    # Registration is not yet implemented in the MVP. Send users to the workspace for now.
-    return FileResponse(STATIC_DIR / "workspace.html")
+def register_page() -> FileResponse:
+    return FileResponse(STATIC_DIR / "register.html")
 
 
 @app.get("/health")
