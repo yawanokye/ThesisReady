@@ -8,7 +8,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.database import init_db
-from app.routers import generation, journal_article, projects, sources, templates, topic_ideas
+from app.payments.store import init_payment_tables
+from app.routers import generation, journal_article, payments, projects, sources, templates, topic_ideas
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -33,12 +34,14 @@ app.include_router(sources.router)
 app.include_router(topic_ideas.router)
 app.include_router(journal_article.router)
 app.include_router(generation.router)
+app.include_router(payments.api_router)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
+    init_payment_tables()
 
 
 @app.get("/")

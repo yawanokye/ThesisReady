@@ -198,6 +198,44 @@ def _check_rule(rule: str, section_paras: list[tuple[int, str]]) -> dict[str, st
     }
 
 
+def _check_citation_density(section_paras: list[tuple[int, str]]) -> dict[str, str]:
+    """Assess whether substantive paragraphs contain citations or source placeholders."""
+    substantive: list[tuple[int, str]] = []
+    supported: list[tuple[int, str]] = []
+    for number, para in section_paras:
+        clean = re.sub(r"\s+", " ", str(para or "")).strip()
+        if len(clean.split()) < 20:
+            continue
+        if re.match(r"^(references|source use audit)\b", clean, re.IGNORECASE):
+            continue
+        substantive.append((number, clean))
+        if _has_intext_citation(clean) or _has_source_placeholder(clean):
+            supported.append((number, clean))
+
+    if not substantive:
+        return {
+            "status": "Missing",
+            "evidence": "No substantive paragraph was available for citation-density review.",
+            "suggested_action": "Add developed paragraphs and support substantive claims with accurate citations or clear source placeholders.",
+        }
+
+    ratio = len(supported) / len(substantive)
+    evidence = f"{len(supported)} of {len(substantive)} substantive paragraphs contain a citation or source placeholder."
+    if ratio >= 0.5:
+        return {"status": "Passed", "evidence": evidence, "suggested_action": "None"}
+    if ratio > 0:
+        return {
+            "status": "Weak",
+            "evidence": evidence,
+            "suggested_action": "Review unsupported substantive paragraphs and add only relevant, verified citations.",
+        }
+    return {
+        "status": "Missing",
+        "evidence": evidence,
+        "suggested_action": "Add accurate in-text citations or explicit source placeholders to substantive claims.",
+    }
+
+
 def _check_citation_rule(rule: str, section_paras: list[tuple[int, str]]) -> dict[str, str]:
     for number, para in section_paras:
         if _has_intext_citation(para) or _has_source_placeholder(para):
@@ -234,6 +272,17 @@ def _check_factual_evidence_rule(rule: str, section_paras: list[tuple[int, str]]
         "evidence": "No clear statistic, factual evidence, or evidence placeholder was found in this section.",
         "suggested_action": f"Add verified facts/statistics or a clear evidence placeholder for this requirement: {rule}",
     }
+
+
+def _has_source_placeholder(text: str) -> bool:
+    """Detect explicit drafting placeholders that still require a verified source."""
+    value = str(text or "").lower()
+    patterns = [
+        r"\[(?:insert|add|verify)[^\]]*(?:citation|source|reference|evidence)[^\]]*\]",
+        r"\[(?:citation|source|reference|evidence)\s+(?:needed|required|to be added)[^\]]*\]",
+        r"\b(?:citation|source|reference)\s+(?:needed|required)\b",
+    ]
+    return any(re.search(pattern, value) for pattern in patterns)
 
 
 def _has_intext_citation(text: str) -> bool:
