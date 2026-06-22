@@ -6,10 +6,11 @@ let latestSourceSearchResult = null;
 let accumulatedSourceBank = [];
 let uploadedRevisionText = "";
 let uploadedRevisionFilename = "";
+let draftRequestInFlight = false;
 
 const $ = (id) => document.getElementById(id);
 
-const APP_STATIC_VERSION = "20260610-human2";
+const APP_STATIC_VERSION = "20260622-access-gate-v2";
 const CURRENT_PROJECT_STORAGE_KEY = "projectready-current-project";
 
 const levelDepthGuidance = {
@@ -74,24 +75,58 @@ function currentChapterTitle() {
   return select?.options?.[select.selectedIndex]?.text || `Chapter ${currentChapter}`;
 }
 
-async function openCurrentCheckout() {
-  if (!currentProjectId) await createProject();
-  if (!currentProjectId) throw new Error("Create the project profile before checkout.");
-  if (!window.ProjectReadyPayments) throw new Error("The payment interface did not load. Refresh the page and try again.");
-  return ProjectReadyPayments.openCheckout({
+function currentAccessOptions() {
+  return {
     projectId: currentProjectId,
     chapterNumber: Number(currentChapter),
     chapterTitle: currentChapterTitle(),
     academicLevel: $("level")?.value || "Bachelors"
-  });
+  };
+}
+
+function hideAccessRequiredNotice() {
+  const notice = $("accessRequiredNotice");
+  if (notice) notice.hidden = true;
+}
+
+function showAccessRequiredNotice(error) {
+  const notice = $("accessRequiredNotice");
+  const message = $("accessRequiredMessage");
+  const registerLink = $("accessRegisterBtn");
+  if (!notice) return;
+  const detailMessage = error?.detail?.message || error?.message || "Register or unlock this chapter to continue.";
+  if (message) message.textContent = detailMessage;
+  if (registerLink && window.ProjectReadyPayments) {
+    registerLink.href = ProjectReadyPayments.registrationUrl(currentAccessOptions());
+    registerLink.textContent = ProjectReadyPayments.hasRegistrationProfile()
+      ? "Review registration profile"
+      : "Register / create profile";
+  }
+  notice.hidden = false;
+  notice.scrollIntoView({behavior: "smooth", block: "center"});
+}
+
+async function openCurrentCheckout({direct = false, detail = null} = {}) {
+  if (!currentProjectId) await createProject();
+  if (!currentProjectId) throw new Error("Create the project profile before checkout.");
+  if (!window.ProjectReadyPayments) throw new Error("The payment interface did not load. Refresh the page and try again.");
+  const options = currentAccessOptions();
+  if (direct || typeof ProjectReadyPayments.openAccessGate !== "function") {
+    return ProjectReadyPayments.openCheckout(options);
+  }
+  return ProjectReadyPayments.openAccessGate(options, detail || {});
 }
 
 async function handleWorkspaceError(error, statusElement) {
   const status = typeof statusElement === "string" ? $(statusElement) : statusElement;
-  if (status) status.textContent = error.message || "The request could not be completed.";
-  if (Number(error.status) === 402) {
-    try { await openCurrentCheckout(); } catch (checkoutError) {
-      if (status) status.textContent = checkoutError.message;
+  const message = error?.detail?.message || error?.message || "The request could not be completed.";
+  if (status) status.textContent = message;
+  if ([401, 402].includes(Number(error.status))) {
+    showAccessRequiredNotice(error);
+    try {
+      await openCurrentCheckout({detail: error.detail || {message}});
+    } catch (checkoutError) {
+      if (status) status.textContent = `${message} ${checkoutError.message || ""}`.trim();
     }
   }
 }
@@ -134,15 +169,26 @@ async function updatePaymentPanel() {
   if (!panel || !title || !status || !button) return;
   panel.classList.remove("is-active", "is-warning");
   const level = $("level")?.value || "Bachelors";
-  const planMap = {
+  const fallbackPlanMap = {
     "Bachelors": ["Bachelors Project", "US$4.99"],
     "Non-Research Masters": ["Masters Dissertation / MPhil Thesis", "US$9.99"],
     "Research Masters (e.g. MPhil)": ["Masters Dissertation / MPhil Thesis", "US$9.99"],
     "Professional Doctorate (e.g. DBA, DEd)": ["Professional Doctorate / PhD", "US$19.99"],
     "PhD": ["Professional Doctorate / PhD", "US$19.99"]
   };
-  const plan = planMap[level] || ["Paid chapter", "See checkout"];
-  title.textContent = `${plan[0]} · ${plan[1]} per chapter`;
+  const fallbackPlan = fallbackPlanMap[level] || ["Paid chapter", "See checkout"];
+  title.textContent = `${fallbackPlan[0]} · ${fallbackPlan[1]} per chapter`;
+  try {
+    const response = await fetch(`/api/payments/plans?level=${encodeURIComponent(level)}`, {cache: "no-store"});
+    const plans = await response.json();
+    const plan = plans.paid_plans?.find(item => item.plan_key === plans.recommended_plan);
+    if (response.ok && plan) {
+      const prices = [];
+      if (plan.paystack_price_display) prices.push(`${plan.paystack_price_display} via Paystack`);
+      if (plan.price_display) prices.push(`${plan.price_display} international`);
+      title.textContent = `${plan.name} · ${prices.join(" / ") || "See checkout"} per chapter`;
+    }
+  } catch (_) {}
   button.disabled = !currentProjectId;
 
   if (!currentProjectId) {
@@ -649,8 +695,17 @@ function showDraftQualityHint(text) {
 }
 
 async function generateDraft() {
-  if (!currentProjectId) await createProject();
-  const payload = {
+  if (draftRequestInFlight) return;
+  draftRequestInFlight = true;
+  const draftButton = $("draftBtn");
+  const originalButtonText = draftButton?.textContent || "Generate chapter draft";
+  if (draftButton) {
+    draftButton.disabled = true;
+    draftButton.textContent = "Checking access...";
+  }
+  try {
+    if (!currentProjectId) await createProject();
+    const payload = {
     chapter_number: currentChapter,
     selected_section_ids: selectedSectionIds(),
     answers: collectAnswers(),
@@ -678,15 +733,23 @@ async function generateDraft() {
     ...currentSourcePayload()
   };
   $("draftStatus").textContent = "Generating draft...";
-  const result = await api(`/api/projects/${currentProjectId}/draft`, { method: "POST", body: JSON.stringify(payload) });
-  $("draftOutput").value = result.draft;
+    const result = await api(`/api/projects/${currentProjectId}/draft`, { method: "POST", body: JSON.stringify(payload) });
+    hideAccessRequiredNotice();
+    $("draftOutput").value = result.draft;
   renderDraftPreview(result.draft);
   showDraftQualityHint(result.draft);
   if (result.warning) {
     $("draftStatus").textContent = result.warning + " Review and complete the placeholders before export.";
   }
   $("downloadDraftBtn").disabled = false;
-  await updatePaymentPanel();
+    await updatePaymentPanel();
+  } finally {
+    draftRequestInFlight = false;
+    if (draftButton) {
+      draftButton.disabled = false;
+      draftButton.textContent = originalButtonText;
+    }
+  }
 }
 
 async function uploadResults() {
@@ -883,6 +946,8 @@ $("downloadDraftBtn").addEventListener("click", () => {
 });
 $("downloadCheckBtn").addEventListener("click", () => download(`/api/projects/${currentProjectId}/export/check/${currentChapter}`));
 if ($("unlockChapterBtn")) $("unlockChapterBtn").addEventListener("click", () => openCurrentCheckout().catch(err => handleWorkspaceError(err, "chapterAccessStatus")));
+if ($("accessPayBtn")) $("accessPayBtn").addEventListener("click", () => openCurrentCheckout({direct: true}).catch(err => handleWorkspaceError(err, "draftStatus")));
+if ($("accessDismissBtn")) $("accessDismissBtn").addEventListener("click", hideAccessRequiredNotice);
 if ($("revisionMode")) $("revisionMode").addEventListener("change", updatePaymentPanel);
 if ($("level")) {
   $("level").addEventListener("change", () => { updateLevelHint(); updatePaymentPanel(); });
@@ -907,6 +972,11 @@ async function initialiseWorkspace() {
     renderSections();
   }
   const payment = params.get("payment");
+  const registered = params.get("registered");
+  if (registered === "1" && $("planNotice")) {
+    $("planNotice").hidden = false;
+    $("planNotice").textContent = "Registration profile saved. You can now continue with chapter access or payment.";
+  }
   if (payment === "success") {
     if ($("planNotice")) {
       $("planNotice").hidden = false;
@@ -923,7 +993,7 @@ async function initialiseWorkspace() {
       $("planNotice").textContent = "Checkout was cancelled. You can restart it when ready.";
     }
   }
-  if (payment) history.replaceState({}, document.title, "/workspace");
+  if (payment || registered) history.replaceState({}, document.title, window.location.pathname);
   await updatePaymentPanel();
 }
 

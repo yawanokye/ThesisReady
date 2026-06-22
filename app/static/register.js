@@ -1,8 +1,38 @@
 const $ = (id) => document.getElementById(id);
+const REGISTRATION_PROFILE_KEY = "projectready_registration_profile";
 
 function getValue(id) {
   const element = $(id);
   return element ? element.value.trim() : "";
+}
+
+function safeReturnPath() {
+  const raw = new URLSearchParams(window.location.search).get("return") || "/workspace";
+  if (!raw.startsWith("/") || raw.startsWith("//")) return "/workspace";
+  return raw;
+}
+
+function addRegisteredFlag(path) {
+  const target = new URL(path, window.location.origin);
+  target.searchParams.set("registered", "1");
+  return target.pathname + target.search + target.hash;
+}
+
+function loadExistingProfile() {
+  let profile = null;
+  try {
+    profile = JSON.parse(localStorage.getItem(REGISTRATION_PROFILE_KEY) || "null");
+  } catch (_) {
+    profile = null;
+  }
+  if (!profile || typeof profile !== "object") return;
+  Object.entries(profile).forEach(([key, value]) => {
+    const element = $(key);
+    if (element && value !== undefined && value !== null) element.value = String(value);
+  });
+  if ($("registerStatus")) {
+    $("registerStatus").textContent = "An existing registration profile was found. Review and save any changes.";
+  }
 }
 
 function storeRegistrationProfile(event) {
@@ -30,12 +60,15 @@ function storeRegistrationProfile(event) {
     study_context: getValue("study_context"),
     objectives: getValue("objectives"),
     format_notes: getValue("format_notes"),
-    citation_evidence_notes: getValue("citation_evidence_notes")
+    citation_evidence_notes: getValue("citation_evidence_notes"),
+    registered_at: new Date().toISOString()
   };
 
-  localStorage.setItem("projectready_registration_profile", JSON.stringify(profile));
-  $("registerStatus").textContent = "Profile created. Opening your workspace...";
-  window.setTimeout(() => { window.location.href = "/workspace"; }, 500);
+  localStorage.setItem(REGISTRATION_PROFILE_KEY, JSON.stringify(profile));
+  $("registerStatus").textContent = "Registration profile saved. Returning to your workspace...";
+  const destination = addRegisteredFlag(safeReturnPath());
+  window.setTimeout(() => { window.location.href = destination; }, 450);
 }
 
 $("registrationForm").addEventListener("submit", storeRegistrationProfile);
+loadExistingProfile();
