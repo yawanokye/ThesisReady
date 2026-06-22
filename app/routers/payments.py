@@ -95,7 +95,18 @@ def _redirect(path: str, **params: Any) -> RedirectResponse:
 
 @api_router.get("/api/payments/plans")
 def payment_plans(level: str = "") -> Dict[str, Any]:
-    return build_plans_payload(level)
+    payload = build_plans_payload(level)
+    for plan in payload.get("paid_plans", []):
+        try:
+            charge = get_paystack_charge(str(plan.get("plan_key") or ""))
+            plan["paystack_amount"] = charge["amount"]
+            plan["paystack_currency"] = charge["currency"]
+            plan["paystack_price_display"] = charge["charged_display"]
+        except Exception:
+            # Keep the public USD display available even when Paystack is not
+            # configured yet. Checkout will return the detailed configuration error.
+            plan["paystack_price_display"] = None
+    return payload
 
 
 @api_router.post("/api/payments/checkout")
