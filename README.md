@@ -60,7 +60,10 @@ Open `.env` and add your OpenAI API key:
 ```bash
 OPENAI_API_KEY=your_key_here
 OPENAI_MODEL=gpt-5.5
-DATABASE_URL=projectready.db
+# Render production: set DATABASE_URL to the PostgreSQL internal URL.
+DATABASE_URL=
+# Local development fallback:
+PROJECTREADY_SQLITE_DB_PATH=projectready.db
 APP_NAME=ProjectReady AI
 ```
 Run the app:
@@ -126,6 +129,58 @@ Add full project export with automatic table of contents.
 Add citation and reference checking by connecting it to CiteIntegrity.
 Add supervisor comment workflow.
 Add final page and paragraph mapping after DOCX/PDF pagination.
-Add payment and plan limits.
 Local fallback mode
 When no OpenAI API key is configured, the app still runs. It creates structured placeholder drafts from the selected template. This is useful for demos, but real drafting requires an API key.
+
+## Chapter payment setup
+
+The thesis workspace now supports one-off payment per project chapter.
+
+- Free Starter: one Chapter One draft with up to five selected sections
+- Bachelors Project: US$4.99 per chapter
+- Masters Dissertation / MPhil Thesis: US$9.99 per chapter
+- Professional Doctorate / PhD: US$19.99 per chapter
+
+Each paid chapter includes one draft, one revision, one compliance check and one chapter DOCX export. Purchases remain valid for 90 days and are tied to the selected project and chapter.
+
+### Render database
+
+Create a Render PostgreSQL database and set its internal connection string as `DATABASE_URL`. The project and payment tables will be created automatically at startup. For local development, leave `DATABASE_URL` blank and use `PROJECTREADY_SQLITE_DB_PATH=projectready.db`.
+
+### Required production variables
+
+```text
+APP_BASE_URL=https://projectreadyai.com
+DATABASE_URL=<Render PostgreSQL internal URL>
+PAYSTACK_SECRET_KEY=<Paystack live secret key>
+STRIPE_SECRET_KEY=<Stripe live secret key>
+STRIPE_WEBHOOK_SECRET=<Stripe endpoint signing secret>
+```
+
+Configure fixed GHS Paystack amounts with:
+
+```text
+PROJECTREADY_PAYSTACK_BACHELORS_GHS=<approved amount>
+PROJECTREADY_PAYSTACK_MASTERS_GHS=<approved amount>
+PROJECTREADY_PAYSTACK_DOCTORATE_GHS=<approved amount>
+```
+
+Webhook endpoints:
+
+```text
+https://projectreadyai.com/payment/paystack/webhook
+https://projectreadyai.com/payment/stripe/webhook
+```
+
+Paystack callback:
+
+```text
+https://projectreadyai.com/payment/paystack/callback
+```
+
+Stripe events to subscribe to:
+
+```text
+checkout.session.completed
+checkout.session.async_payment_succeeded
+```

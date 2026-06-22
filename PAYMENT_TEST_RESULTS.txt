@@ -1,0 +1,20 @@
+ProjectReady AI payment integration validation
+
+Passed checks
+- All Python application modules compile.
+- Workspace JavaScript passes Node syntax validation.
+- Payment JavaScript passes Node syntax validation.
+- Eight payment store and entitlement unit tests pass.
+- Project creation works with the shared SQLite fallback database.
+- Payment plan endpoint returns the approved chapter prices.
+- Chapter Two drafting without payment returns HTTP 402.
+- One eligible free Chapter One draft succeeds.
+- A second free Chapter One draft returns HTTP 402.
+- Compliance checking without paid access returns HTTP 402.
+- A simulated active paid chapter allows one draft, one revision, one compliance check, and one DOCX export.
+- Each paid allowance is blocked after its single included use.
+- Project and payment tables are created in the same local database.
+
+Not performed
+- No live Paystack or Stripe charge was made because provider credentials were not supplied.
+- PostgreSQL connectivity was not exercised against a live Render database. The compatibility layer and SQL paths compile and use PostgreSQL-style parameter translation when DATABASE_URL is a PostgreSQL URL.
