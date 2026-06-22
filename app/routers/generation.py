@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 import re
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
 from app.ai_service import generate_chapter
@@ -16,9 +17,42 @@ from app.export import export_chapter_docx, export_compliance_docx, export_instr
 from app.result_uploads import extract_result_file
 from app.schemas import ComplianceRequest, DraftRequest
 from app.template_store import get_chapter
+from app.payments.entitlements import is_free_generation_allowed
+from app.payments.guard import PaymentRequiredError, credentials_from_headers, paid_chapter_action
 
 router = APIRouter(prefix="/api/projects", tags=["generation"])
 EXPORT_DIR = Path("exports")
+
+
+def _payment_required_detail(message: str, *, action: str, chapter_number: int) -> dict[str, Any]:
+    return {
+        "code": "chapter_payment_required",
+        "message": message,
+        "action": action,
+        "chapter_number": chapter_number,
+        "checkout_endpoint": "/api/payments/checkout",
+    }
+
+
+def _paid_action_context(
+    request: Request,
+    *,
+    project_id: str,
+    chapter_number: int,
+    chapter_title: str,
+    action: str,
+):
+    credentials = credentials_from_headers(request.headers)
+    return paid_chapter_action(
+        purchase_id=credentials["purchase_id"],
+        access_token=credentials["access_token"],
+        project_id=project_id,
+        chapter_number=chapter_number,
+        chapter_title=chapter_title,
+        action=action,
+        idempotency_key=request.headers.get("Idempotency-Key"),
+        metadata={"route": request.url.path, "method": request.method},
+    )
 
 
 
@@ -79,7 +113,7 @@ def _merge_payload_sources_into_profile(profile: dict[str, Any], payload: DraftR
     return profile
 
 @router.post("/{project_id}/draft")
-def draft_chapter(project_id: str, payload: DraftRequest):
+def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
     project = _get_project_or_404(project_id)
     try:
         chapter = get_chapter(payload.chapter_number)
@@ -105,6 +139,10 @@ def draft_chapter(project_id: str, payload: DraftRequest):
                 payload.revision_filename = uploaded_revision.get("filename", "")
             except Exception:
                 pass
+    if revision_mode and not revision_text.strip():
+        revision_text = (project.get("drafts") or {}).get(str(payload.chapter_number), "") or ""
+    if revision_mode and not revision_text.strip():
+        raise HTTPException(status_code=400, detail="Upload or generate a chapter before requesting a revision.")
     revision_instructions = getattr(payload, "revision_instructions", "") or ""
     extra_instructions = payload.extra_instructions or ""
 
@@ -159,60 +197,101 @@ def draft_chapter(project_id: str, payload: DraftRequest):
         project["profile"]["other_chapter_instructions"] = other_instructions
         extra_instructions = (extra_instructions + "\n\n" + f"Other chapter title: {other_title}\nUser-specified chapter requirements: {other_instructions}").strip()
 
-    generation_warning = ""
+    chapter_title = str(chapter.get("chapter_title") or f"Chapter {payload.chapter_number}")
+    credentials = credentials_from_headers(request.headers)
+    has_paid_credential = bool(credentials["purchase_id"] and credentials["access_token"])
+    action = "revision" if revision_mode else "draft"
+
+    if revision_mode or has_paid_credential:
+        action_context = _paid_action_context(
+            request,
+            project_id=project_id,
+            chapter_number=payload.chapter_number,
+            chapter_title=chapter_title,
+            action=action,
+        )
+        access_mode = "paid"
+    else:
+        free_check = is_free_generation_allowed(
+            chapter_number=payload.chapter_number,
+            selected_section_ids=payload.selected_section_ids,
+            revision_mode=False,
+        )
+        existing_free_draft = bool((project.get("drafts") or {}).get(str(payload.chapter_number), "").strip())
+        if not free_check.get("allowed") or existing_free_draft:
+            message = free_check.get("message") or "Unlock this chapter to continue."
+            if existing_free_draft and free_check.get("allowed"):
+                message = "The Free Starter draft for Chapter One has already been used. Unlock the chapter to generate another draft."
+            raise HTTPException(
+                status_code=402,
+                detail=_payment_required_detail(message, action="draft", chapter_number=payload.chapter_number),
+            )
+        action_context = nullcontext({"free_starter": True})
+        access_mode = "free_starter"
+
+    def _generate_and_save() -> dict[str, Any]:
+        generation_warning = ""
+        try:
+            draft, source = generate_chapter(
+                profile=project["profile"],
+                chapter_number=payload.chapter_number,
+                selected_section_ids=payload.selected_section_ids,
+                answers=payload.answers,
+                extra_instructions=extra_instructions,
+                use_ai=payload.use_ai,
+            )
+        except Exception as exc:
+            generation_warning = f"AI generation could not complete safely; a structured local fallback was returned. Details: {str(exc)[:180]}"
+            draft, source = generate_chapter(
+                profile=project["profile"],
+                chapter_number=payload.chapter_number,
+                selected_section_ids=payload.selected_section_ids,
+                answers=payload.answers,
+                extra_instructions=extra_instructions,
+                use_ai=False,
+            )
+            source = source + "_after_error"
+
+        drafts = project.get("drafts", {})
+        drafts[str(payload.chapter_number)] = draft
+        selected = project.get("selected_sections", {})
+        selected[str(payload.chapter_number)] = payload.selected_section_ids
+
+        with get_conn() as conn:
+            conn.execute(
+                """
+                UPDATE projects
+                SET profile_json = ?, drafts_json = ?, selected_sections_json = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (json.dumps(project.get("profile", {})), json.dumps(drafts), json.dumps(selected), project_id),
+            )
+            conn.commit()
+
+        if not generation_warning and str(source).startswith("local_template_fallback"):
+            generation_warning = (
+                "The AI provider did not return a full chapter, so ProjectReady AI produced an expanded local thesis draft. "
+                "For the strongest supervisor-ready output, confirm the API key/model, add project-specific evidence, and regenerate with AI enabled."
+            )
+
+        return {
+            "chapter_number": payload.chapter_number,
+            "chapter_title": chapter_title,
+            "draft": draft,
+            "source": source,
+            "warning": generation_warning,
+            "access_mode": access_mode,
+            "entitlement_action": action,
+        }
+
     try:
-        draft, source = generate_chapter(
-            profile=project["profile"],
-            chapter_number=payload.chapter_number,
-            selected_section_ids=payload.selected_section_ids,
-            answers=payload.answers,
-            extra_instructions=extra_instructions,
-            use_ai=payload.use_ai,
-        )
-    except Exception as exc:
-        # Never let a provider timeout, stale frontend payload, custom chapter, or
-        # unexpected section ID produce a generic Internal Server Error. Return a
-        # usable local draft and surface a clear warning to the frontend.
-        generation_warning = f"AI generation could not complete safely; a structured local fallback was returned. Details: {str(exc)[:180]}"
-        draft, source = generate_chapter(
-            profile=project["profile"],
-            chapter_number=payload.chapter_number,
-            selected_section_ids=payload.selected_section_ids,
-            answers=payload.answers,
-            extra_instructions=extra_instructions,
-            use_ai=False,
-        )
-        source = source + "_after_error"
-
-    drafts = project.get("drafts", {})
-    drafts[str(payload.chapter_number)] = draft
-    selected = project.get("selected_sections", {})
-    selected[str(payload.chapter_number)] = payload.selected_section_ids
-
-    with get_conn() as conn:
-        conn.execute(
-            """
-            UPDATE projects
-            SET profile_json = ?, drafts_json = ?, selected_sections_json = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-            """,
-            (json.dumps(project.get("profile", {})), json.dumps(drafts), json.dumps(selected), project_id),
-        )
-        conn.commit()
-
-    if not generation_warning and str(source).startswith("local_template_fallback"):
-        generation_warning = (
-            "The AI provider did not return a full chapter, so ProjectReady AI produced an expanded local thesis draft. "
-            "For the strongest supervisor-ready output, confirm the API key/model, add project-specific evidence, and regenerate with AI enabled."
-        )
-
-    return {
-        "chapter_number": payload.chapter_number,
-        "chapter_title": chapter.get("chapter_title"),
-        "draft": draft,
-        "source": source,
-        "warning": generation_warning,
-    }
+        with action_context:
+            return _generate_and_save()
+    except PaymentRequiredError as exc:
+        raise HTTPException(
+            status_code=402,
+            detail=_payment_required_detail(str(exc), action=action, chapter_number=payload.chapter_number),
+        ) from exc
 
 
 @router.post("/{project_id}/upload-results")
@@ -319,34 +398,68 @@ async def upload_revision(
 
 
 @router.post("/{project_id}/check")
-def run_compliance_check(project_id: str, payload: ComplianceRequest):
+def run_compliance_check(project_id: str, payload: ComplianceRequest, request: Request):
     project = _get_project_or_404(project_id)
     draft = payload.draft or project.get("drafts", {}).get(str(payload.chapter_number), "")
     if not draft.strip():
         raise HTTPException(status_code=400, detail="No draft found for this chapter")
+    try:
+        chapter = get_chapter(payload.chapter_number)
+        chapter_title = str(chapter.get("chapter_title") or f"Chapter {payload.chapter_number}")
+    except KeyError:
+        chapter_title = f"Chapter {payload.chapter_number}"
 
-    check = check_chapter(payload.chapter_number, payload.selected_section_ids, draft)
-    checks = project.get("checks", {})
-    checks[str(payload.chapter_number)] = check
-
-    with get_conn() as conn:
-        conn.execute(
-            "UPDATE projects SET checks_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (json.dumps(checks), project_id),
-        )
-        conn.commit()
-
-    return check
+    try:
+        with _paid_action_context(
+            request,
+            project_id=project_id,
+            chapter_number=payload.chapter_number,
+            chapter_title=chapter_title,
+            action="compliance",
+        ):
+            check = check_chapter(payload.chapter_number, payload.selected_section_ids, draft)
+            checks = project.get("checks", {})
+            checks[str(payload.chapter_number)] = check
+            with get_conn() as conn:
+                conn.execute(
+                    "UPDATE projects SET checks_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (json.dumps(checks), project_id),
+                )
+                conn.commit()
+            return check
+    except PaymentRequiredError as exc:
+        raise HTTPException(
+            status_code=402,
+            detail=_payment_required_detail(str(exc), action="compliance", chapter_number=payload.chapter_number),
+        ) from exc
 
 
 @router.get("/{project_id}/export/chapter/{chapter_number}")
-def export_chapter(project_id: str, chapter_number: int):
+def export_chapter(project_id: str, chapter_number: int, request: Request):
     project = _get_project_or_404(project_id)
     draft = project.get("drafts", {}).get(str(chapter_number), "")
     if not draft.strip():
         raise HTTPException(status_code=400, detail="No draft found for this chapter")
-    path = export_chapter_docx(project, chapter_number, draft, EXPORT_DIR)
-    return FileResponse(path, filename=path.name, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    try:
+        chapter = get_chapter(chapter_number)
+        chapter_title = str(chapter.get("chapter_title") or f"Chapter {chapter_number}")
+    except KeyError:
+        chapter_title = f"Chapter {chapter_number}"
+    try:
+        with _paid_action_context(
+            request,
+            project_id=project_id,
+            chapter_number=chapter_number,
+            chapter_title=chapter_title,
+            action="export",
+        ):
+            path = export_chapter_docx(project, chapter_number, draft, EXPORT_DIR)
+        return FileResponse(path, filename=path.name, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    except PaymentRequiredError as exc:
+        raise HTTPException(
+            status_code=402,
+            detail=_payment_required_detail(str(exc), action="export", chapter_number=chapter_number),
+        ) from exc
 
 
 @router.get("/{project_id}/export/instrument/{chapter_number}")
