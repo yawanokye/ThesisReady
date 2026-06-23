@@ -1,6 +1,6 @@
 # ProjectReady AI topic ideas page patch
 
-This patch adds a new interactive page where users can generate thesis/dissertation title ideas and brief synopses based on current literature-search metadata.
+This patch adds an interactive page where users can generate thesis/dissertation title ideas, brief synopses and proposed research objectives based on current literature-search metadata.
 
 ## New page
 
@@ -11,7 +11,7 @@ This patch adds a new interactive page where users can generate thesis/dissertat
 
 - `POST /api/topic-ideas`
 
-The endpoint accepts research area, context, country/region, level, methodology, keywords and trend focus. It searches the existing source-finder metadata providers, removes detected retracted or withdrawn records, and then produces researchable thesis/dissertation titles with brief synopses.
+The endpoint accepts research area, context, country/region, level, methodology, keywords and trend focus. It searches the existing source-finder metadata providers, removes detected retracted or withdrawn records, and then produces researchable thesis/dissertation titles with brief synopses and objectives matched to the selected academic level.
 
 ## Files added/updated
 
@@ -31,6 +31,9 @@ The page returns:
 
 - thesis/dissertation title ideas
 - brief synopsis for each title
+- one proposed general objective for each idea
+- level-appropriate specific objectives: 4 for Bachelors, 4 for Non-Research Masters, 5 for Research Masters/MPhil, 5 for Professional Doctorate and 6 for PhD
+- a short explanation of how the objectives align with the selected level
 - current research trend or gap
 - possible methodology
 - possible variables or constructs
@@ -39,6 +42,16 @@ The page returns:
 - evidence source keys
 - attention note for supervisor/data-access confirmation
 - source records used for trend grounding
+
+## Academic-level objective design
+
+Every returned idea now includes a `proposed_objectives` object with:
+
+- `general_objective`
+- `specific_objectives`
+- `level_alignment`
+
+The AI prompt requests objectives aligned with the title, variables, methodology and likely data. A backend normalisation layer guarantees that every idea still receives the required number of objectives if an AI response omits or under-produces them. Existing topic outputs remain unchanged and the objectives are added to the web display and copied text.
 
 ## Retraction protection
 
