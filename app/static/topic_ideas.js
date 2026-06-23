@@ -43,12 +43,46 @@ function listText(value) {
   return `<span class="badge">${escapeHtml(value)}</span>`;
 }
 
+
+function normaliseObjectives(value) {
+  if (!value || typeof value !== "object") {
+    return { general: "", specific: [], levelAlignment: "" };
+  }
+  const specific = Array.isArray(value.specific_objectives)
+    ? value.specific_objectives.filter(Boolean)
+    : [];
+  return {
+    general: value.general_objective || "",
+    specific,
+    levelAlignment: value.level_alignment || "",
+  };
+}
+
+function renderObjectives(idea) {
+  const objectives = normaliseObjectives(idea.proposed_objectives);
+  if (!objectives.general && !objectives.specific.length) return "";
+
+  const specificList = objectives.specific.length
+    ? `<ol class="objective-list">${objectives.specific.map(item => `<li>${escapeHtml(item)}</li>`).join("")}</ol>`
+    : `<p class="hint">No specific objectives were returned.</p>`;
+
+  return `
+    <div class="idea-box objective-box">
+      <strong>Proposed research objectives</strong>
+      ${objectives.general ? `<div class="objective-general"><span>General objective</span><p>${escapeHtml(objectives.general)}</p></div>` : ""}
+      <div class="objective-specific"><span>Specific objectives</span>${specificList}</div>
+      ${objectives.levelAlignment ? `<p class="objective-level-note">${escapeHtml(objectives.levelAlignment)}</p>` : ""}
+    </div>
+  `;
+}
+
 function renderIdeas(result) {
   const meta = $("ideaMeta");
   const ideasBox = $("ideaResults");
   const sourceBox = $("sourceRecords");
   const excluded = result.excluded_retracted_count || 0;
   meta.innerHTML = `
+    <strong>Academic level:</strong> ${escapeHtml(result.selected_level || "Not specified")}<br />
     <strong>Trend summary:</strong> ${escapeHtml(result.trend_summary || "No trend summary returned.")}<br />
     <strong>Search query:</strong> ${escapeHtml(result.query || "")}<br />
     <strong>Recent-reference window:</strong> ${escapeHtml(result.recent_reference_window || "")}<br />
@@ -69,6 +103,7 @@ function renderIdeas(result) {
     <article class="idea-card">
       <h3>${idx + 1}. ${escapeHtml(idea.title || "Untitled idea")}</h3>
       <p>${escapeHtml(idea.synopsis || "")}</p>
+      ${renderObjectives(idea)}
       <div class="idea-badge-row">${listText(idea.evidence_sources || [])}</div>
       <div class="idea-grid">
         <div class="idea-box"><strong>Current trend or gap</strong>${escapeHtml(idea.current_research_trend_or_gap || "")}</div>
@@ -93,7 +128,32 @@ function renderIdeas(result) {
     </div>`;
   }).join("") : `<p class="hint">No source records were available for display.</p>`;
 
-  lastIdeaText = ideas.map((idea, idx) => `${idx + 1}. ${idea.title}\nSynopsis: ${idea.synopsis}\nTrend/gap: ${idea.current_research_trend_or_gap}\nMethod: ${idea.possible_methodology}\nContribution: ${idea.potential_contribution}\n`).join("\n");
+  lastIdeaText = ideas.map((idea, idx) => {
+    const objectives = normaliseObjectives(idea.proposed_objectives);
+    const specificText = objectives.specific.length
+      ? objectives.specific.map((item, objectiveIndex) => `   ${objectiveIndex + 1}. ${item}`).join("\n")
+      : "   None returned";
+    const variables = Array.isArray(idea.possible_variables_or_constructs)
+      ? idea.possible_variables_or_constructs.join(", ")
+      : (idea.possible_variables_or_constructs || "");
+    const dataSources = Array.isArray(idea.possible_data_sources)
+      ? idea.possible_data_sources.join(", ")
+      : (idea.possible_data_sources || "");
+
+    return `${idx + 1}. ${idea.title}
+Synopsis: ${idea.synopsis || ""}
+General objective: ${objectives.general}
+Specific objectives:
+${specificText}
+Level alignment: ${objectives.levelAlignment}
+Trend/gap: ${idea.current_research_trend_or_gap || ""}
+Method: ${idea.possible_methodology || ""}
+Variables/constructs: ${variables}
+Possible data sources: ${dataSources}
+Contribution: ${idea.potential_contribution || ""}
+Attention note: ${idea.attention_note || ""}
+`;
+  }).join("\n");
   $("copyIdeasBtn").disabled = false;
 }
 
@@ -112,7 +172,7 @@ async function generateIdeas(event) {
     const providerErrors = (result.provider_errors || []).length;
     $("ideaStatus").textContent = providerErrors
       ? `Generated ideas. ${providerErrors} metadata provider(s) could not be reached.`
-      : "Generated title ideas and brief synopses.";
+      : "Generated title ideas, brief synopses and level-appropriate objectives.";
   } catch (err) {
     $("ideaStatus").textContent = `Error: ${err.message}`;
   } finally {

@@ -257,3 +257,46 @@ body.topic-page {
 .idea-results { line-height: 1.55; }
 .topic-form label { margin-bottom: .25rem; }
 @media (max-width: 900px){ .topic-layout{grid-template-columns:1fr;} .topic-hero{grid-template-columns:1fr;} .two-grid{grid-template-columns:1fr;} }
+
+
+.objective-box {
+  margin: 0.85rem 0;
+  border-color: #c4b5fd;
+  background: #faf7ff;
+}
+.objective-box > strong {
+  color: #5b21b6;
+  font-size: 1rem;
+}
+.objective-general,
+.objective-specific {
+  margin-top: 0.65rem;
+}
+.objective-general > span,
+.objective-specific > span {
+  display: block;
+  color: #475569;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.objective-general p {
+  margin: 0.25rem 0 0;
+}
+.objective-list {
+  margin: 0.35rem 0 0 1.25rem;
+  padding: 0;
+}
+.objective-list li {
+  margin: 0.35rem 0;
+  padding-left: 0.2rem;
+}
+.objective-level-note {
+  margin: 0.7rem 0 0;
+  padding-top: 0.65rem;
+  border-top: 1px solid #ddd6fe;
+  color: #5b21b6;
+  font-size: 0.88rem;
+  font-weight: 650;
+}
