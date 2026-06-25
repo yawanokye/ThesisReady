@@ -65,7 +65,7 @@
           <option value="Professional Doctorate (e.g. DBA, DEd)">Professional Doctorate (e.g. DBA, DEd)</option>
           <option value="PhD">PhD</option>
         </select>
-        <span class="field-help">This controls draft depth and model quality. Research Masters and doctoral levels receive stronger routing.</span>
+        <span class="field-help">This controls draft depth, target page range, citation density and model quality. Research Masters and doctoral levels receive deeper section development.</span>
       </label>
       <p id="levelDepthHint" class="hint level-hint" hidden></p>
       <label class="priority-field"><span class="field-label">Thesis/dissertation/project format</span>
@@ -148,10 +148,11 @@
         <div class="source-controls">
           <label class="compact-label">Maximum results
             <select id="sourceMaxResults">
-              <option value="8">8</option>
-              <option value="12" selected>12</option>
+              <option value="12">12</option>
               <option value="20">20</option>
-              <option value="30">30</option>
+              <option value="30" selected>30</option>
+              <option value="45">45</option>
+              <option value="60">60</option>
             </select>
           </label>
           <label class="inline source-inline"><input type="checkbox" id="includeOlderFoundational" checked /> Include older foundational sources where relevant</label>
@@ -294,6 +295,6 @@
   </main>
 
   <script src="/static/projectready_payments.js?v=20260622-access-gate-v2"></script>
-  <script src="/static/app.js?v=20260622-access-gate-v2"></script>
+  <script src="/static/app.js?v=20260625-depth-citations-v1"></script>
 </body>
 </html>

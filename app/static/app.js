@@ -10,7 +10,7 @@ let draftRequestInFlight = false;
 
 const $ = (id) => document.getElementById(id);
 
-const APP_STATIC_VERSION = "20260622-access-gate-v2";
+const APP_STATIC_VERSION = "20260625-depth-citations-v1";
 const CURRENT_PROJECT_STORAGE_KEY = "projectready-current-project";
 
 const levelDepthGuidance = {
@@ -21,13 +21,26 @@ const levelDepthGuidance = {
   "PhD": "Use doctoral depth: original contribution, deep theoretical engagement, advanced critical synthesis, rigorous methodological defence, and publication-quality academic argument."
 };
 
+const chapterPageTargets = {
+  "Bachelors": {1: "10–15", 2: "15–22", 3: "10–15", 4: "20–25", 5: "8–12"},
+  "Non-Research Masters": {1: "10–15", 2: "20–30", 3: "12–18", 4: "20–30", 5: "8–15"},
+  "Research Masters (e.g. MPhil)": {1: "15–20", 2: "35–45", 3: "15–22", 4: "20–32", 5: "8–12"},
+  "Professional Doctorate (e.g. DBA, DEd)": {1: "15–22", 2: "40–60", 3: "25–35", 4: "35–45", 5: "10–15"},
+  "PhD": {1: "25–35", 2: "60–80", 3: "30–45", 4: "60–80", 5: "20–30"}
+};
+
 function updateLevelHint() {
-  // Keep the level-depth guidance internal. The selected level still guides the AI prompt,
-  // but the explanatory text is not displayed to users.
-  if ($("levelDepthHint")) {
-    $("levelDepthHint").textContent = "";
-    $("levelDepthHint").hidden = true;
+  const hint = $("levelDepthHint");
+  if (!hint) return;
+  const level = $("level")?.value || "Bachelors";
+  const chapter = Number(currentChapter || 1);
+  const pages = chapterPageTargets[level]?.[chapter];
+  if (!pages || chapter > 5) {
+    hint.textContent = "Depth for this output is based on the selected scope and sections.";
+  } else {
+    hint.textContent = `Target depth for Chapter ${chapter}: about ${pages} pages, with citations distributed across substantive paragraphs. Final pagination depends on tables, figures, equations and references.`;
   }
+  hint.hidden = false;
 }
 
 async function api(path, options = {}) {
@@ -508,6 +521,7 @@ async function loadTemplate() {
     currentChapter = Number(chapterSelect.value);
     renderSections();
     updateChapterSpecificUi();
+    updateLevelHint();
     updatePaymentPanel();
   });
   renderSections();
@@ -624,7 +638,7 @@ function sourceKey(src) {
   return `title:${String(src?.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 100)}`;
 }
 
-function mergeSourceBank(existing, incoming, limit = 60) {
+function mergeSourceBank(existing, incoming, limit = 100) {
   const merged = [];
   const seen = new Set();
   for (const src of [...(existing || []), ...(incoming || [])]) {
@@ -683,14 +697,19 @@ function genericLanguageAudit(text) {
   return patterns.reduce((count, pattern) => count + ((text || '').match(pattern) || []).length, 0);
 }
 
-function showDraftQualityHint(text) {
+function showDraftQualityHint(text, metrics = null) {
   const count = genericLanguageAudit(text);
   const status = $("draftStatus");
   if (!status) return;
-  if (count > 8) {
-    status.textContent = "Draft generated. Quality note: review the chapter for generic transitions and add more project-specific evidence before final submission.";
+  const metricText = metrics
+    ? ` Estimated ${metrics.estimated_pages} pages from ${Number(metrics.word_count || 0).toLocaleString()} words, against a ${metrics.target_page_range}-page target. Citation density: ${metrics.citation_occurrences_per_1000_words} occurrences per 1,000 words.`
+    : "";
+  if (metrics && !metrics.depth_target_reached) {
+    status.textContent = `Draft generated but remains below the planned depth target.${metricText} Add more verified evidence, results or source material, then revise or regenerate.`;
+  } else if (count > 8) {
+    status.textContent = `Draft generated.${metricText} Review generic transitions and add more project-specific evidence before final submission.`;
   } else {
-    status.textContent = "Draft generated based on the information provided. Review, evidence and revise before submission.";
+    status.textContent = `Draft generated based on the information provided.${metricText} Review the evidence and revise before submission.`;
   }
 }
 
@@ -737,7 +756,7 @@ async function generateDraft() {
     hideAccessRequiredNotice();
     $("draftOutput").value = result.draft;
   renderDraftPreview(result.draft);
-  showDraftQualityHint(result.draft);
+  showDraftQualityHint(result.draft, result.generation_metrics || null);
   if (result.warning) {
     $("draftStatus").textContent = result.warning + " Review and complete the placeholders before export.";
   }
@@ -813,7 +832,7 @@ async function findSources() {
   if (!currentProjectId) await createProject();
   const payload = {
     query: $("sourceSearchQuery") ? $("sourceSearchQuery").value.trim() : "",
-    max_results: $("sourceMaxResults") ? Number($("sourceMaxResults").value) : 12,
+    max_results: $("sourceMaxResults") ? Number($("sourceMaxResults").value) : 30,
     include_older_foundational: $("includeOlderFoundational") ? $("includeOlderFoundational").checked : true
   };
   $("sourceStatus").textContent = "Searching scholarly sources and attaching them to the project...";
