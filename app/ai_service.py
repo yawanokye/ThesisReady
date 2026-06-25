@@ -15,6 +15,197 @@ from app.template_store import get_chapter, selected_sections
 load_dotenv()
 
 
+# ----------------------------------------------------------------------
+# CHAPTER DEPTH, PAGE AND CITATION TARGETS
+# ----------------------------------------------------------------------
+
+WORDS_PER_PAGE_ESTIMATE = max(280, int(os.getenv("PROJECTREADY_WORDS_PER_PAGE", "330") or 330))
+
+# Page ranges supplied for the standard five-chapter thesis/dissertation format.
+# The targets guide generation depth. They are estimates because tables, equations,
+# figures, headings and reference lists change the final DOCX pagination.
+CHAPTER_PAGE_TARGETS: dict[str, dict[int, tuple[int, int]]] = {
+    "bachelors": {
+        1: (10, 15), 2: (15, 22), 3: (10, 15), 4: (20, 25), 5: (8, 12),
+    },
+    "nonresearch_masters": {
+        1: (10, 15), 2: (20, 30), 3: (12, 18), 4: (20, 30), 5: (8, 15),
+    },
+    "research_masters": {
+        1: (15, 20), 2: (35, 45), 3: (15, 22), 4: (20, 32), 5: (8, 12),
+    },
+    "professional_doctorate": {
+        1: (15, 22), 2: (40, 60), 3: (25, 35), 4: (35, 45), 5: (10, 15),
+    },
+    "phd": {
+        1: (25, 35), 2: (60, 80), 3: (30, 45), 4: (60, 80), 5: (20, 30),
+    },
+}
+
+# Planning guides, not mechanical quotas. Citations must still pass the relevance
+# and source-integrity checks before they are inserted.
+CITATION_DENSITY_TARGETS: dict[str, dict[int, tuple[int, int]]] = {
+    "bachelors": {
+        1: (5, 7), 2: (10, 14), 3: (3, 5), 4: (3, 5), 5: (2, 4),
+    },
+    "nonresearch_masters": {
+        1: (6, 8), 2: (12, 16), 3: (4, 6), 4: (4, 6), 5: (3, 5),
+    },
+    "research_masters": {
+        1: (7, 10), 2: (14, 18), 3: (5, 7), 4: (5, 8), 5: (4, 6),
+    },
+    "professional_doctorate": {
+        1: (8, 11), 2: (15, 20), 3: (6, 9), 4: (6, 9), 5: (4, 7),
+    },
+    "phd": {
+        1: (10, 14), 2: (16, 22), 3: (7, 10), 4: (7, 11), 5: (5, 8),
+    },
+}
+
+# These weights help the model distribute the chapter word budget sensibly.
+# Only selected sections are included, and their weights are re-normalised.
+SECTION_DEPTH_WEIGHTS: dict[int, dict[str, float]] = {
+    1: {
+        "ch1_background": 0.27, "ch1_problem": 0.20, "ch1_purpose": 0.03,
+        "ch1_objectives": 0.05, "ch1_questions": 0.05, "ch1_hypotheses": 0.05,
+        "ch1_significance": 0.10, "ch1_scope": 0.06, "ch1_limitations": 0.05,
+        "ch1_delimitations": 0.05, "ch1_definitions": 0.05, "ch1_organisation": 0.04,
+    },
+    2: {
+        "ch2_intro": 0.04, "ch2_conceptual": 0.20, "ch2_theoretical": 0.20,
+        "ch2_empirical_objectives": 0.34, "ch2_framework": 0.08,
+        "ch2_hyp_dev": 0.07, "ch2_gap_table": 0.04, "ch2_summary": 0.03,
+    },
+    3: {
+        "ch3_intro": 0.03, "ch3_philosophy": 0.07, "ch3_design": 0.08,
+        "ch3_setting_population": 0.08, "ch3_sampling": 0.10, "ch3_instrument": 0.10,
+        "ch3_measurement": 0.10, "ch3_pilot": 0.05, "ch3_validity_reliability": 0.09,
+        "ch3_collection": 0.07, "ch3_preparation": 0.06, "ch3_analysis": 0.11,
+        "ch3_ethics": 0.04, "ch3_summary": 0.02,
+    },
+    4: {
+        "ch4_intro": 0.03, "ch4_uploaded_results": 0.05, "ch4_profile": 0.10,
+        "ch4_results_objectives": 0.34, "ch4_hypotheses": 0.14,
+        "ch4_discussion": 0.29, "ch4_summary": 0.05,
+    },
+    5: {
+        "ch5_intro": 0.03, "ch5_summary_findings": 0.30, "ch5_conclusions": 0.22,
+        "ch5_recommendations": 0.25, "ch5_contribution": 0.12, "ch5_future": 0.08,
+    },
+}
+
+
+def _length_level(profile: dict[str, Any]) -> str:
+    """Normalise the selected level while preserving PhD/professional-doctorate differences."""
+    raw = str(
+        profile.get("level")
+        or profile.get("academic_level")
+        or profile.get("study_level")
+        or "Bachelors"
+    ).strip().lower()
+    if "phd" in raw or "doctor of philosophy" in raw:
+        return "phd"
+    if any(token in raw for token in ["professional doctorate", "professional doctor", "dba", "ded", "d.ed"]):
+        return "professional_doctorate"
+    if any(token in raw for token in ["non-research", "non research", "coursework", "taught masters", "taught master's", "mba"]):
+        return "nonresearch_masters"
+    if any(token in raw for token in ["research masters", "research master's", "mphil", "m.phil", "master of philosophy"]):
+        return "research_masters"
+    if any(token in raw for token in ["msc", "m.sc", "ma", "m.a", "masters", "master's"]):
+        return "nonresearch_masters"
+    return "bachelors"
+
+
+def _chapter_length_requirements(
+    profile: dict[str, Any],
+    chapter_number: int,
+    selected_section_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    """Return page, word, section and citation-density targets for a chapter."""
+    level = _length_level(profile)
+    chapter_number = int(chapter_number or 0)
+    pages = CHAPTER_PAGE_TARGETS.get(level, {}).get(chapter_number)
+    if not pages:
+        # Custom chapters and the supplementary guide remain scope-led.
+        pages = (8, 18) if chapter_number == 7 else (8, 20)
+
+    min_pages, max_pages = pages
+    min_words = min_pages * WORDS_PER_PAGE_ESTIMATE
+    max_words = max_pages * WORDS_PER_PAGE_ESTIMATE
+    target_words = int(round(((min_words + max_words) / 2) / 100.0) * 100)
+
+    citation_range = CITATION_DENSITY_TARGETS.get(level, {}).get(chapter_number, (3, 6))
+    selected_section_ids = [str(x) for x in (selected_section_ids or []) if str(x).strip()]
+    weights = SECTION_DEPTH_WEIGHTS.get(chapter_number, {})
+    selected_weights = {sid: float(weights.get(sid, 1.0)) for sid in selected_section_ids}
+    weight_total = sum(selected_weights.values()) or max(1, len(selected_section_ids))
+    section_word_budgets = {
+        sid: {
+            "target_words": max(180, int(round((target_words * weight / weight_total) / 50.0) * 50)),
+            "minimum_words": max(120, int(round((min_words * weight / weight_total) / 50.0) * 50)),
+        }
+        for sid, weight in selected_weights.items()
+    }
+
+    return {
+        "length_level": level,
+        "target_page_range": f"{min_pages}-{max_pages}",
+        "minimum_pages": min_pages,
+        "maximum_pages": max_pages,
+        "words_per_page_estimate": WORDS_PER_PAGE_ESTIMATE,
+        "minimum_words": min_words,
+        "target_words": target_words,
+        "maximum_words": max_words,
+        "citation_occurrences_per_1000_words": {
+            "minimum": citation_range[0],
+            "target": citation_range[1],
+        },
+        "estimated_minimum_citation_occurrences": int(round(min_words * citation_range[0] / 1000)),
+        "estimated_target_citation_occurrences": int(round(target_words * citation_range[1] / 1000)),
+        "section_word_budgets": section_word_budgets,
+        "important_length_rules": [
+            "Treat the page range as a depth target, not permission to add filler or repeat ideas.",
+            "Develop each selected section to its allocated word budget using evidence, comparison, critique, interpretation and study-specific relevance.",
+            "Tables, equations, figures, headings and references affect final pagination, so word counts are planning estimates rather than exact page guarantees.",
+            "Where evidence is insufficient, use a precise bracketed attention placeholder instead of inventing facts or padding the chapter with generic prose.",
+            "Do not compress a doctoral chapter into a short overview. Do not inflate a lower-level chapter with doctoral complexity that is not required.",
+        ],
+        "citation_density_rules": [
+            "Use the citation-density range as a planning guide, never as a mechanical quota.",
+            "Every citation must directly support the sentence or paragraph in which it appears.",
+            "Distribute citations across substantive paragraphs instead of placing a citation cluster only at the end of a section.",
+            "Chapter Two should compare multiple studies within thematic and objective-led synthesis, not present one study per paragraph as an annotated list.",
+            "Chapter Four should keep results reporting evidence-based and citation-light, while the discussion should be citation-rich and connect findings to theory and prior studies.",
+            "Use a bracketed source placeholder when the evidence bank is insufficient. Never fabricate a source to meet the density target.",
+        ],
+    }
+
+
+def _chapter_word_count(text: str) -> int:
+    """Estimate substantive chapter words, excluding references and audit material."""
+    cleaned = text or ""
+    reference_heading = re.search(r"(?im)^#{0,4}\s*references\s*$", cleaned)
+    if reference_heading:
+        cleaned = cleaned[: reference_heading.start()]
+    audit_heading = re.search(r"(?im)^#{0,4}\s*source\s+use\s+audit\b", cleaned)
+    if audit_heading:
+        cleaned = cleaned[: audit_heading.start()]
+    cleaned = re.sub(r"```.*?```", " ", cleaned, flags=re.DOTALL)
+    cleaned = re.sub(r"[#|*_`$<>]", " ", cleaned)
+    return len(re.findall(r"\b[\w’'-]+\b", cleaned))
+
+
+def _max_output_tokens_for_length(length_requirements: dict[str, Any], *, revision: bool = False) -> int:
+    """Choose a bounded Responses API output limit from the requested chapter depth."""
+    target_words = int(length_requirements.get("target_words") or 4000)
+    # Visible English prose often needs about 1.3-1.6 tokens per word. Reasoning
+    # tokens are included in max_output_tokens, so retain additional headroom.
+    estimated = int(target_words * (2.0 if revision else 1.8))
+    configured_cap = int(os.getenv("OPENAI_MAX_OUTPUT_TOKENS", "32000") or 32000)
+    hard_cap = int(os.getenv("OPENAI_MAX_OUTPUT_TOKENS_HARD_CAP", "64000") or 64000)
+    return max(4000, min(estimated, configured_cap, hard_cap))
+
+
 def _safe_get_openai_client():
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
@@ -127,9 +318,11 @@ def _normalise_academic_level(profile: dict[str, Any]) -> str:
 
     if any(token in raw for token in ["phd", "doctoral", "doctorate", "dba", "ded", "d.ed", "professional doctor"]):
         return "doctoral"
+    if any(token in raw for token in ["non-research", "non research", "coursework", "taught masters", "taught master's", "mba"]):
+        return "nonresearch_masters"
     if any(token in raw for token in ["research masters", "research master's", "mphil", "m.phil", "master of philosophy"]):
         return "research_masters"
-    if any(token in raw for token in ["non-research", "non research", "coursework", "taught masters", "taught master's", "mba", "msc", "ma", "masters", "master's"]):
+    if any(token in raw for token in ["msc", "m.sc", "ma", "m.a", "masters", "master's"]):
         return "nonresearch_masters"
     return "bachelors"
 
@@ -280,7 +473,7 @@ def _source_key(src: dict[str, Any]) -> str:
     return "title:" + title
 
 
-def _merged_source_bank(profile: dict[str, Any], limit: int = 24) -> list[dict[str, Any]]:
+def _merged_source_bank(profile: dict[str, Any], limit: int = 100) -> list[dict[str, Any]]:
     """Merge latest retrieved sources and accumulated source bank without replacing user evidence."""
     collected: list[dict[str, Any]] = []
     for container_key in ["source_bank", "attached_sources"]:
@@ -319,18 +512,20 @@ def _merged_source_bank(profile: dict[str, Any], limit: int = 24) -> list[dict[s
     return merged
 
 
-def _source_attention_target(chapter_number: int, source_count: int) -> int:
+def _source_attention_target(profile: dict[str, Any], chapter_number: int, source_count: int) -> int:
+    """Suggest a defensible number of distinct source records to review for the chapter."""
     if source_count <= 0:
         return 0
-    if chapter_number == 2:
-        return min(source_count, 10)
-    if chapter_number == 1:
-        return min(source_count, 6)
-    if chapter_number == 3:
-        return min(source_count, 4)
-    if chapter_number == 4:
-        return min(source_count, 5)
-    return min(source_count, 3)
+    level = _length_level(profile)
+    targets = {
+        "bachelors": {1: 12, 2: 25, 3: 10, 4: 12, 5: 8},
+        "nonresearch_masters": {1: 15, 2: 35, 3: 14, 4: 16, 5: 10},
+        "research_masters": {1: 20, 2: 50, 3: 18, 4: 22, 5: 12},
+        "professional_doctorate": {1: 24, 2: 60, 3: 24, 4: 28, 5: 16},
+        "phd": {1: 30, 2: 75, 3: 30, 4: 40, 5: 22},
+    }
+    target = targets.get(level, {}).get(int(chapter_number or 0), 10)
+    return min(source_count, target)
 
 
 def _relevance_tier_rank(tier: Any) -> int:
@@ -375,14 +570,18 @@ def _retrieved_sources_for_prompt(profile: dict[str, Any], chapter_number: int |
         ),
         reverse=True,
     )
-    target = _source_attention_target(int(chapter_number or 0), len(compact_sources))
+    total_source_count = len(compact_sources)
+    target = _source_attention_target(profile, int(chapter_number or 0), total_source_count)
+    prompt_source_limit = min(total_source_count, max(target, 20 if total_source_count else 0))
+    compact_sources = compact_sources[:prompt_source_limit]
     return {
         "query": retrieved.get("query", ""),
         "searched_at": retrieved.get("searched_at", ""),
         "recent_reference_window": retrieved.get("recent_reference_window", ""),
         "databases": retrieved.get("databases", []),
         "usage_note": retrieved.get("usage_note", ""),
-        "source_count": len(compact_sources),
+        "source_count": total_source_count,
+        "sources_in_prompt": len(compact_sources),
         "relevance_counts": _source_relevance_counts(compact_sources),
         "recommended_relevant_sources_to_review": target,
         "sources": compact_sources,
@@ -637,6 +836,9 @@ def build_drafting_prompt(
     effective_chapter_title = _effective_chapter_title(chapter, profile, chapter_number)
     sections = selected_sections(chapter_number, selected_section_ids)
     answers = answers or {}
+    chapter_length_requirements = _chapter_length_requirements(
+        profile, chapter_number, [section.get("section_id", "") for section in sections]
+    )
 
     section_payload = []
     for section in sections:
@@ -650,14 +852,21 @@ def build_drafting_prompt(
             }
         )
 
+    prompt_profile = {
+        key: value
+        for key, value in profile.items()
+        if key not in {"source_bank", "attached_sources", "retrieved_sources"}
+    }
+
     prompt = {
         "task": "Draft a full academic project chapter using selected institutional guideline sections.",
         "chapter": {
             "chapter_number": chapter_number,
             "chapter_title": effective_chapter_title,
         },
-        "project_profile": profile,
+        "project_profile": prompt_profile,
         "selected_academic_level_and_depth": _level_depth_requirements(profile),
+        "chapter_page_word_and_citation_targets": chapter_length_requirements,
         "level_based_model_quality_route": _model_route_for_prompt(profile, chapter_number),
         "reference_currency_requirements": _reference_currency_requirements(),
         "citation_and_evidence_requirements": _citation_and_evidence_requirements(chapter_number),
@@ -673,6 +882,9 @@ def build_drafting_prompt(
             "Write in formal British English.",
             "Use the selected academic level internally to determine depth and sophistication, but never mention the selected level in the generated chapter text.",
             "Follow the level_based_model_quality_route: the user is paying for a quality draft, so the main prose must be academically strong at the selected level; do not produce low-tier, shallow or mechanical writing.",
+            "Follow chapter_page_word_and_citation_targets. Aim to finish within its minimum and maximum word range, distribute the target across selected sections using section_word_budgets, and do not stop after a brief overview.",
+            "Meet the depth target through evidence, synthesis, comparison, critique, methodological explanation, interpretation and study-specific application. Never meet it through repetition, generic padding, duplicated definitions or inflated wording.",
+            "Use the stated citation-occurrences-per-1,000-words range as a planning guide. Increase citation density across substantive paragraphs while preserving strict relevance and source integrity.",
             "Follow the human_scholarly_style_requirements and student_contribution_and_style_controls so the writing sounds natural, rigorous, context-specific, evidence-led and carefully supervised rather than generic or mechanical.",
             "In all generated chapters, use controlled high-burstiness and extremely high-perplexity scholarly writing: natural variation in sentence length, paragraph shape, vocabulary, transitions and argumentative movement, without sacrificing clarity, evidence, APA accuracy or methodological precision.",
             "Use the student's central argument, local context notes, evidence anchors, supervisor comments, preferred writing style and supplied writing sample as style/context guidance; do not copy the writing sample verbatim unless the user has written it as content to include.",
@@ -1188,6 +1400,7 @@ def _review_source_integration(
     relevant_sources = _relevant_source_bank(profile)
     used = _source_usage_count(draft, relevant_sources)
     has_audit = _has_source_use_audit(draft)
+    length_requirements = _chapter_length_requirements(profile, chapter_number)
 
     if used > 0 and has_audit:
         return draft
@@ -1195,6 +1408,7 @@ def _review_source_integration(
     repair_payload = {
         "task": "Review the chapter draft against the attached source-search results using a relevance gate.",
         "chapter_number": chapter_number,
+        "chapter_length_requirements": length_requirements,
         "reason_for_review": (
             f"The attached source search returned {len(source_bank)} source records. About {used} relevant source-bank records appear to be cited in the body. "
             "Revise only where relevant searched sources genuinely support the chapter. Do not force unsuitable sources into the prose."
@@ -1210,22 +1424,22 @@ def _review_source_integration(
             "After the References section, add a short Source Use Audit with columns: Source Key, Relevance Tier, Decision, Reason.",
             "In the Source Use Audit, mark sources as Cited, Not cited - not relevant, or Not cited - not needed for this chapter.",
             "Do not invent new sources, statistics, page numbers, quotations, findings, or reference details.",
+            "Preserve or increase the chapter's substantive word count. Do not compress a developed chapter into a shorter summary during source integration.",
+            "Keep the revised chapter within the stated minimum and maximum word range where the evidence bank permits it.",
         ],
         "source_bank_reference_hints": _source_reference_hints(source_bank),
         "original_generation_prompt": original_prompt,
         "draft_to_revise": draft,
     }
-    try:
-        response = client.responses.create(
-            model=model,
-            instructions=instructions + " Revise rather than restart. Preserve the student's context. Use only relevant attached sources and include a Source Use Audit.",
-            input=json.dumps(repair_payload, ensure_ascii=False, indent=2),
-        )
-        revised = getattr(response, "output_text", "").strip()
-        if revised:
-            return _polish_generated_text(revised)
-    except Exception:
-        return draft
+    revised = _call_openai_response_safely(
+        client,
+        model,
+        instructions + " Revise rather than restart. Preserve the student's context and depth. Use only relevant attached sources and include a Source Use Audit.",
+        json.dumps(repair_payload, ensure_ascii=False, indent=2),
+        max_output_tokens=_max_output_tokens_for_length(length_requirements, revision=True),
+    )
+    if revised:
+        return _polish_generated_text(revised)
     return draft
 
 
@@ -1263,6 +1477,7 @@ def _human_academic_revision_pass(
     controls = _student_contribution_requirements(profile)
     if not controls.get("human_revision_pass_requested", True):
         return draft
+    length_requirements = _chapter_length_requirements(profile, chapter_number)
 
     has_user_context = any(str(controls.get(k) or "").strip() for k in [
         "central_argument", "local_context_notes", "evidence_anchors", "supervisor_comments", "preferred_style", "writing_sample", "phrases_to_avoid"
@@ -1273,6 +1488,7 @@ def _human_academic_revision_pass(
     revision_payload = {
         "task": "Revise the chapter for human-supervised academic quality, specificity and natural scholarly flow.",
         "chapter_number": chapter_number,
+        "chapter_length_requirements": length_requirements,
         "draft_maturity": controls.get("draft_maturity"),
         "student_contribution_controls": controls,
         "current_sentence_length_variance": current_variance,
@@ -1291,39 +1507,405 @@ def _human_academic_revision_pass(
             "Where evidence is missing, keep or add bracketed attention placeholders instead of inventing claims, statistics, results, ethical approvals, sources, sample sizes or institutional facts.",
             "Do not add a visible humanisation note, contribution log or detector note to the chapter body.",
             "Keep APA references complete and limited to sources cited in the chapter body.",
+            "Preserve the chapter's substantive depth and section coverage. Do not reduce the word count by more than three percent unless removing exact repetition or unsupported filler.",
+            "Keep the revised chapter within the stated page and word target range where the available evidence permits it.",
         ],
         "generic_language_score_before_revision": _generic_language_score(draft),
         "user_context_supplied": has_user_context,
         "original_generation_prompt": original_prompt,
         "draft_to_revise": draft,
     }
-    try:
-        response = client.responses.create(
-            model=model,
-            instructions=instructions + " Perform one conservative academic-quality revision pass. Do not restart the chapter. Do not add unsupported content.",
-            input=json.dumps(revision_payload, ensure_ascii=False, indent=2),
-        )
-        revised = getattr(response, "output_text", "").strip()
-        if revised:
-            return _polish_generated_text(revised)
-    except Exception:
-        return draft
+    revised = _call_openai_response_safely(
+        client,
+        model,
+        instructions + " Perform one conservative academic-quality revision pass. Do not restart or shorten the chapter. Do not add unsupported content.",
+        json.dumps(revision_payload, ensure_ascii=False, indent=2),
+        max_output_tokens=_max_output_tokens_for_length(length_requirements, revision=True),
+    )
+    if revised:
+        return _polish_generated_text(revised)
     return draft
 
 
-def _call_openai_response_safely(client: Any, model: str, instructions: str, prompt: str) -> str:
+def _call_openai_response_safely(
+    client: Any,
+    model: str,
+    instructions: str,
+    prompt: str,
+    *,
+    max_output_tokens: int | None = None,
+) -> str:
+    request_kwargs: dict[str, Any] = {
+        "model": model,
+        "instructions": instructions,
+        "input": prompt,
+    }
+    if max_output_tokens:
+        request_kwargs["max_output_tokens"] = int(max_output_tokens)
     try:
-        response = client.responses.create(model=model, instructions=instructions, input=prompt)
+        response = client.responses.create(**request_kwargs)
         return str(getattr(response, "output_text", "") or "").strip()
     except Exception:
+        # Some model snapshots have lower per-response output limits. Retry once
+        # with a conservative cap before moving to the configured fallback model.
+        safe_retry_cap = int(os.getenv("OPENAI_SAFE_RETRY_MAX_OUTPUT_TOKENS", "12000") or 12000)
+        if max_output_tokens and int(max_output_tokens) > safe_retry_cap:
+            try:
+                request_kwargs["max_output_tokens"] = safe_retry_cap
+                response = client.responses.create(**request_kwargs)
+                return str(getattr(response, "output_text", "") or "").strip()
+            except Exception:
+                pass
         fallback_model = os.getenv("OPENAI_FALLBACK_MODEL", "").strip()
         if fallback_model and fallback_model != model:
             try:
-                response = client.responses.create(model=fallback_model, instructions=instructions, input=prompt)
+                request_kwargs["model"] = fallback_model
+                response = client.responses.create(**request_kwargs)
                 return str(getattr(response, "output_text", "") or "").strip()
             except Exception:
                 return ""
         return ""
+
+
+def _source_is_used_in_body(text: str, src: dict[str, Any]) -> bool:
+    """Return True when a source's author/year pattern appears in the chapter body."""
+    body = text or ""
+    refs_match = re.search(r"(?im)^#{0,3}\s*references\b", body)
+    if refs_match:
+        body = body[: refs_match.start()]
+    lower_body = body.lower()
+    year = str(src.get("year") or "").strip()
+    authors = src.get("authors") or []
+    if isinstance(authors, str):
+        authors = [authors]
+    family_names = [_normalise_author_for_citation(a).lower() for a in authors if str(a).strip()]
+    family_names = [f for f in family_names if f and f != "[author]"]
+    if not family_names:
+        return False
+    author_ok = bool(re.search(re.escape(family_names[0]), lower_body))
+    year_ok = bool(year and year != "n.d." and re.search(re.escape(year), body))
+    return author_ok and (year_ok or len(family_names) == 1)
+
+
+def _strip_chunk_wrappers(text: str) -> tuple[str, list[str]]:
+    """Remove duplicate chapter wrappers and separate chunk reference entries."""
+    text = (text or "").strip()
+    refs: list[str] = []
+    marker = re.search(
+        r"(?im)^#{1,4}\s*(?:references\s+used\s+in\s+this\s+chunk|chunk\s+references|references)\s*$",
+        text,
+    )
+    if marker:
+        ref_text = text[marker.end():]
+        text = text[:marker.start()].rstrip()
+        audit = re.search(r"(?im)^#{1,4}\s*source\s+use\s+audit\b", ref_text)
+        if audit:
+            ref_text = ref_text[:audit.start()]
+        for line in ref_text.splitlines():
+            cleaned = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", line).strip()
+            if cleaned and not cleaned.startswith("#") and len(cleaned) > 12:
+                refs.append(cleaned)
+
+    kept: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if re.match(r"(?i)^#{0,3}\s*chapter\s+\d+\s*$", stripped):
+            continue
+        if re.match(r"(?i)^#{0,3}\s*(?:introduction|literature review|research methods|methodology|results(?:/data analysis)?(?: and discussion)?|summary,? conclusions? and recommendations?)\s+chapter\s*$", stripped):
+            continue
+        kept.append(line)
+    return "\n".join(kept).strip(), refs
+
+
+def _dedupe_reference_entries(entries: list[str]) -> list[str]:
+    unique: list[str] = []
+    seen: set[str] = set()
+    for entry in entries:
+        cleaned = re.sub(r"\s+", " ", str(entry or "")).strip().rstrip(".") + "."
+        key = re.sub(r"[^a-z0-9]+", "", cleaned.lower())[:180]
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        unique.append(cleaned)
+    return unique
+
+
+def _local_source_references_and_audit(profile: dict[str, Any], body: str) -> tuple[list[str], str]:
+    """Build reference hints and a compact audit for attached source-search records."""
+    sources = _merged_source_bank(profile)
+    if not sources:
+        return [], ""
+    refs: list[str] = []
+    audit_rows: list[str] = []
+    relevant_not_cited = 0
+    for src in sources:
+        used = _source_is_used_in_body(body, src)
+        tier = str(src.get("relevance_tier") or "unclassified")
+        key = str(src.get("citation_key") or "")
+        title = str(src.get("title") or "Untitled source")
+        if used:
+            hint = str(src.get("apa_hint") or src.get("reference_entry_hint") or "").strip()
+            if hint:
+                refs.append(hint)
+            audit_rows.append(f"| {key} | {tier} | Cited | Directly used in the chapter body |")
+        elif tier in {"highly_relevant", "partly_relevant", "unclassified"} and relevant_not_cited < 20:
+            relevant_not_cited += 1
+            audit_rows.append(f"| {key} | {tier} | Not cited | Not required in the final argument or insufficiently specific |")
+    if not audit_rows:
+        return refs, ""
+    audit = [
+        "# Source Use Audit",
+        "",
+        "| Source Key | Relevance Tier | Decision | Reason |",
+        "|---|---|---|---|",
+        *audit_rows,
+        "",
+        "Sources marked not relevant were excluded from the chapter argument.",
+    ]
+    return refs, "\n".join(audit)
+
+
+def _group_sections_for_chunks(
+    selected_sections: list[dict[str, Any]],
+    section_budgets: dict[str, dict[str, int]],
+    total_target_words: int,
+) -> list[list[dict[str, Any]]]:
+    """Group adjacent sections into a small number of manageable generation chunks."""
+    if not selected_sections:
+        return []
+    chunk_target = max(4500, int(os.getenv("PROJECTREADY_CHUNK_TARGET_WORDS", "8000") or 8000))
+    max_chunks = max(2, int(os.getenv("PROJECTREADY_MAX_CHAPTER_CHUNKS", "4") or 4))
+    desired_chunks = max(1, min(max_chunks, (max(1, total_target_words) + chunk_target - 1) // chunk_target))
+    if desired_chunks <= 1:
+        return [selected_sections]
+
+    target_per_chunk = total_target_words / desired_chunks
+    chunks: list[list[dict[str, Any]]] = []
+    current: list[dict[str, Any]] = []
+    current_words = 0
+    for idx, section in enumerate(selected_sections):
+        sid = str(section.get("section_id") or "")
+        budget = int((section_budgets.get(sid) or {}).get("target_words") or 500)
+        remaining_sections = len(selected_sections) - idx
+        remaining_chunks = desired_chunks - len(chunks)
+        if current and current_words >= target_per_chunk and remaining_sections >= remaining_chunks:
+            chunks.append(current)
+            current = []
+            current_words = 0
+        current.append(section)
+        current_words += budget
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _generate_chapter_in_chunks(
+    client: Any,
+    model: str,
+    instructions: str,
+    prompt: str,
+    profile: dict[str, Any],
+    chapter_number: int,
+    selected_section_ids: list[str],
+) -> str:
+    """Generate long chapters in contiguous section chunks and assemble one chapter."""
+    try:
+        base_prompt = json.loads(prompt)
+    except Exception:
+        return ""
+
+    full_req = _chapter_length_requirements(profile, chapter_number, selected_section_ids)
+    selected_sections = list(base_prompt.get("selected_sections") or [])
+    section_budgets = dict(full_req.get("section_word_budgets") or {})
+    chunks = _group_sections_for_chunks(
+        selected_sections,
+        section_budgets,
+        int(full_req.get("target_words") or 0),
+    )
+    if len(chunks) <= 1:
+        return ""
+
+    bodies: list[str] = []
+    references: list[str] = []
+    citation_density = full_req.get("citation_occurrences_per_1000_words") or {}
+
+    for chunk_index, chunk_sections in enumerate(chunks, start=1):
+        chunk_ids = [str(section.get("section_id") or "") for section in chunk_sections]
+        chunk_target_words = sum(int((section_budgets.get(sid) or {}).get("target_words") or 500) for sid in chunk_ids)
+        chunk_min_words = sum(int((section_budgets.get(sid) or {}).get("minimum_words") or 350) for sid in chunk_ids)
+        chunk_max_words = max(chunk_target_words + 500, int(chunk_target_words * 1.18))
+        chunk_req = {
+            **full_req,
+            "target_page_range": f"chunk {chunk_index} of {len(chunks)}",
+            "minimum_words": chunk_min_words,
+            "target_words": chunk_target_words,
+            "maximum_words": chunk_max_words,
+            "section_word_budgets": {sid: section_budgets.get(sid, {}) for sid in chunk_ids},
+            "chunk_sequence": {"current": chunk_index, "total": len(chunks)},
+        }
+        chunk_prompt = dict(base_prompt)
+        chunk_prompt["task"] = f"Draft contiguous section chunk {chunk_index} of {len(chunks)} for one complete academic chapter."
+        chunk_prompt["selected_sections"] = chunk_sections
+        chunk_prompt["chapter_page_word_and_citation_targets"] = chunk_req
+        chunk_prompt["output_requirements"] = list(base_prompt.get("output_requirements") or []) + [
+            "Return only the selected sections in this chunk, in their approved order, with their correct numbered headings.",
+            "Do not repeat the overall chapter heading or sections assigned to another chunk.",
+            f"Develop this chunk to approximately {chunk_target_words:,} words and at least {chunk_min_words:,} words, subject to evidence availability.",
+            f"Plan for about {citation_density.get('minimum', 3)}-{citation_density.get('target', 6)} accurate citation occurrences per 1,000 substantive words, without forcing irrelevant sources.",
+            "At the end, add a heading exactly named '## References Used in This Chunk' and list complete APA 7 entries only for sources cited in this chunk.",
+            "Do not add a Source Use Audit inside the chunk. The app will consolidate it after all chunks are assembled.",
+        ]
+        chunk_text = _call_openai_response_safely(
+            client,
+            model,
+            instructions + f" Produce chunk {chunk_index} of {len(chunks)} only. Maintain continuity with the overall chapter plan.",
+            json.dumps(chunk_prompt, ensure_ascii=False, indent=2),
+            max_output_tokens=_max_output_tokens_for_length(chunk_req),
+        )
+        if not chunk_text:
+            return ""
+
+        chunk_body, chunk_refs = _strip_chunk_wrappers(_polish_generated_text(chunk_text))
+        current_chunk_words = _chapter_word_count(chunk_body)
+        if current_chunk_words < int(chunk_min_words * 0.72):
+            retry_payload = {
+                "task": "Expand this chapter chunk without changing its assigned headings or inventing evidence.",
+                "chunk_length_requirements": chunk_req,
+                "rules": [
+                    "Return the complete replacement chunk.",
+                    "Preserve accurate content, citations, tables, equations, results and placeholders.",
+                    "Add depth through synthesis, critique, explanation, interpretation and context-specific application.",
+                    "Do not repeat content or add unsupported facts.",
+                    "End with '## References Used in This Chunk'.",
+                ],
+                "chunk_to_expand": chunk_text,
+            }
+            retry = _call_openai_response_safely(
+                client,
+                model,
+                instructions + " Expand the assigned chunk to its minimum depth while preserving evidence integrity.",
+                json.dumps(retry_payload, ensure_ascii=False, indent=2),
+                max_output_tokens=_max_output_tokens_for_length(chunk_req, revision=True),
+            )
+            if retry:
+                retry_body, retry_refs = _strip_chunk_wrappers(_polish_generated_text(retry))
+                if _chapter_word_count(retry_body) > current_chunk_words:
+                    chunk_body, chunk_refs = retry_body, retry_refs
+
+        bodies.append(chunk_body)
+        references.extend(chunk_refs)
+
+    chapter = get_chapter(chapter_number)
+    chapter_title = _effective_chapter_title(chapter, profile, chapter_number)
+    body = "\n\n".join(part for part in bodies if part.strip()).strip()
+    source_refs, audit = _local_source_references_and_audit(profile, body)
+    references = _dedupe_reference_entries([*references, *source_refs])
+
+    output = [f"# CHAPTER {chapter_number}", f"# {chapter_title.upper()}", "", body]
+    if references:
+        output.extend(["", "# References", "", *references])
+    else:
+        output.extend(["", "# References", "", "[Insert complete APA 7 reference entries for every source cited in the chapter body.]" ])
+    if audit:
+        output.extend(["", audit])
+    return "\n".join(output).strip()
+
+
+def _ensure_chapter_depth(
+    client: Any,
+    model: str,
+    instructions: str,
+    original_prompt: str,
+    draft: str,
+    profile: dict[str, Any],
+    chapter_number: int,
+    selected_section_ids: list[str],
+) -> str:
+    """Run one evidence-safe expansion pass when a generated chapter is materially short."""
+    requirements = _chapter_length_requirements(profile, chapter_number, selected_section_ids)
+    minimum_words = int(requirements.get("minimum_words") or 0)
+    current_words = _chapter_word_count(draft)
+    threshold = int(minimum_words * float(os.getenv("PROJECTREADY_DEPTH_ACCEPTANCE_RATIO", "0.90") or 0.90))
+    if minimum_words <= 0 or current_words >= threshold:
+        return draft
+
+    expansion_payload = {
+        "task": "Expand the existing chapter into a complete replacement chapter that reaches the required academic depth without inventing evidence.",
+        "chapter_number": chapter_number,
+        "current_word_count": current_words,
+        "chapter_length_requirements": requirements,
+        "selected_section_ids": selected_section_ids,
+        "expansion_rules": [
+            "Return the complete revised chapter, not comments, an outline, or isolated add-on paragraphs.",
+            "Preserve all accurate existing content, headings, citations, tables, equations, supplied results and bracketed attention placeholders.",
+            "Expand underdeveloped selected sections according to section_word_budgets.",
+            "Create depth through critical synthesis, comparisons, theoretical reasoning, methodological justification, interpretation, contextual application and objective alignment.",
+            "Do not repeat the same definition, claim, evidence or conclusion merely to increase length.",
+            "Increase citation density using only relevant sources already present in the project profile, retrieved source bank, uploaded material or verified user notes.",
+            "Where adequate evidence is missing, insert a precise bracketed source or evidence placeholder rather than fabricating content.",
+            "For Chapter Four, never invent results. Expand interpretation and discussion only from supplied results, and use placeholders for missing outputs.",
+            "Retain one consolidated References section and, where source-search records were supplied, one Source Use Audit at the end.",
+            "Aim for at least the minimum word count and do not exceed the maximum word count.",
+        ],
+        "original_generation_prompt": original_prompt,
+        "existing_chapter_to_expand": draft,
+    }
+    expanded = _call_openai_response_safely(
+        client,
+        model,
+        instructions + " Expand for academic depth without padding, repetition or invented evidence. Preserve the complete chapter structure.",
+        json.dumps(expansion_payload, ensure_ascii=False, indent=2),
+        max_output_tokens=_max_output_tokens_for_length(requirements, revision=True),
+    )
+    if not expanded:
+        return draft
+
+    expanded = _polish_generated_text(expanded)
+    expanded_words = _chapter_word_count(expanded)
+    # Use the replacement only when it is genuinely fuller and structurally useful.
+    if expanded_words >= max(int(current_words * 1.10), int(minimum_words * 0.75)):
+        return expanded
+    return draft
+
+
+def _citation_occurrence_count(text: str) -> int:
+    """Estimate author-year and numeric in-text citation occurrences in the chapter body."""
+    text = text or ""
+    reference_heading = re.search(r"(?im)^#{0,4}\s*references\s*$", text)
+    if reference_heading:
+        text = text[: reference_heading.start()]
+    author_year = re.findall(
+        r"(?:\([A-Z][A-Za-z’'\-]+(?:\s+(?:&|and)\s+[A-Z][A-Za-z’'\-]+|\s+et\s+al\.)?,?\s*(?:19|20)\d{2}[a-z]?[^)]*\)|"
+        r"\b[A-Z][A-Za-z’'\-]+(?:\s+et\s+al\.)?\s*\((?:19|20)\d{2}[a-z]?\))",
+        text,
+    )
+    numeric = re.findall(r"(?<!\w)(?:\[(?:\d+\s*[-,;]?\s*)+\]|\((?:\d+\s*[-,;]?\s*)+\))", text)
+    return len(author_year) + len(numeric)
+
+
+def chapter_output_metrics(
+    profile: dict[str, Any],
+    chapter_number: int,
+    selected_section_ids: list[str],
+    text: str,
+) -> dict[str, Any]:
+    """Return transparent length and citation estimates for the workspace response."""
+    requirements = _chapter_length_requirements(profile, chapter_number, selected_section_ids)
+    words = _chapter_word_count(text)
+    estimated_pages = round(words / WORDS_PER_PAGE_ESTIMATE, 1) if words else 0.0
+    citations = _citation_occurrence_count(text)
+    per_1000 = round(citations * 1000 / words, 1) if words else 0.0
+    return {
+        "word_count": words,
+        "estimated_pages": estimated_pages,
+        "citation_occurrences": citations,
+        "citation_occurrences_per_1000_words": per_1000,
+        "target_page_range": requirements.get("target_page_range"),
+        "minimum_words": requirements.get("minimum_words"),
+        "target_words": requirements.get("target_words"),
+        "maximum_words": requirements.get("maximum_words"),
+        "depth_target_reached": words >= int((requirements.get("minimum_words") or 0) * 0.90),
+    }
 
 
 # ----------------------------------------------------------------------
@@ -1351,6 +1933,7 @@ def generate_chapter(
         )
 
     client = _safe_get_openai_client()
+    length_requirements = _chapter_length_requirements(profile, chapter_number, selected_section_ids)
     if use_ai and client:
         model, model_route = _select_draft_model(profile, chapter_number)
         revision_model = _select_revision_model(profile, chapter_number, model)
@@ -1375,7 +1958,29 @@ def generate_chapter(
             "Just produce normal scholarly prose."
         )
 
-        text = _call_openai_response_safely(client, model, instructions, prompt)
+        chunk_threshold = int(os.getenv("PROJECTREADY_CHUNKED_GENERATION_THRESHOLD_WORDS", "9000") or 9000)
+        chunked_generation = (
+            int(chapter_number or 0) in {1, 2, 3, 4, 5}
+            and int(length_requirements.get("target_words") or 0) > chunk_threshold
+        )
+        if chunked_generation:
+            text = _generate_chapter_in_chunks(
+                client=client,
+                model=model,
+                instructions=instructions,
+                prompt=prompt,
+                profile=profile,
+                chapter_number=chapter_number,
+                selected_section_ids=selected_section_ids,
+            )
+        else:
+            text = _call_openai_response_safely(
+                client,
+                model,
+                instructions,
+                prompt,
+                max_output_tokens=_max_output_tokens_for_length(length_requirements),
+            )
         if text:
             # 1. Basic polish
             polished = _polish_generated_text(text)
@@ -1383,29 +1988,48 @@ def generate_chapter(
             # 2. Increase natural variation
             polished = _increase_natural_variation(polished)
 
-            # 3. Relevance-gated source integration
-            polished = _review_source_integration(
-                client=client,
-                model=model,
-                instructions=instructions,
-                original_prompt=prompt,
-                draft=polished,
-                profile=profile,
-                chapter_number=chapter_number,
-            )
+            if not chunked_generation:
+                # 3. Relevance-gated source integration
+                polished = _review_source_integration(
+                    client=client,
+                    model=model,
+                    instructions=instructions,
+                    original_prompt=prompt,
+                    draft=polished,
+                    profile=profile,
+                    chapter_number=chapter_number,
+                )
 
-            # 4. Final human-academic revision pass
-            polished = _human_academic_revision_pass(
-                client=client,
-                model=revision_model,
-                instructions=instructions,
-                original_prompt=prompt,
-                draft=polished,
-                profile=profile,
-                chapter_number=chapter_number,
-            )
+                # 4. Final human-academic revision pass. Very long chapters skip the
+                # whole-document rewrite by default because a second full rewrite can
+                # compress the chapter and substantially increase latency and cost.
+                long_revision_limit = int(os.getenv("PROJECTREADY_LONG_CHAPTER_REVISION_LIMIT_WORDS", "12000") or 12000)
+                if int(length_requirements.get("target_words") or 0) <= long_revision_limit:
+                    polished = _human_academic_revision_pass(
+                        client=client,
+                        model=revision_model,
+                        instructions=instructions,
+                        original_prompt=prompt,
+                        draft=polished,
+                        profile=profile,
+                        chapter_number=chapter_number,
+                    )
 
-            # 5. Controlled style texture. Do not apply texture to the Supplementary Methods
+                # 5. Enforce the page/word depth target after revision. This expansion
+                # pass preserves evidence integrity and is used only when the chapter
+                # is materially below the minimum target.
+                polished = _ensure_chapter_depth(
+                    client=client,
+                    model=revision_model,
+                    instructions=instructions,
+                    original_prompt=prompt,
+                    draft=polished,
+                    profile=profile,
+                    chapter_number=chapter_number,
+                    selected_section_ids=selected_section_ids,
+                )
+
+            # 6. Controlled style texture. Do not apply texture to the Supplementary Methods
             #    and Analysis Guide because it is table/checklist driven and must stay compact.
             if int(chapter_number or 0) != 7:
                 polished = _enforce_burstiness(polished, target_std_dev=12.0)
@@ -1416,10 +2040,11 @@ def generate_chapter(
                 polished = _force_short_sentences(polished, target_every_n_words=200)
                 polished = _add_human_noise(polished, error_probability=0.015)
 
-            # 6. Final output controls for structure, dashes, attention placeholders and table noise.
+            # 7. Final output controls for structure, dashes, attention placeholders and table noise.
             polished = _finalise_output_controls(polished)
 
-            return polished, f"openai_responses_api:{model_route}:{model}"
+            generation_mode = "chunked_depth" if chunked_generation else "single_pass_depth"
+            return polished, f"openai_responses_api:{model_route}:{model}:{generation_mode}"
 
     # Fallback when AI is disabled or fails
     return (

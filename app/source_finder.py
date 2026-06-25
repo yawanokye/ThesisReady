@@ -45,7 +45,7 @@ def build_source_query(profile: dict[str, Any], user_query: str = "") -> str:
 def search_literature_sources(
     profile: dict[str, Any],
     query: str = "",
-    max_results: int = 12,
+    max_results: int = 30,
     include_older_foundational: bool = True,
 ) -> dict[str, Any]:
     """Search open scholarly metadata providers and return deduplicated source records.
@@ -57,7 +57,7 @@ def search_literature_sources(
     if not final_query:
         raise ValueError("Please provide a project title, research area, objective, or search terms before finding sources.")
 
-    max_results = max(3, min(int(max_results or 12), 30))
+    max_results = max(3, min(int(max_results or 30), 60))
     current_year = datetime.now().year
     recent_start_year = current_year - 5
 

@@ -95,7 +95,7 @@ class ComplianceResponse(BaseModel):
 
 class SourceSearchRequest(BaseModel):
     query: str = ""
-    max_results: int = 12
+    max_results: int = 30
     include_older_foundational: bool = True
     use_relevance_gate: bool = True
     attach_not_relevant_sources: bool = True
