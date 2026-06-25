@@ -87,3 +87,35 @@ git push
 ```
 
 Then on Render use **Manual Deploy → Clear build cache & deploy**.
+
+## Data-source and instrument discovery update
+
+The topic-idea workflow now runs a second resource-discovery stage after variables and constructs have been identified.
+
+For secondary-data, econometric, time-series and panel-data directions, each idea now includes candidate data sources matched to the proposed constructs. The resource finder searches:
+
+- DataCite dataset DOI metadata
+- published datasets in Harvard Dataverse
+- a locally maintained catalogue of official data portals, including appropriate national and international statistical sources
+
+For survey, qualitative, mixed-method and other primary-data directions, each idea now includes candidate publications that may contain a questionnaire, scale, index, interview guide, protocol, checklist or other instrument that could be adopted or adapted. These candidates are retrieved through the existing OpenAlex, Crossref, Semantic Scholar and ERIC searches.
+
+The output always labels the records as candidates. Users are instructed to inspect the original source and confirm:
+
+- variable and construct coverage
+- population and contextual fit
+- reliability and validity
+- scoring and coding
+- translation and cultural adaptation
+- licence or copyright permission
+- ethical and institutional requirements
+
+The application does not invent named datasets or instruments when a live search is unavailable.
+
+Optional resource-search environment variables:
+
+```text
+TOPIC_RESOURCE_SEARCH_TIMEOUT_SECONDS=10
+TOPIC_DATASET_RESULTS=8
+TOPIC_INSTRUMENT_RESULTS=8
+```
