@@ -1,3 +1,5 @@
+> **Superseded for deep chapter generation:** use `README_CHAPTER_DEPTH_CITATION_UPDATE.md` and the updated environment variables.
+
 # ProjectReady AI – Thesis Quality Fallback Fix
 
 This patch fixes the issue where a draft returned only sparse placeholder text such as:

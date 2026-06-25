@@ -1,3 +1,5 @@
+> **Superseded for deep chapter generation:** use `README_CHAPTER_DEPTH_CITATION_UPDATE.md` and the updated environment variables.
+
 # ProjectReady AI safe human-quality timeout fix
 
 This patch fixes the recent long `/draft` request/internal-error behaviour and keeps the writing quality high without corrupting the academic text.
