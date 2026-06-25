@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any
 
 from app.source_finder import search_literature_sources
+from app.research_resource_finder import discover_research_resources
 
 MAX_SOURCE_CONTEXT = 14
 
@@ -399,7 +400,8 @@ def generate_topic_ideas(payload: dict[str, Any]) -> dict[str, Any]:
                 "For every idea, provide one general objective and the required number of specific objectives for the selected level: Bachelors 4; Non-Research Masters 4; Research Masters/MPhil 5; Professional Doctorate 5; PhD 6.",
                 "Objectives must be logically aligned with the title, synopsis, variables, methodology and likely data. Do not add mediation, moderation, causal, longitudinal, multilevel, intervention or measurement-validation objectives unless the selected level, design and data direction can reasonably support them.",
                 "Bachelor objectives should cover feasible description, relationships, barriers or enablers and practical implications. Non-Research Masters objectives should be applied and evaluative. Research Masters/MPhil objectives should be theory-grounded and analytically rigorous. Professional Doctorate objectives should diagnose practice and develop or evaluate an implementable solution. PhD objectives should support theory extension or development, mechanisms, boundary conditions and validation of an original contribution.",
-                "Each idea must include a concise synopsis, trend/gap, possible methodology, variables/constructs, possible data sources, contribution, proposed objectives and evidence source keys.",
+                "Each idea must include a concise synopsis, trend/gap, possible methodology, variables/constructs, broad data-source categories, contribution, proposed objectives and evidence source keys.",
+                "Do not invent named datasets, questionnaires, scales or instruments. The application will run a separate live resource search after the ideas are generated.",
                 "Return JSON only with keys: trend_summary, ideas, suggested_next_step.",
                 "Each idea object must contain: title, synopsis, current_research_trend_or_gap, possible_methodology, possible_variables_or_constructs, possible_data_sources, potential_contribution, proposed_objectives, evidence_sources, attention_note.",
                 "proposed_objectives must be an object with: general_objective, specific_objectives and level_alignment.",
@@ -437,6 +439,10 @@ def generate_topic_ideas(payload: dict[str, Any]) -> dict[str, Any]:
             continue
         processed_ideas.append(_ensure_level_appropriate_objectives(payload, dict(raw_idea)))
 
+    resource_result = discover_research_resources(payload, processed_ideas)
+    processed_ideas = resource_result.get("ideas") or processed_ideas
+    resource_search = resource_result.get("resource_search") or {}
+
     return {
         "query": search_result.get("query", ""),
         "searched_at": search_result.get("searched_at", ""),
@@ -450,9 +456,11 @@ def generate_topic_ideas(payload: dict[str, Any]) -> dict[str, Any]:
         "ideas": processed_ideas,
         "suggested_next_step": generated.get("suggested_next_step", ""),
         "source_records_used": _source_context(usable_sources),
-        "provider_errors": search_result.get("provider_errors", []),
+        "provider_errors": (search_result.get("provider_errors", []) + (resource_search.get("provider_errors") or [])),
+        "resource_search": resource_search,
         "usage_note": (
             "Ideas are grounded in retrieved metadata and should be verified with a supervisor and a full literature search before submission. "
-            "Retracted or withdrawn records are excluded from the idea-generation context where detected."
+            "Retracted or withdrawn records are excluded from the idea-generation context where detected. "
+            "Named datasets and instrument sources are candidates from live metadata searches or official source catalogues and must be checked before adoption, adaptation or analysis."
         ),
     }
