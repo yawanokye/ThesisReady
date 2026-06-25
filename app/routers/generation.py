@@ -10,7 +10,7 @@ from typing import Any
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
-from app.ai_service import generate_chapter
+from app.ai_service import chapter_output_metrics, generate_chapter
 from app.compliance import check_chapter
 from app.database import get_conn, row_to_dict
 from app.export import export_chapter_docx, export_compliance_docx, export_instrument_docx, export_methods_supplement_docx
@@ -64,7 +64,7 @@ def _source_key(src: dict[str, Any]) -> str:
     return "title:" + title
 
 
-def _merge_sources(existing: list[dict[str, Any]], new_sources: list[dict[str, Any]], limit: int = 80) -> list[dict[str, Any]]:
+def _merge_sources(existing: list[dict[str, Any]], new_sources: list[dict[str, Any]], limit: int = 100) -> list[dict[str, Any]]:
     merged: list[dict[str, Any]] = []
     seen: set[str] = set()
     for src in [*(existing or []), *(new_sources or [])]:
@@ -274,6 +274,13 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
                 "For the strongest supervisor-ready output, confirm the API key/model, add project-specific evidence, and regenerate with AI enabled."
             )
 
+        metrics = chapter_output_metrics(
+            project.get("profile", {}),
+            payload.chapter_number,
+            payload.selected_section_ids,
+            draft,
+        )
+
         return {
             "chapter_number": payload.chapter_number,
             "chapter_title": chapter_title,
@@ -282,6 +289,7 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
             "warning": generation_warning,
             "access_mode": access_mode,
             "entitlement_action": action,
+            "generation_metrics": metrics,
         }
 
     try:

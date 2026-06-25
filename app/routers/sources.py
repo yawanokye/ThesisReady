@@ -21,7 +21,7 @@ def _source_key(src: dict[str, Any]) -> str:
     return "title:" + title
 
 
-def _merge_sources(existing: list[dict[str, Any]], new_sources: list[dict[str, Any]], limit: int = 60) -> list[dict[str, Any]]:
+def _merge_sources(existing: list[dict[str, Any]], new_sources: list[dict[str, Any]], limit: int = 100) -> list[dict[str, Any]]:
     merged: list[dict[str, Any]] = []
     seen: set[str] = set()
     for src in [*(existing or []), *(new_sources or [])]:
@@ -37,7 +37,7 @@ def _merge_sources(existing: list[dict[str, Any]], new_sources: list[dict[str, A
     return merged
 
 
-def _source_notes(sources: list[dict[str, Any]], max_items: int = 20) -> str:
+def _source_notes(sources: list[dict[str, Any]], max_items: int = 30) -> str:
     lines = []
     for idx, src in enumerate(sources[:max_items], start=1):
         hint = src.get("apa_hint") or ""
