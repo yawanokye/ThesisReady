@@ -257,3 +257,168 @@ body.topic-page {
 .idea-results { line-height: 1.55; }
 .topic-form label { margin-bottom: .25rem; }
 @media (max-width: 900px){ .topic-layout{grid-template-columns:1fr;} .topic-hero{grid-template-columns:1fr;} .two-grid{grid-template-columns:1fr;} }
+
+
+.objective-box {
+  margin: 0.85rem 0;
+  border-color: #c4b5fd;
+  background: #faf7ff;
+}
+.objective-box > strong {
+  color: #5b21b6;
+  font-size: 1rem;
+}
+.objective-general,
+.objective-specific {
+  margin-top: 0.65rem;
+}
+.objective-general > span,
+.objective-specific > span {
+  display: block;
+  color: #475569;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.objective-general p {
+  margin: 0.25rem 0 0;
+}
+.objective-list {
+  margin: 0.35rem 0 0 1.25rem;
+  padding: 0;
+}
+.objective-list li {
+  margin: 0.35rem 0;
+  padding-left: 0.2rem;
+}
+.objective-level-note {
+  margin: 0.7rem 0 0;
+  padding-top: 0.65rem;
+  border-top: 1px solid #ddd6fe;
+  color: #5b21b6;
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+
+
+/* Data-source and instrument discovery */
+.resource-guidance-box {
+  margin: 0.85rem 0;
+  border-color: #a7f3d0;
+  background: #f6fffb;
+  padding: 0.85rem;
+}
+.resource-guidance-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: start;
+}
+.resource-guidance-head > div > strong {
+  display: block;
+  color: #065f46;
+  font-size: 1rem;
+}
+.resource-guidance-head p {
+  margin: 0.2rem 0 0;
+  color: #475569;
+  font-size: 0.9rem;
+}
+.resource-basis { margin: 0.65rem 0; }
+.resource-group {
+  margin-top: 0.85rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #ccecdf;
+}
+.resource-group h4 {
+  margin: 0 0 0.55rem;
+  color: #134e4a;
+  font-size: 0.95rem;
+}
+.research-resource-list {
+  display: grid;
+  gap: 0.6rem;
+}
+.research-resource-card {
+  background: #fff;
+  border: 1px solid #d8e9e2;
+  border-radius: 12px;
+  padding: 0.75rem;
+}
+.instrument-card { border-color: #ddd6fe; }
+.resource-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: start;
+}
+.resource-card-head strong {
+  color: #0f172a;
+  margin: 0;
+}
+.resource-card-head > span {
+  flex: 0 0 auto;
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+  border-radius: 999px;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+.instrument-card .resource-card-head > span {
+  background: #f5f3ff;
+  color: #6d28d9;
+  border-color: #ddd6fe;
+}
+.resource-provider {
+  color: #64748b;
+  font-size: 0.84rem;
+  margin: 0.25rem 0;
+}
+.research-resource-card > p { margin: 0.35rem 0; }
+.resource-match-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+  margin: 0.45rem 0;
+}
+.resource-match-row > span {
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+.resource-match-row em {
+  font-style: normal;
+  background: #eef5ff;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  padding: 0.12rem 0.42rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+.resource-caution,
+.resource-note {
+  color: #78350f;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 9px;
+  padding: 0.5rem;
+  font-size: 0.82rem;
+}
+.resource-note { margin: 0.8rem 0 0; }
+.resource-link {
+  display: inline-flex;
+  margin-top: 0.25rem;
+  color: #1d4ed8;
+  font-weight: 800;
+  text-decoration: none;
+}
+.resource-link:hover { text-decoration: underline; }
+@media (max-width: 640px) {
+  .resource-card-head { display: block; }
+  .resource-card-head > span { display: inline-flex; margin-top: 0.35rem; }
+}
