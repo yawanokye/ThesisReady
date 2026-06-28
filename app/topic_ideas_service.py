@@ -17,17 +17,83 @@ _RETRACTION_TERMS = re.compile(
 )
 
 
-def _safe_get_openai_client():
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    if not api_key:
-        return None
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in {"0", "false", "no", "off", ""}
+
+
+def _env_int(name: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(str(os.getenv(name, default)).strip())
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(value, maximum))
+
+
+def _env_float(name: str, default: float, minimum: float, maximum: float) -> float:
+    try:
+        value = float(str(os.getenv(name, default)).strip())
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(value, maximum))
+
+
+def _topic_provider() -> str:
+    provider = os.getenv(
+        "PROJECTREADY_TOPIC_IDEA_PROVIDER",
+        "deepseek",
+    ).strip().lower()
+    return provider if provider in {"deepseek", "openai"} else "deepseek"
+
+
+def _safe_get_topic_client(provider: str | None = None):
+    """Create the configured topic-generation client without exposing API keys."""
+    selected_provider = (provider or _topic_provider()).strip().lower()
+
     try:
         from openai import OpenAI
-        return OpenAI(api_key=api_key)
     except Exception:
         return None
 
+    if selected_provider == "deepseek":
+        api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
+        if not api_key:
+            return None
 
+        return OpenAI(
+            api_key=api_key,
+            base_url=os.getenv(
+                "DEEPSEEK_BASE_URL",
+                "https://api.deepseek.com",
+            ).strip() or "https://api.deepseek.com",
+            timeout=_env_float(
+                "DEEPSEEK_TOPIC_IDEA_TIMEOUT_SECONDS",
+                180.0,
+                30.0,
+                600.0,
+            ),
+        )
+
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        return None
+
+    return OpenAI(
+        api_key=api_key,
+        timeout=_env_float(
+            "OPENAI_TOPIC_IDEA_TIMEOUT_SECONDS",
+            180.0,
+            30.0,
+            600.0,
+        ),
+    )
+
+
+def _safe_get_openai_client():
+    """Backward-compatible wrapper retained for existing tests and imports."""
+    return _safe_get_topic_client("openai")
 def _looks_retracted(src: dict[str, Any]) -> bool:
     """Conservative local guard, even if the main source_finder is not yet patched."""
     fields = [
@@ -55,15 +121,35 @@ def _looks_retracted(src: dict[str, Any]) -> bool:
     return any(bool(src.get(flag)) for flag in flags)
 
 
-def _select_topic_model(level: str) -> str:
+def _select_topic_model(level: str, provider: str | None = None) -> str:
+    selected_provider = (provider or _topic_provider()).strip().lower()
+
+    if selected_provider == "deepseek":
+        return os.getenv(
+            "DEEPSEEK_TOPIC_IDEA_MODEL",
+            "deepseek-v4-pro",
+        ).strip() or "deepseek-v4-pro"
+
     level_l = (level or "").strip().lower()
-    if any(token in level_l for token in ["phd", "doctor", "dba", "ded", "professional doctorate"]):
-        return os.getenv("OPENAI_TOPIC_IDEA_DOCTORAL_MODEL", os.getenv("OPENAI_DOCTORAL_DRAFT_MODEL", "gpt-5.5")).strip()
+    if any(
+        token in level_l
+        for token in ["phd", "doctor", "dba", "ded", "professional doctorate"]
+    ):
+        return os.getenv(
+            "OPENAI_TOPIC_IDEA_DOCTORAL_MODEL",
+            os.getenv("OPENAI_DOCTORAL_DRAFT_MODEL", "gpt-5.5"),
+        ).strip()
+
     if "research masters" in level_l or "mphil" in level_l:
-        return os.getenv("OPENAI_TOPIC_IDEA_RESEARCH_MODEL", os.getenv("OPENAI_RESEARCH_MASTERS_DRAFT_MODEL", "gpt-5.5")).strip()
-    return os.getenv("OPENAI_TOPIC_IDEA_MODEL", os.getenv("OPENAI_BACHELOR_DRAFT_MODEL", "gpt-5.4")).strip()
+        return os.getenv(
+            "OPENAI_TOPIC_IDEA_RESEARCH_MODEL",
+            os.getenv("OPENAI_RESEARCH_MASTERS_DRAFT_MODEL", "gpt-5.5"),
+        ).strip()
 
-
+    return os.getenv(
+        "OPENAI_TOPIC_IDEA_MODEL",
+        os.getenv("OPENAI_BACHELOR_DRAFT_MODEL", "gpt-5.4"),
+    ).strip()
 def _build_topic_search_profile(payload: dict[str, Any]) -> dict[str, Any]:
     objectives = []
     for item in str(payload.get("keywords") or "").split("\n"):
@@ -114,6 +200,166 @@ def _extract_json(text: str) -> dict[str, Any] | None:
             except Exception:
                 return None
     return None
+
+
+_TOPIC_SYSTEM_INSTRUCTION = (
+    "You are ProjectReady AI's thesis topic adviser. Produce feasible, "
+    "original and evidence-grounded thesis or dissertation ideas. Match the "
+    "objectives to the selected academic level. Use only the supplied source "
+    "metadata. Exclude retracted or suspect sources. Return one valid JSON "
+    "object only, with no markdown fences or commentary outside the JSON."
+)
+
+
+def _required_topic_json_structure() -> dict[str, Any]:
+    return {
+        "trend_summary": "string",
+        "ideas": [
+            {
+                "title": "string",
+                "synopsis": "string",
+                "current_research_trend_or_gap": "string",
+                "possible_methodology": "string",
+                "possible_variables_or_constructs": ["string"],
+                "possible_data_sources": ["string"],
+                "potential_contribution": "string",
+                "proposed_objectives": {
+                    "general_objective": "string",
+                    "specific_objectives": ["string"],
+                    "level_alignment": "string",
+                },
+                "evidence_sources": ["S1"],
+                "attention_note": "string",
+            }
+        ],
+        "suggested_next_step": "string",
+    }
+
+
+def _call_topic_model(
+    client,
+    provider: str,
+    model: str,
+    idea_prompt: dict[str, Any],
+    *,
+    thinking_enabled: bool | None = None,
+) -> str:
+    """Call either DeepSeek Chat Completions or the OpenAI Responses API."""
+    selected_provider = provider.strip().lower()
+    prompt_text = json.dumps(idea_prompt, ensure_ascii=False, indent=2)
+
+    if selected_provider == "deepseek":
+        use_thinking = (
+            _env_bool("DEEPSEEK_TOPIC_IDEA_THINKING", True)
+            if thinking_enabled is None
+            else bool(thinking_enabled)
+        )
+        reasoning_effort = os.getenv(
+            "DEEPSEEK_TOPIC_IDEA_REASONING_EFFORT",
+            "high",
+        ).strip().lower()
+        if reasoning_effort not in {"high", "max"}:
+            reasoning_effort = "high"
+
+        request_kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": _TOPIC_SYSTEM_INSTRUCTION},
+                {"role": "user", "content": prompt_text},
+            ],
+            "response_format": {"type": "json_object"},
+            "max_tokens": _env_int(
+                "DEEPSEEK_TOPIC_IDEA_MAX_TOKENS",
+                12000,
+                2000,
+                50000,
+            ),
+            "stream": False,
+            "extra_body": {
+                "thinking": {
+                    "type": "enabled" if use_thinking else "disabled"
+                }
+            },
+        }
+        if use_thinking:
+            request_kwargs["reasoning_effort"] = reasoning_effort
+
+        response = client.chat.completions.create(**request_kwargs)
+        if not getattr(response, "choices", None):
+            raise RuntimeError("DeepSeek returned no completion choices.")
+
+        choice = response.choices[0]
+        finish_reason = str(getattr(choice, "finish_reason", "") or "")
+        if finish_reason == "length":
+            raise RuntimeError(
+                "DeepSeek output reached the token limit before completing the JSON."
+            )
+
+        content = str(getattr(choice.message, "content", "") or "").strip()
+        if not content:
+            raise RuntimeError("DeepSeek returned an empty topic-generation response.")
+        return content
+
+    response = client.responses.create(
+        model=model,
+        instructions=_TOPIC_SYSTEM_INSTRUCTION,
+        input=prompt_text,
+    )
+    content = str(getattr(response, "output_text", "") or "").strip()
+    if not content:
+        raise RuntimeError("OpenAI returned an empty topic-generation response.")
+    return content
+
+
+def _generate_topic_json(
+    client,
+    provider: str,
+    model: str,
+    idea_prompt: dict[str, Any],
+) -> tuple[dict[str, Any] | None, list[str]]:
+    """Generate and validate topic JSON, retrying DeepSeek with the opposite mode."""
+    errors: list[str] = []
+
+    if provider == "deepseek":
+        preferred_mode = _env_bool("DEEPSEEK_TOPIC_IDEA_THINKING", True)
+        attempt_modes: list[bool | None] = [preferred_mode, not preferred_mode]
+    else:
+        attempt_modes = [None]
+
+    for attempt_number, mode in enumerate(attempt_modes, start=1):
+        try:
+            raw_output = _call_topic_model(
+                client=client,
+                provider=provider,
+                model=model,
+                idea_prompt=idea_prompt,
+                thinking_enabled=mode,
+            )
+            parsed = _extract_json(raw_output)
+            if parsed and isinstance(parsed.get("ideas"), list) and parsed["ideas"]:
+                return parsed, errors
+
+            mode_label = (
+                "thinking" if mode is True
+                else "non-thinking" if mode is False
+                else "default"
+            )
+            errors.append(
+                f"{provider} attempt {attempt_number} ({mode_label}) returned "
+                "invalid or empty topic JSON."
+            )
+        except Exception as exc:
+            mode_label = (
+                "thinking" if mode is True
+                else "non-thinking" if mode is False
+                else "default"
+            )
+            errors.append(
+                f"{provider} attempt {attempt_number} ({mode_label}) failed: "
+                f"{str(exc)[:220]}"
+            )
+
+    return None, errors
 
 
 
@@ -361,7 +607,7 @@ def _fallback_ideas(payload: dict[str, Any], sources: list[dict[str, Any]], coun
 
 
 def generate_topic_ideas(payload: dict[str, Any]) -> dict[str, Any]:
-    """Generate thesis/dissertation title ideas grounded in recent source-search metadata."""
+    """Generate source-grounded thesis ideas with DeepSeek V4 Pro by default."""
     max_ideas = max(3, min(int(payload.get("max_ideas") or 8), 12))
     profile = _build_topic_search_profile(payload)
     search_terms = " ".join([
@@ -371,73 +617,203 @@ def generate_topic_ideas(payload: dict[str, Any]) -> dict[str, Any]:
         str(payload.get("keywords") or ""),
         str(payload.get("trend_focus") or ""),
     ])
+
     search_result = search_literature_sources(
         profile=profile,
         query=search_terms,
         max_results=max(10, min(max_ideas * 3, 30)),
-        include_older_foundational=bool(payload.get("include_older_foundational", True)),
+        include_older_foundational=bool(
+            payload.get("include_older_foundational", True)
+        ),
     )
     raw_sources = search_result.get("sources") or []
     usable_sources = [src for src in raw_sources if not _looks_retracted(src)]
     excluded_retracted = [src for src in raw_sources if _looks_retracted(src)]
 
-    model = _select_topic_model(profile.get("level", ""))
-    client = _safe_get_openai_client()
+    idea_prompt = {
+        "task": (
+            "Generate thesis or dissertation title ideas, brief synopses and "
+            "level-appropriate proposed research objectives grounded in "
+            "current source-search metadata."
+        ),
+        "user_inputs": payload,
+        "rules": [
+            (
+                "Use the retrieved source titles, abstracts, years and venues "
+                "to infer current research trends and gaps."
+            ),
+            (
+                "Do not invent citations, papers, datasets, institutional "
+                "facts, statistics or trend claims."
+            ),
+            (
+                "Do not use retracted, withdrawn, removed or "
+                "expression-of-concern sources for any idea or argument."
+            ),
+            (
+                "Do not copy source titles. Create original, researchable "
+                "thesis or dissertation titles."
+            ),
+            (
+                "Adapt sophistication to the selected academic level. "
+                "Bachelor topics should be feasible. Doctoral topics should "
+                "show stronger originality, theoretical depth and contribution."
+            ),
+            (
+                "For every idea, provide one general objective and the required "
+                "number of specific objectives for the selected level: "
+                "Bachelors 4; Non-Research Masters 4; Research Masters/MPhil 5; "
+                "Professional Doctorate 5; PhD 6."
+            ),
+            (
+                "Objectives must align with the title, synopsis, variables, "
+                "methodology and likely data. Do not add mediation, moderation, "
+                "causal, longitudinal, multilevel, intervention or "
+                "measurement-validation objectives unless the selected level, "
+                "design and data direction can support them."
+            ),
+            (
+                "Bachelor objectives should cover feasible description, "
+                "relationships, barriers or enablers and practical implications. "
+                "Non-Research Masters objectives should be applied and evaluative. "
+                "Research Masters or MPhil objectives should be theory-grounded "
+                "and analytically rigorous. Professional Doctorate objectives "
+                "should diagnose practice and develop or evaluate an implementable "
+                "solution. PhD objectives should support theory extension or "
+                "development, mechanisms, boundary conditions and validation of "
+                "an original contribution."
+            ),
+            (
+                "Each idea must include a concise synopsis, trend or gap, "
+                "possible methodology, variables or constructs, broad "
+                "data-source categories, contribution, proposed objectives and "
+                "evidence source keys."
+            ),
+            (
+                "Do not invent named datasets, questionnaires, scales or "
+                "instruments. The application will run a separate live resource "
+                "search after the ideas are generated."
+            ),
+            (
+                "Return one JSON object only with the keys trend_summary, ideas "
+                "and suggested_next_step."
+            ),
+            (
+                "Each idea must contain title, synopsis, "
+                "current_research_trend_or_gap, possible_methodology, "
+                "possible_variables_or_constructs, possible_data_sources, "
+                "potential_contribution, proposed_objectives, evidence_sources "
+                "and attention_note."
+            ),
+            (
+                "proposed_objectives must contain general_objective, "
+                "specific_objectives and level_alignment."
+            ),
+            (
+                "Use only source keys that exist in source_records. If evidence "
+                "is thin, state that in attention_note rather than overstating "
+                "the trend."
+            ),
+        ],
+        "required_json_structure": _required_topic_json_structure(),
+        "source_records": _source_context(usable_sources),
+        "requested_number_of_ideas": max_ideas,
+        "objective_requirement": _objective_requirement(
+            profile.get("level", "Bachelors")
+        ),
+        "current_year": datetime.now().year,
+    }
 
-    if not client or os.getenv("PROJECTREADY_TOPIC_IDEAS_USE_AI", "1").strip().lower() in {"0", "false", "no"}:
-        generated = _fallback_ideas(payload, usable_sources, max_ideas)
-        source_mode = "metadata_fallback"
-    else:
-        idea_prompt = {
-            "task": "Generate thesis or dissertation title ideas, brief synopses and level-appropriate proposed research objectives grounded in current source-search metadata.",
-            "user_inputs": payload,
-            "rules": [
-                "Use the retrieved source titles, abstracts, years and venues to infer current research trends and gaps.",
-                "Do not invent citations, papers, datasets, institutional facts, statistics or trend claims.",
-                "Do not use retracted, withdrawn, removed or expression-of-concern sources for any idea or argument.",
-                "Do not copy source titles. Create original, researchable thesis/dissertation titles.",
-                "Adapt sophistication to the selected academic level. Bachelor topics should be feasible; doctoral topics should show stronger originality, theoretical depth and contribution.",
-                "For every idea, provide one general objective and the required number of specific objectives for the selected level: Bachelors 4; Non-Research Masters 4; Research Masters/MPhil 5; Professional Doctorate 5; PhD 6.",
-                "Objectives must be logically aligned with the title, synopsis, variables, methodology and likely data. Do not add mediation, moderation, causal, longitudinal, multilevel, intervention or measurement-validation objectives unless the selected level, design and data direction can reasonably support them.",
-                "Bachelor objectives should cover feasible description, relationships, barriers or enablers and practical implications. Non-Research Masters objectives should be applied and evaluative. Research Masters/MPhil objectives should be theory-grounded and analytically rigorous. Professional Doctorate objectives should diagnose practice and develop or evaluate an implementable solution. PhD objectives should support theory extension or development, mechanisms, boundary conditions and validation of an original contribution.",
-                "Each idea must include a concise synopsis, trend/gap, possible methodology, variables/constructs, broad data-source categories, contribution, proposed objectives and evidence source keys.",
-                "Do not invent named datasets, questionnaires, scales or instruments. The application will run a separate live resource search after the ideas are generated.",
-                "Return JSON only with keys: trend_summary, ideas, suggested_next_step.",
-                "Each idea object must contain: title, synopsis, current_research_trend_or_gap, possible_methodology, possible_variables_or_constructs, possible_data_sources, potential_contribution, proposed_objectives, evidence_sources, attention_note.",
-                "proposed_objectives must be an object with: general_objective, specific_objectives and level_alignment.",
-                "If evidence is thin, say so in the attention_note rather than overstating the trend.",
-            ],
-            "source_records": _source_context(usable_sources),
-            "requested_number_of_ideas": max_ideas,
-            "objective_requirement": _objective_requirement(profile.get("level", "Bachelors")),
-            "current_year": datetime.now().year,
-        }
-        try:
-            response = client.responses.create(
-                model=model,
-                instructions=(
-                    "You are ProjectReady AI's thesis topic adviser. Produce feasible, original, evidence-grounded thesis/dissertation ideas with objectives matched to the selected academic level. "
-                    "Use only the supplied search metadata. Exclude retracted or suspect sources. Return clean JSON only."
-                ),
-                input=json.dumps(idea_prompt, ensure_ascii=False, indent=2),
+    ai_enabled = _env_bool("PROJECTREADY_TOPIC_IDEAS_USE_AI", True)
+    requested_provider = _topic_provider()
+    provider_used = requested_provider
+    model_used = _select_topic_model(
+        profile.get("level", ""),
+        requested_provider,
+    )
+    generation_warnings: list[str] = []
+    generated: dict[str, Any] | None = None
+
+    if ai_enabled:
+        client = _safe_get_topic_client(requested_provider)
+        if client:
+            generated, attempt_errors = _generate_topic_json(
+                client=client,
+                provider=requested_provider,
+                model=model_used,
+                idea_prompt=idea_prompt,
             )
-            parsed = _extract_json(str(getattr(response, "output_text", "") or ""))
-            if parsed and isinstance(parsed.get("ideas"), list):
-                generated = parsed
-                source_mode = f"ai:{model}"
+            generation_warnings.extend(attempt_errors)
+        else:
+            key_name = (
+                "DEEPSEEK_API_KEY"
+                if requested_provider == "deepseek"
+                else "OPENAI_API_KEY"
+            )
+            generation_warnings.append(
+                f"{requested_provider} topic generation was selected but "
+                f"{key_name} or the OpenAI-compatible SDK was unavailable."
+            )
+
+        openai_fallback_enabled = (
+            requested_provider == "deepseek"
+            and _env_bool(
+                "PROJECTREADY_TOPIC_IDEA_OPENAI_FALLBACK",
+                False,
+            )
+        )
+        if generated is None and openai_fallback_enabled:
+            fallback_client = _safe_get_topic_client("openai")
+            fallback_model = _select_topic_model(
+                profile.get("level", ""),
+                "openai",
+            )
+            if fallback_client:
+                fallback_generated, fallback_errors = _generate_topic_json(
+                    client=fallback_client,
+                    provider="openai",
+                    model=fallback_model,
+                    idea_prompt=idea_prompt,
+                )
+                generation_warnings.extend(fallback_errors)
+                if fallback_generated is not None:
+                    generated = fallback_generated
+                    provider_used = "openai"
+                    model_used = fallback_model
             else:
-                generated = _fallback_ideas(payload, usable_sources, max_ideas)
-                source_mode = "metadata_fallback_parse_error"
-        except Exception as exc:
-            generated = _fallback_ideas(payload, usable_sources, max_ideas)
-            generated["attention"] = f"AI idea generation failed and fallback ideas were used: {str(exc)[:180]}"
+                generation_warnings.append(
+                    "OpenAI fallback was enabled but OPENAI_API_KEY or the "
+                    "OpenAI SDK was unavailable."
+                )
+
+    if generated is None:
+        generated = _fallback_ideas(payload, usable_sources, max_ideas)
+        provider_used = "metadata_fallback"
+        model_used = ""
+        if not ai_enabled:
+            source_mode = "metadata_fallback_ai_disabled"
+        elif generation_warnings:
             source_mode = "metadata_fallback_ai_error"
+            generated["attention"] = (
+                "AI topic generation was unavailable, so metadata-grounded "
+                "fallback ideas were used. "
+                + " | ".join(generation_warnings[-2:])
+            )
+        else:
+            source_mode = "metadata_fallback"
+    else:
+        source_mode = f"ai:{provider_used}:{model_used}"
 
     processed_ideas: list[dict[str, Any]] = []
     for raw_idea in (generated.get("ideas") or [])[:max_ideas]:
         if not isinstance(raw_idea, dict):
             continue
-        processed_ideas.append(_ensure_level_appropriate_objectives(payload, dict(raw_idea)))
+        processed_ideas.append(
+            _ensure_level_appropriate_objectives(
+                payload,
+                dict(raw_idea),
+            )
+        )
 
     resource_result = discover_research_resources(payload, processed_ideas)
     processed_ideas = resource_result.get("ideas") or processed_ideas
@@ -446,21 +822,38 @@ def generate_topic_ideas(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "query": search_result.get("query", ""),
         "searched_at": search_result.get("searched_at", ""),
-        "recent_reference_window": search_result.get("recent_reference_window", ""),
+        "recent_reference_window": search_result.get(
+            "recent_reference_window",
+            "",
+        ),
         "databases": search_result.get("databases", []),
         "source_mode": source_mode,
+        "topic_generation_provider": provider_used,
+        "topic_generation_model": model_used,
+        "generation_warnings": generation_warnings,
         "selected_level": profile.get("level", "Bachelors"),
         "excluded_retracted_count": len(excluded_retracted),
-        "excluded_retracted_titles": [src.get("title") for src in excluded_retracted[:8] if src.get("title")],
+        "excluded_retracted_titles": [
+            src.get("title")
+            for src in excluded_retracted[:8]
+            if src.get("title")
+        ],
         "trend_summary": generated.get("trend_summary", ""),
         "ideas": processed_ideas,
         "suggested_next_step": generated.get("suggested_next_step", ""),
         "source_records_used": _source_context(usable_sources),
-        "provider_errors": (search_result.get("provider_errors", []) + (resource_search.get("provider_errors") or [])),
+        "provider_errors": (
+            search_result.get("provider_errors", [])
+            + (resource_search.get("provider_errors") or [])
+        ),
         "resource_search": resource_search,
         "usage_note": (
-            "Ideas are grounded in retrieved metadata and should be verified with a supervisor and a full literature search before submission. "
-            "Retracted or withdrawn records are excluded from the idea-generation context where detected. "
-            "Named datasets and instrument sources are candidates from live metadata searches or official source catalogues and must be checked before adoption, adaptation or analysis."
+            "Ideas are grounded in retrieved metadata and should be verified "
+            "with a supervisor and a full literature search before submission. "
+            "Retracted or withdrawn records are excluded from the "
+            "idea-generation context where detected. Named datasets and "
+            "instrument sources are candidates from live metadata searches or "
+            "official source catalogues and must be checked before adoption, "
+            "adaptation or analysis."
         ),
     }
