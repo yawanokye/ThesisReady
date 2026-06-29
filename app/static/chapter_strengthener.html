@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Chapter Strengthener | ProjectReady AI</title>
-  <link rel="stylesheet" href="/static/chapter_strengthener.css?v=20260629-integrated-v1">
+  <link rel="stylesheet" href="/static/chapter_strengthener.css?v=20260629-recovery-revision-v2">
   <link rel="stylesheet" href="/static/projectready_payments.css?v=20260629-strengthener">
 </head>
 <body class="chapter-strengthener-page">
@@ -36,17 +36,44 @@
 
     <section class="card project-link-card">
       <div>
-        <p class="eyebrow">Current ProjectReady AI project</p>
-        <h2>Connect this revision to a project and chapter purchase</h2>
+        <p class="eyebrow">Choose the chapter source</p>
+        <h2>Strengthen a ProjectReady chapter or bring your own chapter</h2>
+        <div class="source-choice" role="radiogroup" aria-label="Chapter source">
+          <label><input type="radio" name="chapterSource" value="existing" checked> A chapter already connected to ProjectReady AI</label>
+          <label><input type="radio" name="chapterSource" value="external"> A chapter written or received elsewhere</label>
+        </div>
+      </div>
+
+      <div id="existingProjectPanel">
         <p id="projectConnectionStatus">Loading the current project…</p>
+        <div class="project-connect-actions">
+          <label><span class="field-label">Project ID</span><input id="projectId" placeholder="Project ID from the Thesis Workspace"></label>
+          <button type="button" id="loadProjectBtn" class="secondary">Load project</button>
+          <button type="button" id="useSavedDraftBtn" class="secondary" disabled>Use saved chapter draft</button>
+          <a class="button-link" href="/workspace">Open Thesis Workspace</a>
+        </div>
+        <details class="recovery-box">
+          <summary>Lost the Project ID?</summary>
+          <p>Enter the recovery email and the 6-digit PIN saved for the project. No email service or paid account is required.</p>
+          <div class="project-connect-actions">
+            <label><span class="field-label">Recovery email</span><input id="recoverEmail" type="email" autocomplete="email"></label>
+            <label><span class="field-label">6-digit recovery PIN</span><input id="recoverPin" type="password" inputmode="numeric" maxlength="6" pattern="[0-9]{6}"></label>
+            <button type="button" id="recoverProjectsBtn" class="secondary">Recover projects</button>
+          </div>
+          <div id="recoveryResults" class="recovery-results"></div>
+        </details>
       </div>
-      <div class="project-connect-actions">
-        <label><span class="field-label">Project ID</span><input id="projectId" placeholder="Project ID from the Thesis Workspace"></label>
-        <button type="button" id="loadProjectBtn" class="secondary">Load project</button>
-        <button type="button" id="useSavedDraftBtn" class="secondary" disabled>Use saved chapter draft</button>
-        <a class="button-link" href="/workspace">Open Thesis Workspace</a>
+
+      <div id="externalProjectPanel" hidden>
+        <p id="externalProjectStatus">Create a lightweight revision-only project. It does not require a previously purchased or generated ProjectReady chapter.</p>
+        <div class="project-connect-actions">
+          <label><span class="field-label">Recovery email *</span><input id="externalRecoveryEmail" type="email" autocomplete="email" placeholder="Used with your PIN to recover this revision project"></label>
+          <label><span class="field-label">Create a 6-digit recovery PIN *</span><input id="externalRecoveryPin" type="password" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" placeholder="6 digits"></label>
+        </div>
+        <p class="help">When you click Strengthen chapter, the app creates the revision project, stores the uploaded chapter, and offers the lower-cost revision-only plan.</p>
       </div>
-      <div id="chapterAccessSummary" class="attached-summary">A paid chapter includes one strengthening revision and one DOCX export.</div>
+
+      <div id="chapterAccessSummary" class="attached-summary">A paid ProjectReady chapter includes one strengthening revision. A chapter brought from elsewhere uses the revision-only plan.</div>
     </section>
 
     <section class="grid-two revision-layout">
@@ -163,7 +190,7 @@
   </main>
 
   <footer class="footer">ProjectReady AI, academic research support with student and supervisor verification.</footer>
-  <script src="/static/projectready_payments.js?v=20260629-strengthener"></script>
-  <script src="/static/chapter_strengthener.js?v=20260629-integrated-v1"></script>
+  <script src="/static/projectready_payments.js?v=20260629-revision-only-v2"></script>
+  <script src="/static/chapter_strengthener.js?v=20260629-recovery-revision-v2"></script>
 </body>
 </html>

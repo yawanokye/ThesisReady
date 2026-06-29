@@ -104,7 +104,7 @@
           <a id="prRegisterLink" class="pr-access-secondary" href="/register">Register / create profile</a>
           <button id="prContinuePayment" type="button" class="pr-payment-submit">Continue to payment</button>
         </div>
-        <p class="pr-payment-routing">Paid chapter access includes one draft, one revision, one compliance check and one DOCX export.</p>
+        <p class="pr-payment-routing" id="prAccessBenefits">Paid chapter access includes one draft, one revision, one compliance check and one DOCX export.</p>
       </section>`;
     document.body.appendChild(modal);
 
@@ -127,11 +127,8 @@
         <p class="pr-payment-eyebrow">Secure chapter checkout</p>
         <h2 id="prPaymentTitle">Unlock this chapter</h2>
         <p id="prPaymentPlan" class="pr-payment-plan"></p>
-        <ul class="pr-payment-benefits">
-          <li>One complete chapter draft</li>
-          <li>One chapter revision</li>
-          <li>One compliance check</li>
-          <li>One DOCX export</li>
+        <ul class="pr-payment-benefits" id="prPaymentBenefits">
+          <li>Loading plan benefits…</li>
         </ul>
         <form id="prPaymentForm">
           <label>Email address
@@ -165,10 +162,11 @@
     return byName ? byName[0] : "";
   }
 
-  function prefillCheckout(modal) {
+  function prefillCheckout(modal, options = {}) {
     const profile = readRegistrationProfile();
     const email = modal.querySelector("#prPaymentEmail");
     const country = modal.querySelector("#prPaymentCountry");
+    if (options.customerEmail && !email.value) email.value = options.customerEmail;
     if (profile?.email && !email.value) email.value = profile.email;
     const savedCountry = profileCountryCode(profile);
     const browserCountry = (navigator.language || "").split("-")[1]?.toUpperCase() || "";
@@ -185,6 +183,11 @@
     const profile = readRegistrationProfile();
     const message = typeof detail === "string" ? detail : (detail?.message || "This chapter requires paid access before drafting can continue.");
     modal.querySelector("#prAccessMessage").textContent = message;
+    const revisionOnly = (options.purchaseMode || "chapter") === "revision_only";
+    modal.querySelector("#prAccessTitle").textContent = revisionOnly ? "Unlock chapter strengthening" : "Register or unlock this chapter";
+    modal.querySelector("#prAccessBenefits").textContent = revisionOnly
+      ? "Revision-only access includes one comprehensive strengthening revision, one compliance check and one DOCX export."
+      : "Paid chapter access includes one draft, one revision, one compliance check and one DOCX export.";
     modal.querySelector("#prRegisterLink").href = registrationUrl(options);
     modal.querySelector("#prRegisterLink").textContent = profile ? "Review registration profile" : "Register / create profile";
     modal.querySelector("#prRegistrationState").textContent = profile?.email
@@ -210,7 +213,7 @@
     const modal = ensureCheckoutModal();
     modal.hidden = false;
     syncBodyModalState();
-    prefillCheckout(modal);
+    prefillCheckout(modal, options);
 
     const status = modal.querySelector("#prPaymentStatus");
     const submit = modal.querySelector(".pr-payment-submit");
@@ -221,7 +224,8 @@
 
     let plans;
     try {
-      const response = await fetch(`/api/payments/plans?level=${encodeURIComponent(options.academicLevel)}`, {cache: "no-store"});
+      const purchaseMode = options.purchaseMode || "chapter";
+      const response = await fetch(`/api/payments/plans?level=${encodeURIComponent(options.academicLevel)}&mode=${encodeURIComponent(purchaseMode)}`, {cache: "no-store"});
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.detail?.message || data.detail || "Could not load the chapter price.");
       plans = data;
@@ -236,10 +240,18 @@
       return;
     }
 
+    const benefits = [];
+    if (Number(plan.includes?.initial_draft || 0) > 0) benefits.push("One complete chapter draft");
+    if (Number(plan.includes?.revision || 0) > 0) benefits.push("One comprehensive chapter strengthening revision");
+    if (Number(plan.includes?.compliance_check || 0) > 0) benefits.push("One compliance check");
+    if (Number(plan.includes?.docx_export || 0) > 0) benefits.push("One DOCX export");
+    modal.querySelector("#prPaymentBenefits").innerHTML = benefits.map(item => `<li>${esc(item)}</li>`).join("");
+    modal.querySelector("#prPaymentTitle").textContent = plans.purchase_mode === "revision_only" ? "Unlock chapter strengthening" : "Unlock this chapter";
+
     const renderPrice = () => {
       const paystack = AFRICAN_COUNTRIES.has(country.value);
       const price = paystack ? (plan.paystack_price_display || plan.price_display) : plan.price_display;
-      modal.querySelector("#prPaymentPlan").textContent = `${plan.name} · ${price} per chapter`;
+      modal.querySelector("#prPaymentPlan").textContent = `${plan.name} · ${price} per ${plan.per || "chapter"}`;
       routing.textContent = paystack
         ? "This billing country will use Paystack and charge the displayed GHS amount."
         : "This billing country will use Stripe and charge the displayed USD amount.";
@@ -261,7 +273,9 @@
         project_id: String(options.projectId),
         chapter_number: Number(options.chapterNumber),
         chapter_title: options.chapterTitle || `Chapter ${options.chapterNumber}`,
-        plan_key: plan.plan_key
+        plan_key: plan.plan_key,
+        purchase_mode: options.purchaseMode || "chapter",
+        return_path: options.returnPath || window.location.pathname || "/workspace"
       };
       try {
         const response = await fetch("/api/payments/checkout", {
@@ -304,7 +318,9 @@
         projectId: button.dataset.projectId,
         chapterNumber: Number(button.dataset.chapterNumber),
         chapterTitle: button.dataset.chapterTitle || "",
-        academicLevel: button.dataset.academicLevel
+        academicLevel: button.dataset.academicLevel,
+        purchaseMode: button.dataset.purchaseMode || "chapter",
+        returnPath: button.dataset.returnPath || window.location.pathname
       }).catch(error => window.alert(error.message)));
     });
   }
@@ -317,6 +333,7 @@
   window.ProjectReadyPayments = {
     openAccessGate,
     openCheckout,
+    saveCredential,
     getCredential,
     paymentHeaders,
     checkEntitlement,

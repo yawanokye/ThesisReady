@@ -376,3 +376,29 @@ button:disabled {
 #draftOutput { min-height: 520px; }
 #sectionsBox label { font-weight: 750; }
 @media (max-width: 760px){ .layout{grid-template-columns:1fr;} .source-controls{display:block;} }
+
+.recovery-cluster {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.project-recovery-details {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid #93c5fd;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.project-recovery-details summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: #1d4ed8;
+}
+
+.recovered-project-button {
+  display: block;
+  width: 100%;
+  margin-top: 0.5rem;
+  text-align: left;
+}

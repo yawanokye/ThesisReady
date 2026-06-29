@@ -10,7 +10,7 @@ let draftRequestInFlight = false;
 
 const $ = (id) => document.getElementById(id);
 
-const APP_STATIC_VERSION = "20260625-depth-citations-v1";
+const APP_STATIC_VERSION = "20260629-recovery-revision-v2";
 const CURRENT_PROJECT_STORAGE_KEY = "projectready-current-project";
 
 const levelDepthGuidance = {
@@ -254,7 +254,10 @@ async function restoreCurrentProject() {
     if ($("thesis_format") && profile.thesis_format) $("thesis_format").value = profile.thesis_format;
     if ($("research_area")) $("research_area").value = profile.research_area || "";
     if ($("study_context")) $("study_context").value = profile.study_context || "";
-    if ($("projectStatus")) $("projectStatus").textContent = `Project restored: ${project.id}`;
+    if ($("saveRecoveryBtn")) $("saveRecoveryBtn").disabled = false;
+    if ($("projectStatus")) $("projectStatus").textContent = project.recovery_enabled
+      ? `Project restored: ${project.id}. Recovery is enabled.`
+      : `Project restored: ${project.id}. Add a recovery email and PIN to make the ID recoverable.`;
   } catch (_) {
     localStorage.removeItem(CURRENT_PROJECT_STORAGE_KEY);
     currentProjectId = null;
@@ -582,6 +585,9 @@ function collectProfile() {
   const selectedLevel = $("level")?.value || "Bachelors";
   return {
     title: $("title").value.trim(),
+    project_kind: "standard",
+    recovery_email: $("recoveryEmail") ? $("recoveryEmail").value.trim() : "",
+    recovery_pin: $("recoveryPin") ? $("recoveryPin").value.trim() : "",
     programme: "",
     department: "",
     institution: "",
@@ -673,13 +679,78 @@ async function createProject() {
     $("projectStatus").textContent = "Please enter a project title.";
     return;
   }
+  if ((profile.recovery_email && !/^\d{6}$/.test(profile.recovery_pin)) || (!profile.recovery_email && profile.recovery_pin)) {
+    $("projectStatus").textContent = "Provide both a valid recovery email and a 6-digit recovery PIN, or leave both blank.";
+    return;
+  }
   $("projectStatus").textContent = "Creating project...";
   const result = await api("/api/projects", { method: "POST", body: JSON.stringify(profile) });
   currentProjectId = result.id;
   localStorage.setItem(CURRENT_PROJECT_STORAGE_KEY, result.id);
-  $("projectStatus").textContent = `Project created: ${result.id}`;
+  if ($("saveRecoveryBtn")) $("saveRecoveryBtn").disabled = false;
+  $("projectStatus").textContent = result.recovery_enabled
+    ? `Project created: ${result.id}. Recovery is enabled for the saved email and PIN.`
+    : `Project created: ${result.id}. Add a recovery email and PIN to protect access if the ID is lost.`;
   updateChapterSpecificUi();
   await updatePaymentPanel();
+}
+
+async function saveCurrentProjectRecovery() {
+  if (!currentProjectId) throw new Error("Create or restore a project first.");
+  const email = $("recoveryEmail")?.value.trim() || "";
+  const recoveryPin = $("recoveryPin")?.value.trim() || "";
+  if (!email || !/^\d{6}$/.test(recoveryPin)) {
+    throw new Error("Enter a valid recovery email and a 6-digit recovery PIN.");
+  }
+  const result = await api(`/api/projects/${encodeURIComponent(currentProjectId)}/recovery`, {
+    method: "POST",
+    body: JSON.stringify({email, recovery_pin: recoveryPin})
+  });
+  $("projectStatus").textContent = result.message || "Project recovery enabled.";
+  return result;
+}
+
+async function recoverWorkspaceProjects() {
+  const results = $("workspaceRecoveryResults");
+  const email = $("recoveryEmail")?.value.trim() || "";
+  const recoveryPin = $("recoveryPin")?.value.trim() || "";
+  if (results) results.textContent = "Checking recovery details...";
+  const response = await fetch("/api/projects/recover", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({email, recovery_pin: recoveryPin})
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.detail || "No project matched those recovery details.");
+  for (const credential of data.restored_access || []) {
+    window.ProjectReadyPayments?.saveCredential?.(
+      credential.project_id,
+      credential.chapter_number,
+      credential
+    );
+  }
+  if (!results) return data;
+  results.innerHTML = "";
+  for (const project of data.projects || []) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "secondary-action recovered-project-button";
+    button.textContent = `${project.title} · ${project.academic_level || "Level not set"} · ${project.id}`;
+    button.addEventListener("click", async () => {
+      currentProjectId = project.id;
+      localStorage.setItem(CURRENT_PROJECT_STORAGE_KEY, project.id);
+      await restoreCurrentProject();
+      await updatePaymentPanel();
+    });
+    results.appendChild(button);
+  }
+  return data;
+}
+
+function prefillRecoveryEmail() {
+  if (!$("recoveryEmail") || $("recoveryEmail").value) return;
+  const profile = window.ProjectReadyPayments?.readRegistrationProfile?.();
+  if (profile?.email) $("recoveryEmail").value = profile.email;
 }
 
 function genericLanguageAudit(text) {
@@ -939,6 +1010,8 @@ if ($("draftOutput")) {
 }
 
 $("createProjectBtn").addEventListener("click", () => createProject().catch(err => handleWorkspaceError(err, "projectStatus")));
+if ($("saveRecoveryBtn")) $("saveRecoveryBtn").addEventListener("click", () => saveCurrentProjectRecovery().catch(err => handleWorkspaceError(err, "projectStatus")));
+if ($("recoverProjectBtn")) $("recoverProjectBtn").addEventListener("click", () => recoverWorkspaceProjects().catch(err => handleWorkspaceError(err, "projectStatus")));
 $("draftBtn").addEventListener("click", () => generateDraft().catch(err => handleWorkspaceError(err, "draftStatus")));
 if ($("uploadResultsBtn")) $("uploadResultsBtn").addEventListener("click", () => uploadResults().catch(err => handleWorkspaceError(err, "uploadStatus")));
 if ($("uploadRevisionBtn")) $("uploadRevisionBtn").addEventListener("click", () => uploadRevision().catch(err => handleWorkspaceError(err, "revisionStatus")));
@@ -976,6 +1049,7 @@ if ($("level")) {
 updateChapterSpecificUi();
 
 async function initialiseWorkspace() {
+  prefillRecoveryEmail();
   const params = new URLSearchParams(window.location.search);
   const returnedProject = params.get("project_id");
   if (returnedProject) {
