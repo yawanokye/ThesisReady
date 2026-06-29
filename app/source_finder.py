@@ -4,6 +4,8 @@ import json
 import os
 import re
 import time
+from collections import Counter
+from html import unescape
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlencode
@@ -14,67 +16,151 @@ MAX_QUERY_CHARS = 220
 MAX_ABSTRACT_CHARS = 650
 RETRACTION_PATTERN = re.compile(r"\b(retracted|retraction|withdrawn|withdrawal|expression\s+of\s+concern|removed\s+article)\b", re.IGNORECASE)
 
+# Terms that should not, by themselves, make a record relevant. The gate is
+# intentionally lexical and transparent so it remains fast and costs nothing.
+_SEARCH_STOPWORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "been", "being", "between",
+    "by", "for", "from", "how", "in", "into", "is", "it", "of", "on", "or",
+    "that", "the", "their", "this", "to", "using", "was", "were", "what",
+    "when", "where", "which", "with", "within", "without",
+}
+_GENERIC_RESEARCH_TERMS = {
+    "analysis", "approach", "assessment", "association", "case", "comparative",
+    "context", "determinant", "determinants", "effect", "effects", "empirical",
+    "evidence", "examine", "examining", "factor", "factors", "findings", "impact",
+    "impacts", "influence", "investigate", "investigation", "relationship", "research",
+    "role", "study", "studies", "towards", "trend", "trends",
+}
+_POPULATION_CONTEXT_TERMS = {
+    "adult", "adults", "adolescent", "adolescents", "among", "company", "companies",
+    "employee", "employees", "firm", "firms", "household", "households", "informal",
+    "institution", "institutions", "organisation", "organisations", "organization",
+    "organizations", "participant", "participants", "postgraduate", "postgraduates",
+    "respondent", "respondents", "sector", "sectors", "student", "students", "teacher",
+    "teachers", "undergraduate", "undergraduates", "worker", "workers",
+    "women", "youth",
+}
+_GEOGRAPHIC_TERMS = {
+    "africa", "african", "asia", "asian", "europe", "european", "global",
+    "ghana", "ghanaian", "nigeria", "nigerian", "kenya", "kenyan", "uganda",
+    "ugandan", "tanzania", "tanzanian", "rwanda", "rwandan", "ethiopia",
+    "ethiopian", "zambia", "zambian", "zimbabwe", "zimbabwean", "botswana",
+    "cameroon", "colombia", "china", "india", "indonesia", "malaysia", "uk",
+    "usa", "united", "states", "kingdom", "sub", "saharan",
+}
+_EDUCATION_TERMS = {
+    "academic", "classroom", "college", "curriculum", "education", "educational",
+    "learning", "learner", "learners", "literacy", "pedagogy", "school", "schools",
+    "student", "students", "teacher", "teachers", "teaching", "university",
+}
+
+
+def _normalise_search_text(value: Any) -> str:
+    """Normalise metadata text while preserving meaningful compound concepts."""
+    text = unescape(str(value or "")).lower()
+    # Treat pass-through as one concept. Without this, an unrelated record such
+    # as "class pass" can appear relevant merely because it contains "pass".
+    text = re.sub(r"\bpass[\s\-‐‑‒–—]+through\b", "passthrough", text)
+    text = re.sub(r"[‐‑‒–—]", "-", text)
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _tokenise(value: Any) -> list[str]:
+    return [token for token in _normalise_search_text(value).split() if len(token) >= 3]
+
+
+def _unique_phrases(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    output: list[str] = []
+    for value in values:
+        cleaned = re.sub(r"\s+", " ", str(value or "")).strip(" ,.;:-")
+        key = _normalise_search_text(cleaned)
+        if not cleaned or not key or key in seen:
+            continue
+        seen.add(key)
+        output.append(cleaned)
+    return output
+
 
 def build_source_query(profile: dict[str, Any], user_query: str = "") -> str:
-    """Create a focused literature-search query from the project profile and optional user terms."""
-    pieces: list[str] = []
-    if user_query.strip():
-        pieces.append(user_query.strip())
+    """Create a concise, concept-led query instead of one long profile dump.
 
-    for key in ["title", "research_area"]:
-        value = str(profile.get(key) or "").strip()
-        if value:
-            pieces.append(value)
+    An explicit user query is treated as the primary search instruction. The
+    title and research area are only added when they contribute new concepts.
+    Objectives and context are used only when no focused query was supplied.
+    """
+    explicit = re.sub(r"\s+", " ", str(user_query or "")).strip()
+    title = re.sub(r"\s+", " ", str(profile.get("title") or "")).strip()
+    area = re.sub(r"\s+", " ", str(profile.get("research_area") or "")).strip()
 
+    if explicit:
+        # The user-entered terms are already a deliberate focused search. Do
+        # not silently append the broader title, objectives or context.
+        return explicit[:MAX_QUERY_CHARS]
+
+    pieces: list[str] = _unique_phrases([title, area])
     objectives = profile.get("objectives") or []
     if isinstance(objectives, str):
         objectives = [x.strip() for x in re.split(r"\n|;", objectives) if x.strip()]
-    pieces.extend(str(obj).strip() for obj in objectives[:3] if str(obj).strip())
+    if not pieces and objectives:
+        pieces.append(str(objectives[0]).strip())
 
     context = str(profile.get("study_context") or "").strip()
-    if context:
-        # Add only the first sentence or first 160 characters to avoid weak, overlong searches.
+    if not pieces and context:
         first_sentence = re.split(r"(?<=[.!?])\s+", context)[0]
-        pieces.append(first_sentence[:160])
+        pieces.append(first_sentence[:120])
 
-    query = " ".join(pieces)
-    query = re.sub(r"\s+", " ", query).strip()
+    query = re.sub(r"\s+", " ", " ".join(_unique_phrases(pieces))).strip()
     return query[:MAX_QUERY_CHARS]
-
 
 def search_literature_sources(
     profile: dict[str, Any],
     query: str = "",
     max_results: int = 30,
     include_older_foundational: bool = True,
+    use_relevance_gate: bool = True,
+    attach_not_relevant_sources: bool = False,
 ) -> dict[str, Any]:
-    """Search open scholarly metadata providers and return deduplicated source records.
+    """Search open scholarly metadata and attach only defensibly relevant records.
 
-    The function deliberately retrieves metadata only. It does not download copyrighted papers,
-    and it does not generate references that are absent from returned metadata.
+    The requested result count is a ceiling, not a quota. If only nine records
+    pass the relevance gate, nine are returned rather than padding the result
+    with papers that merely mention the country or one generic word.
     """
     final_query = build_source_query(profile, query)
     if not final_query:
-        raise ValueError("Please provide a project title, research area, objective, or search terms before finding sources.")
+        raise ValueError(
+            "Please provide a project title, research area, objective, or search terms before finding sources."
+        )
 
     max_results = max(3, min(int(max_results or 30), 60))
     current_year = datetime.now().year
     recent_start_year = current_year - 5
 
-    providers = [
-        _search_openalex,
-        _search_crossref,
-        _search_semantic_scholar,
-        _search_eric,
+    provider_specs: list[tuple[str, Any]] = [
+        ("OpenAlex", _search_openalex),
+        ("Crossref", _search_crossref),
+        ("Semantic Scholar", _search_semantic_scholar),
     ]
+    skipped_providers: list[dict[str, str]] = []
+    if _query_is_education_related(final_query):
+        provider_specs.append(("ERIC", _search_eric))
+    else:
+        skipped_providers.append({
+            "provider": "ERIC",
+            "reason": "Skipped because the query is not education-related.",
+        })
 
     records: list[dict[str, Any]] = []
     provider_errors: list[dict[str, str]] = []
-    for provider in providers:
+    searched_databases: list[str] = []
+    for provider_name, provider in provider_specs:
+        searched_databases.append(provider_name)
         try:
-            records.extend(provider(final_query, per_provider=max(5, max_results)))
+            records.extend(provider(final_query, per_provider=max(8, max_results)))
         except Exception as exc:
-            provider_errors.append({"provider": provider.__name__.replace("_search_", ""), "error": str(exc)[:220]})
+            provider_errors.append({"provider": provider_name, "error": str(exc)[:220]})
 
     safe_records: list[dict[str, Any]] = []
     excluded_retracted: list[dict[str, Any]] = []
@@ -84,15 +170,32 @@ def search_literature_sources(
             continue
         safe_records.append(record)
 
-    deduped = _dedupe_and_rank(safe_records, query=final_query, recent_start_year=recent_start_year)
+    ranked = _dedupe_and_rank(
+        safe_records,
+        query=final_query,
+        recent_start_year=recent_start_year,
+    )
 
-    # Prefer recent sources but keep strong older/foundational sources where needed.
-    # Some metadata providers return None, empty strings, ranges, or non-numeric years.
-    # Normalise years before comparison so the source search never fails on undated records.
+    relevant_records = [
+        src for src in ranked
+        if str(src.get("relevance_tier") or "") in {"highly_relevant", "partly_relevant"}
+    ]
+    rejected_irrelevant = [
+        src for src in ranked
+        if str(src.get("relevance_tier") or "") == "not_relevant"
+    ]
+
+    if not use_relevance_gate:
+        eligible = ranked
+    elif attach_not_relevant_sources:
+        eligible = ranked
+    else:
+        eligible = relevant_records
+
     recent: list[dict[str, Any]] = []
     older: list[dict[str, Any]] = []
     undated: list[dict[str, Any]] = []
-    for src in deduped:
+    for src in eligible:
         year = _safe_int(src.get("year"))
         if year is None:
             undated.append(src)
@@ -102,34 +205,67 @@ def search_literature_sources(
             older.append(src)
 
     if include_older_foundational:
-        selected = recent[: max_results]
+        # Reserve room for older, highly relevant foundational work while still
+        # keeping most records inside the recent-reference window.
+        recent_quota = max(1, int(round(max_results * 0.75)))
+        selected = recent[:recent_quota]
         remaining_slots = max_results - len(selected)
         if remaining_slots > 0:
             selected.extend(older[:remaining_slots])
+        remaining_slots = max_results - len(selected)
+        if remaining_slots > 0:
+            selected.extend(recent[recent_quota:recent_quota + remaining_slots])
         remaining_slots = max_results - len(selected)
         if remaining_slots > 0:
             selected.extend(undated[:remaining_slots])
     else:
         selected = (recent + undated)[:max_results]
 
+    high_count = sum(1 for src in selected if src.get("relevance_tier") == "highly_relevant")
+    partial_count = sum(1 for src in selected if src.get("relevance_tier") == "partly_relevant")
+
     return {
         "query": final_query,
         "searched_at": datetime.now(timezone.utc).isoformat(),
         "recent_reference_window": f"{recent_start_year}-{current_year}",
-        "databases": ["OpenAlex", "Crossref", "Semantic Scholar", "ERIC"],
+        "databases": searched_databases,
+        "skipped_providers": skipped_providers,
         "count": len(selected),
+        "requested_count": max_results,
         "provider_errors": provider_errors,
         "excluded_retracted_count": len(excluded_retracted),
-        "excluded_retracted_titles": [str(r.get("title") or "[untitled]")[:180] for r in excluded_retracted[:10]],
-        "quality_filters": ["retracted/withdrawn/expression-of-concern records excluded", "deduplicated by DOI/title", "ranked by relevance, recency, DOI, abstract and citation count"],
+        "excluded_retracted_titles": [
+            str(r.get("title") or "[untitled]")[:180]
+            for r in excluded_retracted[:10]
+        ],
+        "rejected_irrelevant_count": len(rejected_irrelevant),
+        "rejected_irrelevant_titles": [
+            str(r.get("title") or "[untitled]")[:180]
+            for r in rejected_irrelevant[:12]
+        ],
+        "relevance_summary": {
+            "highly_relevant": high_count,
+            "partly_relevant": partial_count,
+            "not_attached_as_irrelevant": (
+                len(rejected_irrelevant)
+                if use_relevance_gate and not attach_not_relevant_sources
+                else 0
+            ),
+        },
+        "quality_filters": [
+            "retracted/withdrawn/expression-of-concern records excluded",
+            "deduplicated by DOI/title",
+            "exact-token and compound-concept relevance gate applied",
+            "country-only and generic-word matches rejected",
+            "requested result count treated as a maximum rather than a quota",
+        ],
         "sources": selected,
         "usage_note": (
-            "Use these retrieved records as preferred citation material, but verify bibliographic details, DOI links, retraction status, and institutional requirements before final submission. "
-            "Retracted, withdrawn, removed, or expression-of-concern records have been excluded and must not be used to support any argument. "
-            "If the results do not match the topic well, refine the search terms and run the search again."
+            "Only highly relevant and partly relevant records are attached by default. "
+            "The search may return fewer records than requested rather than fill the list with unrelated papers. "
+            "Verify bibliographic details, DOI links, retraction status, and institutional requirements before final submission."
         ),
     }
-
 
 def _search_openalex(query: str, per_provider: int = 10) -> list[dict[str, Any]]:
     params = {
@@ -352,6 +488,144 @@ def _get_json(url: str) -> dict[str, Any]:
     return json.loads(raw)
 
 
+def _query_is_education_related(query: str) -> bool:
+    return bool(set(_tokenise(query)) & _EDUCATION_TERMS)
+
+
+def _query_concepts(query: str) -> tuple[list[str], list[str]]:
+    tokens = _tokenise(query)
+    context_vocabulary = _GEOGRAPHIC_TERMS | _POPULATION_CONTEXT_TERMS
+    context_terms = [token for token in tokens if token in context_vocabulary]
+    core_terms: list[str] = []
+    seen: set[str] = set()
+    for token in tokens:
+        if token in _SEARCH_STOPWORDS or token in _GENERIC_RESEARCH_TERMS or token in context_vocabulary:
+            continue
+        if token not in seen:
+            seen.add(token)
+            core_terms.append(token)
+    return core_terms[:12], list(dict.fromkeys(context_terms))[:6]
+
+
+def _record_tokens(record: dict[str, Any]) -> tuple[set[str], set[str], set[str]]:
+    title_tokens = set(_tokenise(record.get("title") or ""))
+    abstract_tokens = set(_tokenise(record.get("abstract") or ""))
+    source_tokens = set(_tokenise(record.get("source") or ""))
+    return title_tokens, abstract_tokens, source_tokens
+
+
+def _build_relevance_profile(query: str, records: list[dict[str, Any]]) -> dict[str, Any]:
+    core_terms, context_terms = _query_concepts(query)
+    frequencies: Counter[str] = Counter()
+    for record in records:
+        title_tokens, abstract_tokens, _ = _record_tokens(record)
+        combined = title_tokens | abstract_tokens
+        for term in core_terms:
+            if term in combined:
+                frequencies[term] += 1
+
+    present_terms = [term for term in core_terms if frequencies.get(term, 0) > 0]
+    anchor_pool = present_terms or core_terms
+    if len(core_terms) <= 3:
+        # Short queries usually describe one compound concept. Require the
+        # rarest term, such as "passthrough", so broad "exchange rate" papers
+        # do not pass the gate.
+        anchors = sorted(
+            anchor_pool,
+            key=lambda term: (frequencies.get(term, 10**6), -len(term), term),
+        )[:1]
+    else:
+        # Longer queries often contain several constructs. Any substantive
+        # construct may justify partial relevance, so retain all concept terms
+        # as possible anchors and rely on coverage thresholds for the tier.
+        anchors = list(anchor_pool)
+    return {
+        "core_terms": core_terms,
+        "context_terms": context_terms,
+        "anchors": anchors,
+    }
+
+
+def _classify_relevance(record: dict[str, Any], relevance_profile: dict[str, Any]) -> tuple[str, str, str, dict[str, float]]:
+    core_terms: list[str] = relevance_profile.get("core_terms") or []
+    context_terms: list[str] = relevance_profile.get("context_terms") or []
+    anchors: list[str] = relevance_profile.get("anchors") or []
+
+    title_tokens, abstract_tokens, source_tokens = _record_tokens(record)
+    full_tokens = title_tokens | abstract_tokens | source_tokens
+    core_set = set(core_terms)
+    title_hits = core_set & title_tokens
+    full_hits = core_set & full_tokens
+    anchor_title_hits = set(anchors) & title_tokens
+    anchor_full_hits = set(anchors) & full_tokens
+    context_hits = set(context_terms) & full_tokens
+
+    core_count = max(1, len(core_set))
+    title_coverage = len(title_hits) / core_count
+    full_coverage = len(full_hits) / core_count
+    context_coverage = len(context_hits) / max(1, len(context_terms)) if context_terms else 0.0
+
+    if not core_terms:
+        # A defensive fallback for exceptionally short or generic queries.
+        tier = "partly_relevant" if context_hits else "not_relevant"
+    elif len(core_terms) <= 2:
+        if full_coverage == 1.0 and len(title_hits) >= 1 and anchor_full_hits:
+            tier = "highly_relevant"
+        elif full_coverage == 1.0 and anchor_full_hits:
+            tier = "partly_relevant"
+        else:
+            tier = "not_relevant"
+    else:
+        if len(core_terms) >= 4:
+            # Multi-construct studies need literature on the full model and on
+            # individual constructs. Two substantive concept matches can be a
+            # defensible partly relevant source even when the paper does not
+            # cover every variable in the thesis title.
+            if anchor_full_hits and title_coverage >= 0.40 and full_coverage >= 0.65:
+                tier = "highly_relevant"
+            elif anchor_full_hits and title_coverage >= 0.25 and full_coverage >= 0.40:
+                tier = "partly_relevant"
+            else:
+                tier = "not_relevant"
+        elif anchor_full_hits and title_coverage >= 0.50 and full_coverage >= 0.75:
+            tier = "highly_relevant"
+        elif anchor_full_hits and (
+            (title_coverage >= 0.34 and full_coverage >= 0.50)
+            or title_coverage >= 0.50
+        ):
+            tier = "partly_relevant"
+        else:
+            tier = "not_relevant"
+
+    matched = ", ".join(sorted(full_hits)) or "none"
+    anchor_text = ", ".join(sorted(anchor_full_hits)) or "none"
+    if tier == "highly_relevant":
+        reason = (
+            f"Strong concept match: {len(full_hits)}/{len(core_terms)} core terms matched "
+            f"({matched}); distinctive anchor match: {anchor_text}."
+        )
+        suggested_use = "Suitable for direct use in the study background, literature review, theory, methods or discussion where the claim aligns."
+    elif tier == "partly_relevant":
+        reason = (
+            f"Partial but defensible concept match: {len(full_hits)}/{len(core_terms)} core terms matched "
+            f"({matched}); distinctive anchor match: {anchor_text}."
+        )
+        suggested_use = "Use only for the specific construct, mechanism, method or comparative context it directly addresses."
+    else:
+        reason = (
+            f"Rejected by relevance gate: only {len(full_hits)}/{len(core_terms)} core terms matched "
+            f"({matched}), or no distinctive topic anchor was present."
+        )
+        suggested_use = "Do not attach or cite for this search unless the user independently confirms a direct connection."
+
+    return tier, reason, suggested_use, {
+        "title_coverage": round(title_coverage, 4),
+        "full_coverage": round(full_coverage, 4),
+        "context_coverage": round(context_coverage, 4),
+        "anchor_hit": 1.0 if anchor_full_hits else 0.0,
+    }
+
+
 def _dedupe_and_rank(records: list[dict[str, Any]], query: str, recent_start_year: int) -> list[dict[str, Any]]:
     seen: set[str] = set()
     deduped: list[dict[str, Any]] = []
@@ -364,30 +638,65 @@ def _dedupe_and_rank(records: list[dict[str, Any]], query: str, recent_start_yea
         if _is_retracted_record(record):
             continue
         seen.add(key)
-        record["title"] = title
-        record["doi"] = doi
-        record["abstract"] = _clean_text(record.get("abstract") or "")[:MAX_ABSTRACT_CHARS]
-        record["relevance_score"] = _relevance_score(record, query, recent_start_year)
-        deduped.append(record)
+        item = dict(record)
+        item["title"] = title
+        item["doi"] = doi
+        item["abstract"] = _clean_text(item.get("abstract") or "")[:MAX_ABSTRACT_CHARS]
+        deduped.append(item)
+
+    relevance_profile = _build_relevance_profile(query, deduped)
+    for record in deduped:
+        tier, reason, suggested_use, metrics = _classify_relevance(record, relevance_profile)
+        record["relevance_tier"] = tier
+        record["relevance_reason"] = reason
+        record["suggested_use"] = suggested_use
+        record["relevance_metrics"] = metrics
+        record["search_query"] = query
+        record["attachment_origin"] = "automated_source_search"
+        record["relevance_score"] = _relevance_score(
+            record,
+            query,
+            recent_start_year,
+            relevance_profile=relevance_profile,
+        )
+
     deduped.sort(key=lambda item: item.get("relevance_score", 0), reverse=True)
     return deduped
 
 
-def _relevance_score(record: dict[str, Any], query: str, recent_start_year: int) -> float:
+def _relevance_score(
+    record: dict[str, Any],
+    query: str,
+    recent_start_year: int,
+    relevance_profile: dict[str, Any] | None = None,
+) -> float:
     if _is_retracted_record(record):
         return -9999.0
-    query_terms = {term for term in re.findall(r"[a-zA-Z]{4,}", query.lower()) if len(term) > 3}
-    haystack = " ".join([str(record.get("title") or ""), str(record.get("abstract") or ""), str(record.get("source") or "")]).lower()
-    term_hits = sum(1 for term in query_terms if term in haystack)
+
+    profile = relevance_profile or _build_relevance_profile(query, [record])
+    metrics = record.get("relevance_metrics") or _classify_relevance(record, profile)[3]
+    tier = str(record.get("relevance_tier") or "not_relevant")
+    tier_bonus = {
+        "highly_relevant": 100.0,
+        "partly_relevant": 55.0,
+        "not_relevant": -80.0,
+    }.get(tier, -80.0)
+
     year = _safe_int(record.get("year")) or 0
     recency = 12 if year >= recent_start_year else max(0, 6 - max(0, recent_start_year - year) * 0.4)
-    doi_bonus = 6 if record.get("doi") else 0
+    doi_bonus = 4 if record.get("doi") else 0
     abstract_bonus = 3 if record.get("abstract") else 0
     citations = _safe_int(record.get("citation_count")) or 0
-    citation_bonus = min(8, citations ** 0.5) if citations else 0
+    citation_bonus = min(6, citations ** 0.5) if citations else 0
     db_bonus = {"OpenAlex": 2, "Crossref": 2, "Semantic Scholar": 2, "ERIC": 1}.get(record.get("database"), 0)
-    return float(term_hits * 4 + recency + doi_bonus + abstract_bonus + citation_bonus + db_bonus)
 
+    lexical = (
+        float(metrics.get("title_coverage", 0)) * 34
+        + float(metrics.get("full_coverage", 0)) * 20
+        + float(metrics.get("context_coverage", 0)) * 5
+        + float(metrics.get("anchor_hit", 0)) * 10
+    )
+    return float(tier_bonus + lexical + recency + doi_bonus + abstract_bonus + citation_bonus + db_bonus)
 
 def _abstract_from_openalex(index: dict[str, list[int]] | None) -> str:
     if not index:
