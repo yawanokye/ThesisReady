@@ -61,6 +61,59 @@ class PaymentRulesTests(unittest.TestCase):
         self.assertEqual(plan["includes"]["docx_export"], 1)
 
 
+class PaymentDatabasePathTests(unittest.TestCase):
+    def setUp(self):
+        self.original_payment_db = payment_store.SQLITE_PAYMENT_DB
+        self.original_project_path = os.environ.pop("PROJECTREADY_SQLITE_DB_PATH", None)
+        payment_store.SQLITE_PAYMENT_DB = ""
+
+    def tearDown(self):
+        payment_store.SQLITE_PAYMENT_DB = self.original_payment_db
+        if self.original_project_path is not None:
+            os.environ["PROJECTREADY_SQLITE_DB_PATH"] = self.original_project_path
+        else:
+            os.environ.pop("PROJECTREADY_SQLITE_DB_PATH", None)
+
+    def test_plain_database_url_uses_persistent_disk_path(self):
+        self.assertEqual(
+            payment_store._sqlite_path("/var/data/projectready.db"),
+            Path("/var/data/projectready.db"),
+        )
+
+    def test_sqlite_url_uses_persistent_disk_path(self):
+        self.assertEqual(
+            payment_store._sqlite_path("sqlite:////var/data/projectready.db"),
+            Path("/var/data/projectready.db"),
+        )
+
+    def test_purchase_is_written_to_requested_sqlite_file(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            target = Path(tempdir) / "persistent" / "projectready.db"
+            purchase = payment_store.create_pending_purchase(
+                user_email="student@example.com",
+                project_id="persistent-project",
+                chapter_number=1,
+                chapter_title="Introduction",
+                academic_level="Bachelors",
+                plan_key="bachelors_chapter",
+                amount=4.99,
+                currency="USD",
+                display_amount=4.99,
+                display_currency="USD",
+                payment_provider="stripe",
+                provider_reference="PRAI-ST-persistent-path-test",
+                metadata={"test": True},
+                database_url=str(target),
+            )
+            self.assertTrue(target.exists())
+            restored = payment_store.get_purchase(
+                purchase["id"],
+                database_url=str(target),
+            )
+            self.assertIsNotNone(restored)
+            self.assertEqual(restored["project_id"], "persistent-project")
+
+
 class EntitlementStoreTests(unittest.TestCase):
     def setUp(self):
         self.tempdir = tempfile.TemporaryDirectory()

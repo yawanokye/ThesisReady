@@ -83,6 +83,8 @@ def test_external_revision_project_is_created_and_recoverable(isolated_databases
             recovery_email="student@example.com",
             recovery_pin="246810",
             include_source_search=False,
+            academic_integrity_confirmed=True,
+            user_contribution_confirmed=True,
         )
     )
     assert result["purchase_mode"] == "revision_only"
