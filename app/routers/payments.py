@@ -320,7 +320,15 @@ async def stripe_webhook(request: Request):
             database_url=DATABASE_URL,
         )
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"ok": False, "message": str(exc)})
+        message = f"{type(exc).__name__}: {exc}"
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "message": message,
+                "stage": "stripe_webhook_activation",
+            },
+        )
     return JSONResponse(status_code=int(result.get("status_code", 200)), content=result)
 
 
