@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
@@ -14,6 +15,7 @@ from app.chapter_revision_service import (
     revise_chapter,
 )
 from app.database import get_conn, row_to_dict
+from app.project_recovery import set_project_recovery
 from app.payments.guard import (
     PaymentRequiredError,
     credentials_from_headers,
@@ -23,6 +25,7 @@ from app.schemas import (
     ChapterRevisionExportRequest,
     ChapterRevisionRequest,
     ChapterTargetRequest,
+    ExternalRevisionProjectCreate,
 )
 
 router = APIRouter(tags=["ProjectReady AI Chapter Strengthener"])
@@ -162,6 +165,86 @@ async def extract_chapter_strengthener_file(file: UploadFile = File(...)) -> dic
 @router.post("/api/chapter-strengthener/targets")
 def chapter_strengthener_targets(payload: ChapterTargetRequest) -> dict[str, Any]:
     return chapter_planning_targets(payload.academic_level, payload.chapter_type)
+
+
+@router.post("/api/chapter-strengthener/external-projects")
+def create_external_revision_project(payload: ExternalRevisionProjectCreate) -> dict[str, Any]:
+    """Create a lightweight project for a chapter written outside ProjectReady AI."""
+    project_id = str(uuid.uuid4())
+    chapter_number = _chapter_number(payload.chapter_type)
+    chapter_title = _chapter_title(payload.chapter_type, payload.chapter_title)
+    profile = {
+        "title": payload.thesis_title,
+        "level": payload.academic_level,
+        "programme": payload.discipline,
+        "department": "",
+        "institution": "",
+        "research_area": payload.research_area,
+        "study_context": payload.context,
+        "research_approach": payload.methodology,
+        "data_type": "Not specified",
+        "objectives": [line.strip() for line in payload.objectives.splitlines() if line.strip()],
+        "research_questions": [line.strip() for line in payload.research_questions.splitlines() if line.strip()],
+        "hypotheses": [line.strip() for line in payload.hypotheses.splitlines() if line.strip()],
+        "variables": {"raw_variables": [line.strip() for line in payload.variables_constructs.splitlines() if line.strip()]},
+        "format_notes": payload.school_guidelines,
+        "source_bank": payload.source_bank,
+        "source_search_terms": payload.source_search_terms,
+        "project_kind": "external_revision",
+        "external_revision_chapter_number": chapter_number,
+        "external_revision_chapter_type": payload.chapter_type,
+        "external_revision_chapter_title": chapter_title,
+        "study_stage": payload.study_stage,
+        "citation_style": payload.citation_style,
+        "theory_framework": payload.theory_framework,
+        "contribution_claim": payload.contribution_claim,
+        "data_and_results": payload.data_and_results,
+        "created_for": "chapter_strengthener",
+    }
+    drafts = {str(chapter_number): payload.chapter_text}
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO projects (id, title, profile_json, selected_sections_json, drafts_json, checks_json)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                project_id,
+                payload.thesis_title,
+                json.dumps(profile),
+                "{}",
+                json.dumps(drafts),
+                "{}",
+            ),
+        )
+        conn.commit()
+
+    try:
+        recovery = set_project_recovery(
+            project_id,
+            payload.recovery_email,
+            payload.recovery_pin,
+        )
+    except ValueError as exc:
+        with get_conn() as conn:
+            conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+            conn.commit()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return {
+        "id": project_id,
+        "title": payload.thesis_title,
+        "profile": profile,
+        "drafts": drafts,
+        "chapter_number": chapter_number,
+        "chapter_title": chapter_title,
+        "purchase_mode": "revision_only",
+        "recovery_enabled": recovery.get("recovery_enabled", True),
+        "message": (
+            "Revision-only project created. Use the revision-only checkout to unlock "
+            "one strengthening revision, one compliance check and one DOCX export."
+        ),
+    }
 
 
 @router.post("/api/projects/{project_id}/chapter-strengthener/revise")
