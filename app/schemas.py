@@ -34,6 +34,9 @@ class ProjectCreate(BaseModel):
     other_chapter_instructions: str = ""
     draft_maturity: str = "Supervisor-ready draft"
     student_contribution: dict[str, Any] = Field(default_factory=dict)
+    project_kind: str = "standard"
+    recovery_email: str = ""
+    recovery_pin: str = ""
 
 
 class SectionSelection(BaseModel):
@@ -218,3 +221,18 @@ class ChapterRevisionExportRequest(BaseModel):
 class ChapterTargetRequest(BaseModel):
     academic_level: str = "Bachelors"
     chapter_type: str = "1. Introduction"
+
+
+class ProjectRecoveryRequest(BaseModel):
+    email: str = Field(..., min_length=5, max_length=254)
+    recovery_pin: str = Field(..., min_length=6, max_length=6)
+
+
+class ProjectRecoverySetupRequest(BaseModel):
+    email: str = Field(..., min_length=5, max_length=254)
+    recovery_pin: str = Field(..., min_length=6, max_length=6)
+
+
+class ExternalRevisionProjectCreate(ChapterRevisionRequest):
+    recovery_email: str = Field(..., min_length=5, max_length=254)
+    recovery_pin: str = Field(..., min_length=6, max_length=6)

@@ -57,6 +57,21 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS project_recovery (
+                project_id TEXT PRIMARY KEY,
+                recovery_email TEXT NOT NULL,
+                recovery_pin_hash TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_project_recovery_email ON project_recovery(recovery_email)"
+        )
         conn.commit()
 
 
