@@ -61,6 +61,8 @@ function storeRegistrationProfile(event) {
     objectives: getValue("objectives"),
     format_notes: getValue("format_notes"),
     citation_evidence_notes: getValue("citation_evidence_notes"),
+    academic_integrity_confirmed: true,
+    user_contribution_confirmed: true,
     registered_at: new Date().toISOString()
   };
 

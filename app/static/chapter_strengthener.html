@@ -15,12 +15,14 @@
       <a href="/topic-ideas">Topic Ideas</a>
       <a href="/workspace">Thesis Workspace</a>
       <a href="/chapter-strengthener" aria-current="page">Chapter Strengthener</a>
+      <a href="/journal-article">Journal Article</a>
     </nav>
   </header>
 
   <main class="shell">
     <section class="hero">
       <div class="hero-copy">
+        <p class="eyebrow">Integrated thesis and dissertation revision</p>
         <h1>Strengthen an existing chapter without changing the approved study.</h1>
         <p class="lead">Improve structure, depth, evidence integration, citation density, method fit, discussion and recommendations while preserving confirmed facts, results and valid citations.</p>
       </div>
@@ -71,7 +73,7 @@
         <p class="help">When you click Strengthen chapter, the app creates the revision project, stores the uploaded chapter, and offers the lower-cost revision-only plan.</p>
       </div>
 
-      <div id="chapterAccessSummary" class="attached-summary">A paid ProjectReady chapter includes one strengthening revision. A chapter brought from elsewhere uses the revision-only plan.</div>
+      <div id="chapterAccessSummary" class="attached-summary">A paid ProjectReady chapter includes one strengthening revision. A chapter brought from elsewhere uses the revision-only research-support plan. Both pathways require user authorship, verification and revision.</div>
     </section>
 
     <section class="grid-two revision-layout">
@@ -157,8 +159,15 @@
         <label class="check"><input type="checkbox" id="includeOlderFoundational" checked> Include relevant foundational literature</label>
         <label class="check"><input type="checkbox" id="saveToProject" checked> Save the strengthened version as the current project chapter draft</label>
 
+        <div class="academic-integrity-panel">
+          <h3>Academic integrity and author responsibility</h3>
+          <label class="check"><input type="checkbox" id="strengthenerIntegrityDeclaration"> I confirm that this chapter forms part of my own authorised academic work and is not being submitted for another person.</label>
+          <label class="check"><input type="checkbox" id="strengthenerContributionDeclaration"> I confirm that the underlying research decisions, materials, evidence, data and findings are mine or are supplied with proper authority, and that I will independently review every revision.</label>
+          <p class="help">The strengthened output is an editable working revision, not completed or submission-ready academic work. <a href="/academic-integrity" target="_blank" rel="noopener">Read the responsible-use policy</a>.</p>
+        </div>
+
         <div class="actions">
-          <button type="submit" id="reviseBtn">Strengthen chapter</button>
+          <button type="submit" id="reviseBtn">Strengthen my working chapter</button>
           <button type="button" class="secondary" id="clearBtn">Clear</button>
         </div>
         <p id="status" class="status"></p>
@@ -167,8 +176,8 @@
       <section class="card output-stack revision-output-panel">
         <div>
           <div class="result-head">
-            <div><h2>Strengthened chapter</h2><p class="help">Review every factual, methodological and citation change before submission.</p></div>
-            <div class="output-actions"><button id="copyChapterBtn" disabled>Copy</button><button id="downloadRevisionBtn" disabled>Download DOCX</button></div>
+            <div><h2>Strengthened working chapter</h2><p class="help">Review every factual, methodological and citation change. This remains an editable working revision and is not submission-ready.</p></div>
+            <div class="output-actions"><button id="copyChapterBtn" disabled>Copy</button><button id="downloadRevisionBtn" disabled>Export working revision DOCX</button></div>
           </div>
           <div id="revisionMeta" class="attached-summary">Revision details will appear here.</div>
           <textarea id="revisedChapter" class="output-box revision-article-box" readonly></textarea>
@@ -187,7 +196,7 @@
     </section>
   </main>
 
-  <footer class="footer">ProjectReady AI, academic research support with student and supervisor verification.</footer>
+  <footer class="footer">ProjectReady AI, self-service academic research support with user authorship, verification and supervisor review.</footer>
   <script src="/static/projectready_payments.js?v=20260629-revision-only-v2"></script>
   <script src="/static/chapter_strengthener.js?v=20260629-recovery-revision-v2"></script>
 </body>

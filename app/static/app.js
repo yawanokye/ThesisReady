@@ -10,7 +10,7 @@ let draftRequestInFlight = false;
 
 const $ = (id) => document.getElementById(id);
 
-const APP_STATIC_VERSION = "20260629-recovery-revision-v2";
+const APP_STATIC_VERSION = "20260629-integrity-v3";
 const CURRENT_PROJECT_STORAGE_KEY = "projectready-current-project";
 
 const levelDepthGuidance = {
@@ -107,7 +107,7 @@ function showAccessRequiredNotice(error) {
   const message = $("accessRequiredMessage");
   const registerLink = $("accessRegisterBtn");
   if (!notice) return;
-  const detailMessage = error?.detail?.message || error?.message || "Register or unlock this chapter to continue.";
+  const detailMessage = error?.detail?.message || error?.message || "Register or unlock guided chapter development to continue.";
   if (message) message.textContent = detailMessage;
   if (registerLink && window.ProjectReadyPayments) {
     registerLink.href = ProjectReadyPayments.registrationUrl(currentAccessOptions());
@@ -219,8 +219,8 @@ async function updatePaymentPanel() {
       if (entitlement.allowed && entitlement.project_id === currentProjectId && entitlement.chapter_key === `chapter-${currentChapter}`) {
         const r = entitlement.remaining || {};
         panel.classList.add("is-active");
-        status.textContent = `Payment confirmed. Remaining: draft ${r.draft ?? 0}, revision ${r.revision ?? 0}, compliance ${r.compliance ?? 0}, export ${r.export ?? 0}.`;
-        button.textContent = "Purchase another chapter access";
+        status.textContent = `Payment confirmed. Remaining guided draft: ${r.draft ?? 0}, strengthening revision: ${r.revision ?? 0}, compliance review: ${r.compliance ?? 0}, export: ${r.export ?? 0}.`;
+        button.textContent = "Purchase another guided chapter access";
         return;
       }
       if (entitlement.status === "pending") {
@@ -232,12 +232,12 @@ async function updatePaymentPanel() {
     } catch (_) {}
   }
 
-  button.textContent = "Unlock this chapter";
+  button.textContent = "Unlock guided chapter development";
   if (freeEligible) {
     panel.classList.add("is-warning");
-    status.textContent = "Free Starter applies to one Chapter One draft with up to five selected sections. Revision, compliance and DOCX export require paid access.";
+    status.textContent = "Free Starter applies to one limited Chapter One working draft with up to five selected sections. Strengthening, compliance review and DOCX export require paid access.";
   } else {
-    status.textContent = "Unlock this chapter for one draft, one revision, one compliance check and one DOCX export.";
+    status.textContent = "Unlock guided chapter development for one working draft, one strengthening revision, one compliance review and one editable DOCX export.";
   }
 }
 
@@ -254,6 +254,8 @@ async function restoreCurrentProject() {
     if ($("thesis_format") && profile.thesis_format) $("thesis_format").value = profile.thesis_format;
     if ($("research_area")) $("research_area").value = profile.research_area || "";
     if ($("study_context")) $("study_context").value = profile.study_context || "";
+    if ($("academicIntegrityDeclaration")) $("academicIntegrityDeclaration").checked = Boolean(profile.academic_integrity_confirmed);
+    if ($("userContributionDeclaration")) $("userContributionDeclaration").checked = Boolean(profile.user_contribution_confirmed);
     if ($("saveRecoveryBtn")) $("saveRecoveryBtn").disabled = false;
     if ($("projectStatus")) $("projectStatus").textContent = project.recovery_enabled
       ? `Project restored: ${project.id}. Recovery is enabled.`
@@ -384,7 +386,7 @@ function ensureSupplementaryMethodsTemplate() {
             guiding_questions: [
               "Should this supplementary chapter support a primary survey, qualitative, mixed-method, secondary-data, econometric, time-series or panel-data study?",
               "What decisions, instruments, data sources, coding notes or appendix materials should this support document prepare?",
-              "Which parts are intended only for the appendix or research preparation, rather than the submission-ready methodology chapter?"
+              "Which parts are intended only for the appendix or research preparation, rather than the main methodology working draft?"
             ],
             rules: [
               "Make clear that this is a supplementary working/support chapter for instrument, measurement, variable, data-source and appendix preparation; it must not replace the main Research Methods/Methodology chapter.",
@@ -588,6 +590,8 @@ function collectProfile() {
     project_kind: "standard",
     recovery_email: $("recoveryEmail") ? $("recoveryEmail").value.trim() : "",
     recovery_pin: $("recoveryPin") ? $("recoveryPin").value.trim() : "",
+    academic_integrity_confirmed: $("academicIntegrityDeclaration") ? $("academicIntegrityDeclaration").checked : false,
+    user_contribution_confirmed: $("userContributionDeclaration") ? $("userContributionDeclaration").checked : false,
     programme: "",
     department: "",
     institution: "",
@@ -673,17 +677,65 @@ function currentSourcePayload() {
   };
 }
 
+function responsibleUseConfirmed() {
+  return Boolean(
+    $("academicIntegrityDeclaration")?.checked
+    && $("userContributionDeclaration")?.checked
+  );
+}
+
+function ownInputReadinessProblems({revisionMode = false} = {}) {
+  const problems = [];
+  if (!responsibleUseConfirmed()) {
+    problems.push("confirm both academic-integrity and user-contribution declarations");
+  }
+  if (revisionMode) {
+    if (!uploadedRevisionText.trim() && !$("draftOutput")?.value.trim()) {
+      problems.push("upload or load the existing chapter that you want to strengthen");
+    }
+    return problems;
+  }
+
+  const context = $("study_context")?.value.trim() || "";
+  const area = $("research_area")?.value.trim() || "";
+  const objectives = lines($("objectives")?.value || "");
+  const answers = collectAnswers();
+  const answerText = Object.values(answers).flatMap(section => Object.values(section || {})).join(" ");
+  const contributionValues = [
+    $("centralArgument")?.value.trim() || "",
+    $("localContextNotes")?.value.trim() || "",
+    $("evidenceAnchors")?.value.trim() || "",
+    $("citation_evidence_notes")?.value.trim() || "",
+    $("format_notes")?.value.trim() || "",
+    $("supervisorComments")?.value.trim() || "",
+  ];
+  const meaningfulContributions = contributionValues.filter(value => value.length >= 35).length;
+
+  if (!area && context.length < 30) problems.push("describe the research area and study context");
+  if (!objectives.length && answerText.length < 60) problems.push("add objectives, research questions or detailed guided-section answers");
+  if (meaningfulContributions < 2 && contributionValues.join(" ").length < 140) {
+    problems.push("add more of your own evidence, argument, context, school guidance or supervisor direction");
+  }
+  if (!selectedSectionIds().length) problems.push("select at least one required chapter section");
+  return problems;
+}
+
 async function createProject() {
   const profile = collectProfile();
   if (!profile.title) {
-    $("projectStatus").textContent = "Please enter a project title.";
-    return;
+    $("projectStatus").textContent = "Please enter your approved or provisional research title.";
+    return null;
+  }
+  if (!responsibleUseConfirmed()) {
+    $("projectStatus").textContent = "Confirm both academic-integrity and user-contribution declarations before creating the research project.";
+    $("academicIntegrityPanel")?.scrollIntoView({behavior: "smooth", block: "center"});
+    return null;
   }
   if ((profile.recovery_email && !/^\d{6}$/.test(profile.recovery_pin)) || (!profile.recovery_email && profile.recovery_pin)) {
     $("projectStatus").textContent = "Provide both a valid recovery email and a 6-digit recovery PIN, or leave both blank.";
-    return;
+    return null;
   }
-  $("projectStatus").textContent = "Creating project...";
+  $("projectStatus").textContent = "Creating research project...";
   const result = await api("/api/projects", { method: "POST", body: JSON.stringify(profile) });
   currentProjectId = result.id;
   localStorage.setItem(CURRENT_PROJECT_STORAGE_KEY, result.id);
@@ -693,6 +745,7 @@ async function createProject() {
     : `Project created: ${result.id}. Add a recovery email and PIN to protect access if the ID is lost.`;
   updateChapterSpecificUi();
   await updatePaymentPanel();
+  return result.id;
 }
 
 async function saveCurrentProjectRecovery() {
@@ -776,11 +829,11 @@ function showDraftQualityHint(text, metrics = null) {
     ? ` Estimated ${metrics.estimated_pages} pages from ${Number(metrics.word_count || 0).toLocaleString()} words, against a ${metrics.target_page_range}-page target. Citation density: ${metrics.citation_occurrences_per_1000_words} occurrences per 1,000 words.`
     : "";
   if (metrics && !metrics.depth_target_reached) {
-    status.textContent = `Draft generated but remains below the planned depth target.${metricText} Add more verified evidence, results or source material, then revise or regenerate.`;
+    status.textContent = `Working draft developed but remains below the planned depth target.${metricText} Add more verified evidence, results or source material, then revise or regenerate.`;
   } else if (count > 8) {
-    status.textContent = `Draft generated.${metricText} Review generic transitions and add more project-specific evidence before final submission.`;
+    status.textContent = `Working draft developed.${metricText} Review generic transitions and add more project-specific evidence before any submission.`;
   } else {
-    status.textContent = `Draft generated based on the information provided.${metricText} Review the evidence and revise before submission.`;
+    status.textContent = `Working draft developed from the information you supplied.${metricText} Review every source, fact and argument, then revise before any submission.`;
   }
 }
 
@@ -788,20 +841,30 @@ async function generateDraft() {
   if (draftRequestInFlight) return;
   draftRequestInFlight = true;
   const draftButton = $("draftBtn");
-  const originalButtonText = draftButton?.textContent || "Generate chapter draft";
+  const originalButtonText = draftButton?.textContent || "Develop working draft";
   if (draftButton) {
     draftButton.disabled = true;
     draftButton.textContent = "Checking access...";
   }
   try {
     if (!currentProjectId) await createProject();
+    if (!currentProjectId) return;
+    const revisionMode = $("revisionMode") ? $("revisionMode").checked : false;
+    const readinessProblems = ownInputReadinessProblems({revisionMode});
+    if (readinessProblems.length) {
+      $("draftStatus").textContent = `Add your own research inputs before continuing: ${readinessProblems.join("; ")}.`;
+      return;
+    }
+    const profileSnapshot = collectProfile();
+    delete profileSnapshot.recovery_pin;
+    delete profileSnapshot.recovery_email;
     const payload = {
     chapter_number: currentChapter,
     selected_section_ids: selectedSectionIds(),
     answers: collectAnswers(),
     extra_instructions: $("extraInstructions").value.trim(),
     use_ai: $("useAi") ? $("useAi").checked : true,
-    revision_mode: $("revisionMode") ? $("revisionMode").checked : false,
+    revision_mode: revisionMode,
     revision_instructions: $("revisionInstructions") ? $("revisionInstructions").value.trim() : "",
     revision_text: uploadedRevisionText,
     revision_filename: uploadedRevisionFilename,
@@ -820,16 +883,19 @@ async function generateDraft() {
       human_revision_pass: $("humanRevisionPass") ? $("humanRevisionPass").checked : true
     },
     human_revision_pass: $("humanRevisionPass") ? $("humanRevisionPass").checked : true,
+    academic_integrity_confirmed: $("academicIntegrityDeclaration") ? $("academicIntegrityDeclaration").checked : false,
+    user_contribution_confirmed: $("userContributionDeclaration") ? $("userContributionDeclaration").checked : false,
+    profile_updates: profileSnapshot,
     ...currentSourcePayload()
   };
-  $("draftStatus").textContent = "Generating draft...";
+  $("draftStatus").textContent = revisionMode ? "Strengthening your existing chapter..." : "Developing the working draft from your research inputs...";
     const result = await api(`/api/projects/${currentProjectId}/draft`, { method: "POST", body: JSON.stringify(payload) });
     hideAccessRequiredNotice();
     $("draftOutput").value = result.draft;
   renderDraftPreview(result.draft);
   showDraftQualityHint(result.draft, result.generation_metrics || null);
   if (result.warning) {
-    $("draftStatus").textContent = result.warning + " Review and complete the placeholders before export.";
+    $("draftStatus").textContent = result.warning + " Review the working draft and complete every placeholder before export.";
   }
   $("downloadDraftBtn").disabled = false;
     await updatePaymentPanel();
@@ -966,7 +1032,7 @@ function renderSources(result) {
 
 async function runCheck() {
   if (!currentProjectId) {
-    $("draftStatus").textContent = "Create a project and generate a draft first.";
+    $("draftStatus").textContent = "Create a research project and develop a working draft first.";
     return;
   }
   const payload = {
@@ -974,10 +1040,10 @@ async function runCheck() {
     selected_section_ids: selectedSectionIds(),
     draft: $("draftOutput").value
   };
-  $("draftStatus").textContent = "Checking compliance...";
+  $("draftStatus").textContent = "Running the academic compliance review...";
   const result = await api(`/api/projects/${currentProjectId}/check`, { method: "POST", body: JSON.stringify(payload) });
   renderCheck(result);
-  $("draftStatus").textContent = "Compliance check completed.";
+  $("draftStatus").textContent = "Academic compliance review completed. This does not replace supervisor or institutional approval.";
   $("downloadCheckBtn").disabled = false;
 }
 

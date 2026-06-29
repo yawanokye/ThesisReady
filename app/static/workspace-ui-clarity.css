@@ -402,3 +402,29 @@ button:disabled {
   margin-top: 0.5rem;
   text-align: left;
 }
+
+
+/* Academic-integrity and working-draft controls */
+.academic-integrity-panel,
+.working-draft-notice {
+  border: 1px solid #b8c7ea;
+  background: #f4f7ff;
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin: 18px 0;
+}
+.academic-integrity-panel h3 { margin: 0 0 8px; color: #17366f; }
+.academic-integrity-panel p { margin: 7px 0 12px; line-height: 1.55; }
+.integrity-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid #d7def0;
+  border-radius: 10px;
+  font-weight: 600;
+}
+.integrity-check input { margin-top: 3px; width: 18px; height: 18px; flex: 0 0 auto; }
+.working-draft-notice { background: #fff8e8; border-color: #e7c66d; color: #664b00; }

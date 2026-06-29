@@ -97,14 +97,14 @@
       <section class="pr-payment-dialog pr-access-dialog" role="dialog" aria-modal="true" aria-labelledby="prAccessTitle">
         <button type="button" class="pr-payment-close" aria-label="Close" data-pr-access-close>×</button>
         <p class="pr-payment-eyebrow">Chapter access required</p>
-        <h2 id="prAccessTitle">Register or unlock this chapter</h2>
-        <p id="prAccessMessage" class="pr-access-message">This chapter requires paid access before drafting can continue.</p>
+        <h2 id="prAccessTitle">Register or unlock guided chapter development</h2>
+        <p id="prAccessMessage" class="pr-access-message">This chapter requires guided-development access before working-draft development can continue.</p>
         <div id="prRegistrationState" class="pr-registration-state"></div>
         <div class="pr-access-actions">
           <a id="prRegisterLink" class="pr-access-secondary" href="/register">Register / create profile</a>
           <button id="prContinuePayment" type="button" class="pr-payment-submit">Continue to payment</button>
         </div>
-        <p class="pr-payment-routing" id="prAccessBenefits">Paid chapter access includes one draft, one revision, one compliance check and one DOCX export.</p>
+        <p class="pr-payment-routing" id="prAccessBenefits">Paid chapter access includes one guided working draft, one strengthening revision, one compliance review and one editable DOCX export.</p>
       </section>`;
     document.body.appendChild(modal);
 
@@ -125,7 +125,7 @@
       <section class="pr-payment-dialog" role="dialog" aria-modal="true" aria-labelledby="prPaymentTitle">
         <button type="button" class="pr-payment-close" aria-label="Close" data-pr-checkout-close>×</button>
         <p class="pr-payment-eyebrow">Secure chapter checkout</p>
-        <h2 id="prPaymentTitle">Unlock this chapter</h2>
+        <h2 id="prPaymentTitle">Unlock guided chapter development</h2>
         <p id="prPaymentPlan" class="pr-payment-plan"></p>
         <ul class="pr-payment-benefits" id="prPaymentBenefits">
           <li>Loading plan benefits…</li>
@@ -181,13 +181,13 @@
 
     const modal = ensureAccessGate();
     const profile = readRegistrationProfile();
-    const message = typeof detail === "string" ? detail : (detail?.message || "This chapter requires paid access before drafting can continue.");
+    const message = typeof detail === "string" ? detail : (detail?.message || "This chapter requires guided-development access before working-draft development can continue.");
     modal.querySelector("#prAccessMessage").textContent = message;
     const revisionOnly = (options.purchaseMode || "chapter") === "revision_only";
-    modal.querySelector("#prAccessTitle").textContent = revisionOnly ? "Unlock chapter strengthening" : "Register or unlock this chapter";
+    modal.querySelector("#prAccessTitle").textContent = revisionOnly ? "Unlock chapter strengthening support" : "Register or unlock guided chapter development";
     modal.querySelector("#prAccessBenefits").textContent = revisionOnly
       ? "Revision-only access includes one comprehensive strengthening revision, one compliance check and one DOCX export."
-      : "Paid chapter access includes one draft, one revision, one compliance check and one DOCX export.";
+      : "Paid chapter access includes one guided working draft, one strengthening revision, one compliance review and one editable DOCX export.";
     modal.querySelector("#prRegisterLink").href = registrationUrl(options);
     modal.querySelector("#prRegisterLink").textContent = profile ? "Review registration profile" : "Register / create profile";
     modal.querySelector("#prRegistrationState").textContent = profile?.email
@@ -241,12 +241,12 @@
     }
 
     const benefits = [];
-    if (Number(plan.includes?.initial_draft || 0) > 0) benefits.push("One complete chapter draft");
+    if (Number(plan.includes?.initial_draft || 0) > 0) benefits.push("One guided chapter working draft");
     if (Number(plan.includes?.revision || 0) > 0) benefits.push("One comprehensive chapter strengthening revision");
     if (Number(plan.includes?.compliance_check || 0) > 0) benefits.push("One compliance check");
     if (Number(plan.includes?.docx_export || 0) > 0) benefits.push("One DOCX export");
     modal.querySelector("#prPaymentBenefits").innerHTML = benefits.map(item => `<li>${esc(item)}</li>`).join("");
-    modal.querySelector("#prPaymentTitle").textContent = plans.purchase_mode === "revision_only" ? "Unlock chapter strengthening" : "Unlock this chapter";
+    modal.querySelector("#prPaymentTitle").textContent = plans.purchase_mode === "revision_only" ? "Unlock chapter strengthening support" : "Unlock guided chapter development";
 
     const renderPrice = () => {
       const paystack = AFRICAN_COUNTRIES.has(country.value);

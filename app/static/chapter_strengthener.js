@@ -27,7 +27,7 @@ function message(text, kind = '') {
 
 function setBusy(busy) {
   reviseBtn.disabled = busy;
-  reviseBtn.textContent = busy ? 'Strengthening chapter…' : 'Strengthen chapter';
+  reviseBtn.textContent = busy ? 'Strengthening working chapter…' : 'Strengthen my working chapter';
 }
 
 function selectedSourceMode() {
@@ -138,6 +138,8 @@ function payloadFromForm() {
     source_limit: 45,
     source_bank: Array.isArray(currentProject?.profile?.source_bank) ? currentProject.profile.source_bank : [],
     save_to_project: byId('saveToProject').checked,
+    academic_integrity_confirmed: byId('strengthenerIntegrityDeclaration').checked,
+    user_contribution_confirmed: byId('strengthenerContributionDeclaration').checked,
   };
 }
 
@@ -389,6 +391,10 @@ function enableOutputs(enabled) {
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   const payload = payloadFromForm();
+  if (!payload.academic_integrity_confirmed || !payload.user_contribution_confirmed) {
+    message('Confirm both academic-integrity and user-contribution declarations before strengthening the chapter.', 'error');
+    return;
+  }
   if (!payload.thesis_title || payload.chapter_text.length < 100) {
     message('Provide the thesis title and paste or upload the existing chapter.', 'error');
     return;
@@ -435,7 +441,7 @@ form.addEventListener('submit', async (event) => {
 
     enableOutputs(Boolean(revisedChapter.value.trim()));
     const errors = Array.isArray(data.provider_errors) ? data.provider_errors.filter(Boolean) : [];
-    message(errors.length ? `Revision completed with ${errors.length} provider warning(s). Review the report and action items.` : `Revision completed.${data.saved_to_project ? ' The strengthened chapter was saved to the project.' : ''} Review the chapter, report and all action items before downloading.`);
+    message(errors.length ? `Revision completed with ${errors.length} provider warning(s). Review the report and action items.` : `Working revision completed.${data.saved_to_project ? ' The strengthened chapter was saved to the project.' : ''} Review the working revision, report, sources, facts and all action items before export or academic use.`);
     updateAccessSummary();
   } catch (error) {
     message(error.message || 'Chapter strengthening failed.', 'error');
@@ -491,7 +497,7 @@ downloadRevisionBtn.addEventListener('click', async () => {
     const blob = await response.blob();
     const disposition = response.headers.get('Content-Disposition') || '';
     const match = disposition.match(/filename="?([^";]+)"?/i);
-    const filename = match ? match[1] : 'projectready_strengthened_chapter_blue.docx';
+    const filename = match ? match[1] : 'projectready_strengthened_working_revision.docx';
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
@@ -500,7 +506,7 @@ downloadRevisionBtn.addEventListener('click', async () => {
     anchor.click();
     anchor.remove();
     URL.revokeObjectURL(url);
-    message('DOCX downloaded. Revisions are blue, action items are red and unchanged wording remains black.');
+    message('Working revision DOCX exported. Revisions are blue, action items are red and unchanged wording remains black. Verify and revise it before any submission.');
     updateAccessSummary();
   } catch (error) {
     message(error.message || 'Chapter export failed.', 'error');
