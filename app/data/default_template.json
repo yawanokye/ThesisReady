@@ -954,7 +954,7 @@
               "guiding_questions": [
                 "Should this supplementary chapter support a primary survey, qualitative, mixed-method, secondary-data, econometric, time-series or panel-data study?",
                 "What decisions, instruments, data sources, coding notes or appendix materials should this support document prepare?",
-                "Which parts are intended only for the appendix or research preparation, rather than the submission-ready methodology chapter?"
+                "Which parts are intended only for the appendix or research preparation, rather than the main methodology working draft?"
               ],
               "rules": [
                 "Make clear that this is a supplementary working/support chapter for instrument, measurement, variable, data-source and appendix preparation; it must not replace the main Research Methods/Methodology chapter.",
