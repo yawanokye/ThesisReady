@@ -1,7 +1,8 @@
 """Persistent purchases and chapter entitlement usage for ProjectReady AI.
 
-PostgreSQL is used when DATABASE_URL is configured. SQLite is a local-only
-fallback so the payment flow can be tested without a Render database.
+PostgreSQL is used when DATABASE_URL is a PostgreSQL URL. SQLite is also
+supported for local development and for a single-instance Render deployment
+when its file is placed on a persistent disk such as /var/data.
 """
 from __future__ import annotations
 
@@ -13,15 +14,48 @@ import os
 import secrets
 import sqlite3
 import uuid
+from pathlib import Path
 from typing import Any, Dict, Iterator, Optional
 
 from app.payments.entitlements import action_columns, expiry_datetime, get_plan, normalise_chapter_key, normalise_email, quota_payload
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
-SQLITE_PAYMENT_DB = os.environ.get(
-    "PROJECTREADY_SQLITE_PAYMENT_DB",
-    os.environ.get("PROJECTREADY_SQLITE_DB_PATH", "projectready.db"),
-)
+# Kept as a mutable compatibility hook for tests and older integrations. It is
+# empty unless a payment-specific SQLite path is explicitly configured.
+SQLITE_PAYMENT_DB = os.environ.get("PROJECTREADY_SQLITE_PAYMENT_DB", "").strip()
+_PAYMENT_BACKEND_LOGGED = False
+
+
+def _sqlite_path(database_url: str = "") -> Path:
+    """Resolve the durable SQLite file used for purchases and entitlements.
+
+    Production Render deployments may set DATABASE_URL to a plain mounted-disk
+    path such as /var/data/projectready.db. Older builds ignored that value for
+    payment records and silently wrote purchases to projectready.db in the
+    temporary source directory. This resolver keeps explicit payment and project
+    SQLite settings compatible while also accepting plain paths and sqlite URLs.
+    """
+    explicit_payment = str(
+        SQLITE_PAYMENT_DB or os.environ.get("PROJECTREADY_SQLITE_PAYMENT_DB", "")
+    ).strip()
+    if explicit_payment:
+        return Path(explicit_payment).expanduser()
+
+    explicit_project = os.environ.get("PROJECTREADY_SQLITE_DB_PATH", "").strip()
+    if explicit_project:
+        return Path(explicit_project).expanduser()
+
+    value = str(database_url or DATABASE_URL or "").strip()
+    lowered = value.lower()
+    if value and not (lowered.startswith("postgresql://") or lowered.startswith("postgres://")):
+        if lowered.startswith("sqlite:////"):
+            return Path("/" + value[len("sqlite:////"):]).expanduser()
+        if lowered.startswith("sqlite:///"):
+            return Path(value[len("sqlite:///"):]).expanduser()
+        if "://" not in value:
+            return Path(value).expanduser()
+
+    return Path("projectready.db")
 
 
 POSTGRES_SCHEMA = """
@@ -182,8 +216,10 @@ def _postgres_connection(database_url: str = "") -> Iterator[Any]:
 
 
 @contextmanager
-def _sqlite_connection() -> Iterator[sqlite3.Connection]:
-    conn = sqlite3.connect(SQLITE_PAYMENT_DB, timeout=30, isolation_level=None)
+def _sqlite_connection(database_url: str = "") -> Iterator[sqlite3.Connection]:
+    db_path = _sqlite_path(database_url)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path), timeout=30, isolation_level=None)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
@@ -195,14 +231,22 @@ def _sqlite_connection() -> Iterator[sqlite3.Connection]:
 
 def init_payment_tables(database_url: str = "") -> None:
     """Create payment tables. Safe to call repeatedly."""
+    global _PAYMENT_BACKEND_LOGGED
     if _is_postgres(database_url):
+        if not _PAYMENT_BACKEND_LOGGED:
+            print("ProjectReady payment database backend: PostgreSQL")
+            _PAYMENT_BACKEND_LOGGED = True
         with _postgres_connection(database_url) as conn:
             with conn.cursor() as cur:
                 cur.execute(POSTGRES_SCHEMA)
             conn.commit()
         return
 
-    with _sqlite_connection() as conn:
+    db_path = _sqlite_path(database_url)
+    if not _PAYMENT_BACKEND_LOGGED:
+        print(f"ProjectReady payment database backend: SQLite at {db_path}")
+        _PAYMENT_BACKEND_LOGGED = True
+    with _sqlite_connection(database_url) as conn:
         conn.executescript(SQLITE_SCHEMA)
 
 
@@ -304,7 +348,7 @@ def create_pending_purchase(
                 row = cur.fetchone()
             conn.commit()
     else:
-        with _sqlite_connection() as conn:
+        with _sqlite_connection(database_url) as conn:
             conn.execute("BEGIN IMMEDIATE")
             conn.execute(
                 """
@@ -346,7 +390,7 @@ def set_checkout_session(purchase_id: str, checkout_session_id: str, *, database
                 )
             conn.commit()
     else:
-        with _sqlite_connection() as conn:
+        with _sqlite_connection(database_url) as conn:
             conn.execute(
                 "UPDATE projectready_purchases SET checkout_session_id=?, updated_at=? WHERE id=?",
                 (checkout_session_id, _utc_iso(), purchase_id),
@@ -360,7 +404,7 @@ def get_purchase_by_reference(provider_reference: str, *, database_url: str = ""
             with conn.cursor() as cur:
                 cur.execute("SELECT * FROM projectready_purchases WHERE provider_reference=%s", (provider_reference,))
                 return _row_to_dict(cur.fetchone())
-    with _sqlite_connection() as conn:
+    with _sqlite_connection(database_url) as conn:
         return _row_to_dict(conn.execute("SELECT * FROM projectready_purchases WHERE provider_reference=?", (provider_reference,)).fetchone())
 
 
@@ -371,7 +415,7 @@ def get_purchase(purchase_id: str, *, database_url: str = "") -> Optional[Dict[s
             with conn.cursor() as cur:
                 cur.execute("SELECT * FROM projectready_purchases WHERE id=%s", (purchase_id,))
                 return _row_to_dict(cur.fetchone())
-    with _sqlite_connection() as conn:
+    with _sqlite_connection(database_url) as conn:
         return _row_to_dict(conn.execute("SELECT * FROM projectready_purchases WHERE id=?", (purchase_id,)).fetchone())
 
 
@@ -382,7 +426,7 @@ def get_purchase_by_session(checkout_session_id: str, *, database_url: str = "")
             with conn.cursor() as cur:
                 cur.execute("SELECT * FROM projectready_purchases WHERE checkout_session_id=%s", (checkout_session_id,))
                 return _row_to_dict(cur.fetchone())
-    with _sqlite_connection() as conn:
+    with _sqlite_connection(database_url) as conn:
         return _row_to_dict(conn.execute("SELECT * FROM projectready_purchases WHERE checkout_session_id=?", (checkout_session_id,)).fetchone())
 
 
@@ -443,7 +487,7 @@ def activate_purchase(
                 row = cur.fetchone()
             conn.commit()
     else:
-        with _sqlite_connection() as conn:
+        with _sqlite_connection(database_url) as conn:
             conn.execute("BEGIN IMMEDIATE")
             conn.execute(
                 """
@@ -485,7 +529,7 @@ def record_event_once(
             conn.commit()
             return inserted
 
-    with _sqlite_connection() as conn:
+    with _sqlite_connection(database_url) as conn:
         try:
             conn.execute(
                 "INSERT INTO projectready_payment_events(event_key, provider, event_type, payload_hash, processed_at) VALUES (?, ?, ?, ?, ?)",
@@ -600,7 +644,7 @@ def claim_entitlement(
                 conn.rollback()
                 raise
 
-    with _sqlite_connection() as conn:
+    with _sqlite_connection(database_url) as conn:
         try:
             conn.execute("BEGIN IMMEDIATE")
             existing = _row_to_dict(conn.execute(
@@ -683,7 +727,7 @@ def complete_claim(usage_id: str, *, database_url: str = "") -> None:
                 )
             conn.commit()
     else:
-        with _sqlite_connection() as conn:
+        with _sqlite_connection(database_url) as conn:
             conn.execute(
                 "UPDATE projectready_entitlement_usage SET status='completed', completed_at=? WHERE id=? AND status='claimed'",
                 (_utc_iso(), usage_id),
@@ -716,7 +760,7 @@ def rollback_claim(usage_id: str, *, database_url: str = "") -> None:
                 raise
         return
 
-    with _sqlite_connection() as conn:
+    with _sqlite_connection(database_url) as conn:
         try:
             conn.execute("BEGIN IMMEDIATE")
             usage = _row_to_dict(conn.execute("SELECT * FROM projectready_entitlement_usage WHERE id=?", (usage_id,)).fetchone())
@@ -805,7 +849,7 @@ def rotate_project_access_tokens(
             conn.commit()
         return restored
 
-    with _sqlite_connection() as conn:
+    with _sqlite_connection(database_url) as conn:
         conn.execute("BEGIN IMMEDIATE")
         rows = conn.execute(
             """

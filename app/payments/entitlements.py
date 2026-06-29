@@ -1,7 +1,7 @@
 """ProjectReady AI pricing and entitlement rules.
 
 Two purchase pathways are supported:
-* Standard chapter package: one draft, one revision, one compliance check and one DOCX export.
+* Standard guided chapter package: one working draft, one strengthening revision, one compliance review and one editable DOCX export.
 * Revision-only package: one strengthening revision, one compliance check and one DOCX export for a chapter brought from outside ProjectReady AI.
 """
 from __future__ import annotations
@@ -36,7 +36,7 @@ def _price_env(name: str, default: float) -> float:
 CHAPTER_PLANS: Dict[str, Dict[str, Any]] = {
     "bachelors_chapter": {
         "name": "Bachelors Project",
-        "description": "One undergraduate project chapter with guided academic drafting and checking.",
+        "description": "Guided development of one undergraduate project chapter working draft, with strengthening and compliance review.",
         "price_usd": 4.99,
         "levels": ["Bachelors"],
         "purchase_mode": "chapter",
@@ -48,7 +48,7 @@ CHAPTER_PLANS: Dict[str, Dict[str, Any]] = {
     },
     "masters_chapter": {
         "name": "Masters Dissertation / MPhil Thesis",
-        "description": "One Masters or MPhil chapter with higher-depth academic drafting and checking.",
+        "description": "Guided development of one Masters or MPhil chapter working draft, with higher-depth strengthening and compliance review.",
         "price_usd": 9.99,
         "levels": [
             "Non-Research Masters",
@@ -65,7 +65,7 @@ CHAPTER_PLANS: Dict[str, Dict[str, Any]] = {
     },
     "doctorate_chapter": {
         "name": "Professional Doctorate / PhD",
-        "description": "One DBA, DEd, professional doctorate, or PhD chapter with advanced academic depth.",
+        "description": "Guided development of one professional doctorate or PhD chapter working draft with advanced academic depth and review.",
         "price_usd": 19.99,
         "levels": [
             "Professional Doctorate (e.g. DBA, DEd)",

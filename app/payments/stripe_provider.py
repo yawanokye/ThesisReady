@@ -49,9 +49,9 @@ def initialize_stripe_payment(purchase: Dict[str, Any], *, database_url: str = "
     if not return_path.startswith("/") or return_path.startswith("//"):
         return_path = CANCEL_PATH
     description = (
-        "One chapter strengthening revision, one compliance check, and one DOCX export."
+        "One guided chapter-strengthening working revision, one compliance review, and one editable DOCX export."
         if purchase_mode == "revision_only"
-        else "One chapter draft, one revision, one compliance check, and one DOCX export."
+        else "One guided chapter working draft, one strengthening revision, one compliance review, and one editable DOCX export."
     )
     cancel_separator = "&" if "?" in return_path else "?"
     metadata = {
