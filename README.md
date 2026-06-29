@@ -60,9 +60,9 @@ Open `.env` and add your OpenAI API key:
 ```bash
 OPENAI_API_KEY=your_key_here
 OPENAI_MODEL=gpt-5.5
-# Render production: set DATABASE_URL to the PostgreSQL internal URL.
-DATABASE_URL=
-# Local development fallback:
+# Render production, single instance with persistent disk mounted at /var/data:
+DATABASE_URL=/var/data/projectready.db
+# Local development fallback when DATABASE_URL is blank:
 PROJECTREADY_SQLITE_DB_PATH=projectready.db
 APP_NAME=ProjectReady AI
 ```
@@ -141,17 +141,19 @@ The thesis workspace now supports one-off payment per project chapter.
 - Masters Dissertation / MPhil Thesis: US$9.99 per chapter
 - Professional Doctorate / PhD: US$19.99 per chapter
 
-Each paid chapter includes one draft, one revision, one compliance check and one chapter DOCX export. Purchases remain valid for 90 days and are tied to the selected project and chapter.
+Each paid chapter includes one guided working draft, one strengthening revision, one compliance review and one editable chapter DOCX export. Purchases remain valid for 90 days and are tied to the selected project and chapter.
 
 ### Render database
 
-Create a Render PostgreSQL database and set its internal connection string as `DATABASE_URL`. The project and payment tables will be created automatically at startup. For local development, leave `DATABASE_URL` blank and use `PROJECTREADY_SQLITE_DB_PATH=projectready.db`.
+For the simplest single-instance deployment, attach a Render persistent disk at `/var/data` and set `DATABASE_URL=/var/data/projectready.db`. The application now uses this same durable SQLite file for projects, recovery records, purchases, payment events and entitlement usage. Do not use `DATABASE_URL=projectready.db` in production because that writes to Render's temporary source filesystem.
+
+Render PostgreSQL remains the recommended option when you need multiple service instances or higher concurrency. In that case, set the PostgreSQL internal connection URL as `DATABASE_URL`.
 
 ### Required production variables
 
 ```text
 APP_BASE_URL=https://projectreadyai.com
-DATABASE_URL=<Render PostgreSQL internal URL>
+DATABASE_URL=/var/data/projectready.db
 PAYSTACK_SECRET_KEY=<Paystack live secret key>
 STRIPE_SECRET_KEY=<Stripe live secret key>
 STRIPE_WEBHOOK_SECRET=<Stripe endpoint signing secret>

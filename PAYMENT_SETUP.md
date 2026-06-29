@@ -5,9 +5,9 @@ The application now sells access per project chapter.
 | Plan | Public price | Included for the purchased chapter |
 |---|---:|---|
 | Free Starter | US$0 | One Chapter One draft, up to five selected sections |
-| Bachelors Project | US$4.99 | One draft, one revision, one compliance check, one DOCX export |
-| Masters Dissertation / MPhil Thesis | US$9.99 | One draft, one revision, one compliance check, one DOCX export |
-| Professional Doctorate / PhD | US$19.99 | One draft, one revision, one compliance check, one DOCX export |
+| Bachelors Project | US$4.99 | One guided working draft, one strengthening revision, one compliance review, one editable DOCX export |
+| Masters Dissertation / MPhil Thesis | US$9.99 | One guided working draft, one strengthening revision, one compliance review, one editable DOCX export |
+| Professional Doctorate / PhD | US$19.99 | One guided working draft, one strengthening revision, one compliance review, one editable DOCX export |
 
 Paid access is tied to the saved project ID and chapter number. It expires after 90 days. African billing countries are routed to Paystack. Other billing countries are routed to Stripe.
 
@@ -17,15 +17,22 @@ Paid access is tied to the saved project ID and chapter number. It expires after
 pip install -r requirements.txt
 ```
 
-## 2. Add a Render PostgreSQL database
+## 2. Configure durable database storage
 
-Create a PostgreSQL database in Render and connect it to the ProjectReady web service. Set the database's **internal connection URL** as:
+### Simplest and lowest-cost Render setup
+
+Attach a persistent disk to the existing ProjectReady AI web service and use:
 
 ```text
-DATABASE_URL=<Render PostgreSQL internal URL>
+Mount path: /var/data
+DATABASE_URL=/var/data/projectready.db
 ```
 
-The project and payment tables are created automatically when the service starts.
+Both the main project database and the payment/entitlement store now honour this path. New project IDs, Stripe and Paystack purchase records, webhook events and usage credits therefore survive redeployments and restarts. Do not set `DATABASE_URL=projectready.db` for a commercial Render deployment because that file is stored in the temporary source directory.
+
+### PostgreSQL option
+
+For multiple web-service instances or heavier concurrency, create a Render PostgreSQL database and set its **internal connection URL** as `DATABASE_URL`.
 
 For local development, leave `DATABASE_URL` empty and set:
 
@@ -106,7 +113,7 @@ Copy the endpoint signing secret into `STRIPE_WEBHOOK_SECRET`.
 3. Confirm that Chapter Two returns the checkout prompt before payment.
 4. Complete a Paystack test payment using an African billing country.
 5. Complete a Stripe test payment using a non-African billing country.
-6. Confirm that the purchased chapter allows exactly one draft, one revision, one compliance check, and one DOCX export.
+6. Confirm that the purchased chapter allows exactly one guided working draft, one strengthening revision, one compliance review, and one editable DOCX export.
 7. Switch to live provider keys only after both test flows pass.
 
 Do not place secret keys in JavaScript, HTML, GitHub, or the public Render environment preview. Keep them in Render's secret environment variables.
