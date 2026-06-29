@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chapter Strengthener | ProjectReady AI</title>
+  <link rel="stylesheet" href="/static/chapter_strengthener.css?v=20260629-integrated-v1">
+  <link rel="stylesheet" href="/static/projectready_payments.css?v=20260629-strengthener">
+</head>
+<body class="chapter-strengthener-page">
+  <header class="topbar">
+    <a class="brand" href="/"><span class="brand-mark">PR</span><span>ProjectReady AI</span></a>
+    <nav class="nav" aria-label="ProjectReady navigation">
+      <a href="/">Home</a>
+      <a href="/topic-ideas">Topic Ideas</a>
+      <a href="/workspace">Thesis Workspace</a>
+      <a href="/chapter-strengthener" aria-current="page">Chapter Strengthener</a>
+      <a href="/journal-article">Journal Article</a>
+    </nav>
+  </header>
+
+  <main class="shell">
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Integrated thesis and dissertation revision</p>
+        <h1>Strengthen an existing chapter without changing the approved study.</h1>
+        <p class="lead">Improve structure, depth, evidence integration, citation density, method fit, discussion and recommendations while preserving confirmed facts, results and valid citations.</p>
+      </div>
+      <aside class="hero-note">
+        <h2>Evidence-preserving revision</h2>
+        <p>ProjectReady AI does not invent results, analysis, references or ethics information. Missing evidence is marked as an action item.</p>
+        <p class="revision-blue-note">In the downloaded DOCX, revisions are blue, action items are red and unchanged wording remains black.</p>
+      </aside>
+    </section>
+
+
+    <section class="card project-link-card">
+      <div>
+        <p class="eyebrow">Current ProjectReady AI project</p>
+        <h2>Connect this revision to a project and chapter purchase</h2>
+        <p id="projectConnectionStatus">Loading the current project…</p>
+      </div>
+      <div class="project-connect-actions">
+        <label><span class="field-label">Project ID</span><input id="projectId" placeholder="Project ID from the Thesis Workspace"></label>
+        <button type="button" id="loadProjectBtn" class="secondary">Load project</button>
+        <button type="button" id="useSavedDraftBtn" class="secondary" disabled>Use saved chapter draft</button>
+        <a class="button-link" href="/workspace">Open Thesis Workspace</a>
+      </div>
+      <div id="chapterAccessSummary" class="attached-summary">A paid chapter includes one strengthening revision and one DOCX export.</div>
+    </section>
+
+    <section class="grid-two revision-layout">
+      <form id="revisionForm" class="card form-card">
+        <h2>1. Existing chapter</h2>
+        <label><span class="field-label">Thesis or dissertation title *</span><input id="thesisTitle" required placeholder="Approved study title"></label>
+        <div class="two-cols">
+          <label><span class="field-label">Academic level</span>
+            <select id="academicLevel">
+              <option>Bachelors</option>
+              <option>Non-Research Masters</option>
+              <option>Research Masters / MPhil</option>
+              <option>Professional Doctorate / DBA / DEd</option>
+              <option>PhD</option>
+            </select>
+          </label>
+          <label><span class="field-label">Chapter</span>
+            <select id="chapterType">
+              <option>1. Introduction</option>
+              <option>2. Literature Review</option>
+              <option>3. Research Methods / Methodology</option>
+              <option>4. Results, Data Analysis and Discussion</option>
+              <option>5. Summary, Conclusions and Recommendations</option>
+              <option>Other Chapter</option>
+            </select>
+          </label>
+        </div>
+        <label><span class="field-label">Chapter title</span><input id="chapterTitle" placeholder="Optional custom chapter title"></label>
+        <div id="targetNote" class="attached-summary">The planning target will appear here.</div>
+        <label><span class="field-label">Upload chapter</span><input id="chapterFile" type="file" accept=".docx,.pdf,.txt,.md,.rtf,.json"></label>
+        <button type="button" class="secondary compact-upload" id="extractChapterBtn">Extract chapter text</button>
+        <label class="priority"><span class="field-label">Existing chapter text *</span><textarea id="chapterText" rows="18" required placeholder="Paste the complete existing chapter or extract it from an uploaded file."></textarea></label>
+        <p id="uploadStatus" class="status"></p>
+
+        <h2>2. Project and research logic</h2>
+        <div class="two-cols">
+          <label><span class="field-label">Discipline or programme</span><input id="discipline" placeholder="e.g. Finance, Education, Procurement"></label>
+          <label><span class="field-label">Study stage</span><select id="studyStage"><option>Proposal stage</option><option selected>Completed study</option><option>Final thesis revision</option></select></label>
+        </div>
+        <div class="two-cols">
+          <label><span class="field-label">Research area</span><input id="researchArea"></label>
+          <label><span class="field-label">Study context</span><input id="context" placeholder="Country, sector, population or period"></label>
+        </div>
+        <label><span class="field-label">Objectives</span><textarea id="objectives" rows="4"></textarea></label>
+        <div class="two-cols">
+          <label><span class="field-label">Research questions</span><textarea id="researchQuestions" rows="4"></textarea></label>
+          <label><span class="field-label">Hypotheses, where applicable</span><textarea id="hypotheses" rows="4"></textarea></label>
+        </div>
+        <label><span class="field-label">Theory or conceptual framework</span><textarea id="theoryFramework" rows="4"></textarea></label>
+        <label><span class="field-label">Variables, constructs or themes</span><textarea id="variablesConstructs" rows="3"></textarea></label>
+        <label><span class="field-label">Methodology and analysis actually used or planned</span><textarea id="methodology" rows="5"></textarea></label>
+        <label><span class="field-label">Confirmed data, results or findings</span><textarea id="dataResults" rows="6" placeholder="Required for Chapter Four and useful for Chapter Five. The system will not invent missing output."></textarea></label>
+        <label><span class="field-label">Known contribution</span><textarea id="contributionClaim" rows="3"></textarea></label>
+        <label><span class="field-label">School, department or supervisor format requirements</span><textarea id="schoolGuidelines" rows="4"></textarea></label>
+        <label><span class="field-label">Citation style</span><select id="citationStyle"><option>APA 7th</option><option>Harvard</option><option>Chicago author-date</option><option>Vancouver</option><option>IEEE</option><option>School-specific style</option></select></label>
+
+        <h2>3. Strengthening direction</h2>
+        <label><span class="field-label">Revision level</span><select id="revisionLevel"><option>Language and clarity polish</option><option>Substantive scholarly strengthening</option><option selected>Comprehensive chapter strengthening</option></select></label>
+        <label><span class="field-label">Additional revision goals</span><textarea id="revisionGoals" rows="3"></textarea></label>
+
+        <div class="revision-focus-panel">
+          <h3>Strengthening focus</h3>
+          <label class="check"><input type="checkbox" id="strengthenStructure" checked> Strengthen chapter structure and completeness</label>
+          <label class="check"><input type="checkbox" id="strengthenProblemGap" checked> Strengthen problem, gap and objective alignment</label>
+          <label class="check"><input type="checkbox" id="strengthenConceptualisation" checked> Strengthen concepts, theory and framework</label>
+          <label class="check"><input type="checkbox" id="increaseCitationDensity" checked> Increase relevant citation density and synthesis</label>
+          <label class="check"><input type="checkbox" id="assessMethodFit" checked> Assess method fit and reporting completeness</label>
+          <label class="check"><input type="checkbox" id="assessResults" checked> Assess result or finding coverage</label>
+          <label class="check"><input type="checkbox" id="deepenDiscussion" checked> Deepen interpretation and discussion</label>
+          <label class="check"><input type="checkbox" id="strengthenConclusions" checked> Strengthen conclusions, implications and recommendations</label>
+          <label class="check"><input type="checkbox" id="improveLanguage" checked> Improve academic language, flow and paragraph development</label>
+        </div>
+
+        <h2>4. Supervisor comments</h2>
+        <label><span class="field-label">Upload supervisor comments</span><input id="commentsFile" type="file" accept=".docx,.pdf,.txt,.md,.rtf,.json"></label>
+        <button type="button" class="secondary compact-upload" id="extractCommentsBtn">Extract supervisor comments</button>
+        <label><span class="field-label">Paste supervisor comments</span><textarea id="supervisorComments" rows="8"></textarea></label>
+        <label class="check"><input type="checkbox" id="includeResponseMatrix" checked> Produce a response-to-supervisor matrix</label>
+
+        <h2>5. Literature support</h2>
+        <label class="check"><input type="checkbox" id="includeSourceSearch" checked> Search scholarly metadata to strengthen evidence and discussion</label>
+        <label><span class="field-label">Focused source search terms</span><textarea id="sourceSearchTerms" rows="2"></textarea></label>
+        <label class="check"><input type="checkbox" id="includeOlderFoundational" checked> Include relevant foundational literature</label>
+        <label class="check"><input type="checkbox" id="saveToProject" checked> Save the strengthened version as the current project chapter draft</label>
+
+        <div class="actions">
+          <button type="submit" id="reviseBtn">Strengthen chapter</button>
+          <button type="button" class="secondary" id="clearBtn">Clear</button>
+        </div>
+        <p id="status" class="status"></p>
+      </form>
+
+      <section class="card output-stack revision-output-panel">
+        <div>
+          <div class="result-head">
+            <div><h2>Strengthened chapter</h2><p class="help">Review every factual, methodological and citation change before submission.</p></div>
+            <div class="output-actions"><button id="copyChapterBtn" disabled>Copy</button><button id="downloadRevisionBtn" disabled>Download DOCX</button></div>
+          </div>
+          <div id="revisionMeta" class="attached-summary">Revision details will appear here.</div>
+          <textarea id="revisedChapter" class="output-box revision-article-box" readonly></textarea>
+        </div>
+
+        <div class="revision-report-panel">
+          <div class="result-head"><div><h2>Chapter strengthening report</h2></div><div class="output-actions"><button id="copyReportBtn" disabled>Copy report</button></div></div>
+          <textarea id="strengtheningReport" class="output-box revision-report-box" readonly></textarea>
+        </div>
+
+        <div id="supervisorMatrixPanel" class="revision-report-panel" hidden>
+          <div class="result-head"><div><h2>Response to supervisor comments</h2></div><div class="output-actions"><button id="copyMatrixBtn" disabled>Copy matrix</button></div></div>
+          <textarea id="supervisorMatrix" class="output-box revision-matrix-box" readonly></textarea>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <footer class="footer">ProjectReady AI, academic research support with student and supervisor verification.</footer>
+  <script src="/static/projectready_payments.js?v=20260629-strengthener"></script>
+  <script src="/static/chapter_strengthener.js?v=20260629-integrated-v1"></script>
+</body>
+</html>

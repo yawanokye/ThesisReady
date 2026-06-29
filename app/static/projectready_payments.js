@@ -37,7 +37,7 @@
   }
 
   function registrationUrl(options = {}) {
-    const returnUrl = new URL("/workspace", window.location.origin);
+    const returnUrl = new URL(options.returnPath || window.location.pathname || "/workspace", window.location.origin);
     if (options.projectId) returnUrl.searchParams.set("project_id", String(options.projectId));
     if (options.chapterNumber) returnUrl.searchParams.set("chapter", String(options.chapterNumber));
     const registerUrl = new URL("/register", window.location.origin);
