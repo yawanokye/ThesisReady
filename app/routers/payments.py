@@ -174,6 +174,10 @@ def topic_ideas_access_plan() -> Dict[str, Any]:
             "currency": "USD",
             "display": plan["price_display"],
         },
+        "free_preview": {
+            "ideas": 2,
+            "payment_required": False,
+        },
         "includes": {
             "topic_idea_generations": 1,
             "maximum_ideas": 12,
@@ -269,7 +273,7 @@ def start_topic_ideas_checkout(payload: TopicIdeasCheckoutRequest) -> Dict[str, 
             },
             "validity_days": int(plan["validity_days"]),
         },
-        "message": "Checkout created. This browser stores the access credential before redirecting to payment.",
+        "message": "Checkout created to unlock up to 12 ideas. This browser stores the access credential before redirecting to payment.",
     }
 
 
