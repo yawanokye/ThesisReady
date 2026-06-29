@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 from typing import Any, Dict, Optional
 from urllib.parse import urlencode
 
@@ -66,6 +67,22 @@ class CheckoutRequest(BaseModel):
 class EntitlementStatusRequest(BaseModel):
     purchase_id: str = Field(min_length=10, max_length=100)
     access_token: str = Field(min_length=20, max_length=200)
+
+
+class TopicIdeasCheckoutRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=254)
+    market: str = Field(default="ghana", max_length=20)
+    return_path: str = Field(default="/topic-ideas", max_length=500)
+
+    @field_validator("market")
+    @classmethod
+    def validate_market(cls, value: str) -> str:
+        market = str(value or "").strip().lower().replace("-", "_")
+        if market in {"ghana", "gh"}:
+            return "ghana"
+        if market in {"international", "outside_ghana", "other", "global"}:
+            return "international"
+        raise ValueError("Choose Ghana or Outside Ghana.")
 
 
 def _valid_email(email: str) -> str:
@@ -136,6 +153,124 @@ def payment_plans(level: str = "", mode: str = "chapter") -> Dict[str, Any]:
         except Exception:
             plan["paystack_price_display"] = None
     return payload
+
+
+@api_router.get("/api/topic-ideas/access-plan")
+def topic_ideas_access_plan() -> Dict[str, Any]:
+    plan = get_plan("topic_ideas_access")
+    paystack_charge = get_paystack_charge("topic_ideas_access")
+    return {
+        "product": "ProjectReady AI Topic Ideas",
+        "plan_key": "topic_ideas_access",
+        "ghana": {
+            "provider": "paystack",
+            "amount": float(paystack_charge["amount"]),
+            "currency": "GHS",
+            "display": paystack_charge["charged_display"],
+        },
+        "international": {
+            "provider": "stripe",
+            "amount": float(plan["amount"]),
+            "currency": "USD",
+            "display": plan["price_display"],
+        },
+        "includes": {
+            "topic_idea_generations": 1,
+            "maximum_ideas": 12,
+            "trend_grounding": True,
+            "proposed_objectives": True,
+            "data_and_instrument_source_suggestions": True,
+        },
+        "validity_days": int(plan["validity_days"]),
+    }
+
+
+@api_router.post("/api/topic-ideas/checkout")
+def start_topic_ideas_checkout(payload: TopicIdeasCheckoutRequest) -> Dict[str, Any]:
+    email = _valid_email(payload.email)
+    plan_key = "topic_ideas_access"
+    plan = get_plan(plan_key)
+    display_price = get_price(plan_key)
+    provider = "paystack" if payload.market == "ghana" else "stripe"
+    provider_reference = make_provider_reference(provider)
+    access_id = f"topic-ideas-{uuid.uuid4()}"
+    return_path = _safe_return_path(payload.return_path, "/topic-ideas")
+
+    if provider == "paystack":
+        charge = get_paystack_charge(plan_key)
+        charge_amount = float(charge["amount"])
+        charge_currency = str(charge["currency"])
+        pricing_metadata = charge
+        billing_country = "GH"
+    else:
+        charge_amount = float(display_price["amount"])
+        charge_currency = str(display_price["currency"])
+        pricing_metadata = {
+            "selected_amount": display_price["amount"],
+            "selected_currency": display_price["currency"],
+            "selected_display": display_price["display"],
+            "amount": display_price["amount"],
+            "currency": display_price["currency"],
+            "charged_display": display_price["display"],
+            "calculation": "fixed_usd_topic_ideas_price",
+        }
+        billing_country = "INTERNATIONAL"
+
+    purchase = create_pending_purchase(
+        user_email=email,
+        project_id=access_id,
+        chapter_number=99,
+        chapter_title="Topic Ideas Access",
+        academic_level="Topic Ideas",
+        plan_key=plan_key,
+        amount=charge_amount,
+        currency=charge_currency,
+        display_amount=float(display_price["amount"]),
+        display_currency=str(display_price["currency"]),
+        payment_provider=provider,
+        provider_reference=provider_reference,
+        metadata={
+            "billing_country": billing_country,
+            "billing_market": payload.market,
+            "plan_name": plan["name"],
+            "product_area": "topic_ideas",
+            "purchase_mode": "topic_ideas",
+            "return_path": return_path,
+            "pricing": pricing_metadata,
+        },
+        database_url=DATABASE_URL,
+    )
+
+    try:
+        checkout = (
+            initialize_paystack_payment(purchase)
+            if provider == "paystack"
+            else initialize_stripe_payment(purchase, database_url=DATABASE_URL)
+        )
+    except (PaystackError, StripePaymentError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    return {
+        **checkout,
+        "access_id": access_id,
+        "purchase_mode": "topic_ideas",
+        "return_path": return_path,
+        "plan": {
+            "plan_key": plan_key,
+            "name": plan["name"],
+            "price_display": (
+                pricing_metadata.get("charged_display")
+                if provider == "paystack"
+                else display_price["display"]
+            ),
+            "includes": {
+                "topic_idea_generations": 1,
+                "maximum_ideas": 12,
+            },
+            "validity_days": int(plan["validity_days"]),
+        },
+        "message": "Checkout created. This browser stores the access credential before redirecting to payment.",
+    }
 
 
 @api_router.post("/api/payments/checkout")
@@ -242,7 +377,11 @@ def start_checkout(payload: CheckoutRequest) -> Dict[str, Any]:
             "plan_key": plan_key,
             "name": plan["name"],
             "price_display": plan["price_display"],
-            "per": "uploaded chapter" if purchase_mode == "revision_only" else "chapter",
+            "per": (
+                "topic-idea generation"
+                if purchase_mode == "topic_ideas"
+                else "uploaded chapter" if purchase_mode == "revision_only" else "chapter"
+            ),
             "includes": includes,
         },
         "message": "Checkout created. The browser securely stores the returned access credential before redirecting.",
