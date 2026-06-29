@@ -184,3 +184,11 @@ Stripe events to subscribe to:
 checkout.session.completed
 checkout.session.async_payment_succeeded
 ```
+
+## Project recovery and external chapter strengthening
+
+ProjectReady AI now supports email-and-PIN Project ID recovery without a paid email service. New projects can save a recovery email and 6-digit PIN, and existing projects can enable recovery from the Thesis Workspace.
+
+The Chapter Strengthener also supports chapters created outside ProjectReady AI. It automatically creates a recoverable revision-only project and uses a lower-cost revision-only purchase containing one strengthening revision, one compliance check and one DOCX export.
+
+See `PROJECT_RECOVERY_AND_REVISION_ONLY_UPDATE.md` for configuration and routes.

@@ -32,3 +32,7 @@ The page restores the current project from `projectready-current-project`, pre-f
 ## Render
 
 Continue using the existing build and start commands. Add the chapter revision environment variables from `.env.example`. No new Render service or domain is required.
+
+## External chapter pathway
+
+The integrated page now lets the user choose between an existing ProjectReady chapter and a chapter written elsewhere. External chapters are stored in lightweight revision projects and use the `revision_only` payment mode. The user supplies a recovery email and 6-digit PIN so the project can be recovered without a separate account or email-delivery service.

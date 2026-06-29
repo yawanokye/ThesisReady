@@ -110,3 +110,23 @@ Copy the endpoint signing secret into `STRIPE_WEBHOOK_SECRET`.
 7. Switch to live provider keys only after both test flows pass.
 
 Do not place secret keys in JavaScript, HTML, GitHub, or the public Render environment preview. Keep them in Render's secret environment variables.
+
+## Revision-only chapter-strengthening prices
+
+Users bringing a chapter from outside ProjectReady AI use a revision-only plan. Configure the USD prices if the defaults should be changed:
+
+```text
+PROJECTREADY_BACHELORS_REVISION_USD=2.99
+PROJECTREADY_MASTERS_REVISION_USD=5.99
+PROJECTREADY_DOCTORATE_REVISION_USD=11.99
+```
+
+Optional fixed Paystack GHS prices:
+
+```text
+PROJECTREADY_PAYSTACK_BACHELORS_REVISION_GHS=<approved GHS price>
+PROJECTREADY_PAYSTACK_MASTERS_REVISION_GHS=<approved GHS price>
+PROJECTREADY_PAYSTACK_DOCTORATE_REVISION_GHS=<approved GHS price>
+```
+
+The revision-only plan includes one strengthening revision, one compliance check and one DOCX export. It contains no initial draft credit.
