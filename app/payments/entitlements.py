@@ -130,6 +130,19 @@ CHAPTER_PLANS: Dict[str, Dict[str, Any]] = {
         "docx_exports": 1,
         "display_order": 13,
     },
+    "topic_ideas_access": {
+        "name": "Topic Ideas Access",
+        "description": "One guided topic-idea generation with trend grounding, proposed objectives, possible data sources and instrument-source suggestions.",
+        "price_usd": _price_env("PROJECTREADY_TOPIC_IDEAS_USD", 1.50),
+        "levels": ["Topic Ideas"],
+        "purchase_mode": "topic_ideas",
+        "drafts": 1,
+        "revisions": 0,
+        "compliance_checks": 0,
+        "docx_exports": 0,
+        "validity_days": 30,
+        "display_order": 21,
+    },
 }
 
 
@@ -140,7 +153,11 @@ def _normalise_text(value: Any) -> str:
 
 def normalise_purchase_mode(value: str) -> str:
     mode = str(value or "chapter").strip().lower().replace("-", "_")
-    return "revision_only" if mode in {"revision", "revision_only", "strengthening"} else "chapter"
+    if mode in {"revision", "revision_only", "strengthening"}:
+        return "revision_only"
+    if mode in {"topic", "topic_idea", "topic_ideas", "ideas"}:
+        return "topic_ideas"
+    return "chapter"
 
 
 def normalise_email(email: str) -> str:
@@ -175,7 +192,7 @@ def get_plan(plan_key: str) -> Dict[str, Any]:
     result["currency"] = DEFAULT_DISPLAY_CURRENCY
     result["amount"] = float(result["price_usd"])
     result["price_display"] = f"US${result['price_usd']:.2f}"
-    result["validity_days"] = PURCHASE_VALIDITY_DAYS
+    result["validity_days"] = int(result.get("validity_days") or PURCHASE_VALIDITY_DAYS)
     return result
 
 
@@ -189,6 +206,9 @@ def plan_key_for_level(level: str, purchase_mode: str = "chapter") -> str:
         for configured_level in plan.get("levels", []):
             if target == _normalise_text(configured_level):
                 return key
+
+    if mode == "topic_ideas":
+        return "topic_ideas_access"
 
     suffix = "revision" if mode == "revision_only" else "chapter"
     if "bachelor" in target or "undergraduate" in target:
@@ -259,7 +279,11 @@ def build_plans_payload(level: str = "", purchase_mode: str = "chapter") -> Dict
                 "amount": plan["amount"],
                 "currency": plan["currency"],
                 "price_display": plan["price_display"],
-                "per": "uploaded chapter" if mode == "revision_only" else "chapter",
+                "per": (
+                    "topic-idea generation"
+                    if mode == "topic_ideas"
+                    else "uploaded chapter" if mode == "revision_only" else "chapter"
+                ),
                 "includes": {
                     "initial_draft": plan["drafts"],
                     "revision": plan["revisions"],
@@ -273,11 +297,15 @@ def build_plans_payload(level: str = "", purchase_mode: str = "chapter") -> Dict
 
     return {
         "product": "ProjectReady AI",
-        "billing_model": "one-off revision-only" if mode == "revision_only" else "one-off per chapter",
+        "billing_model": (
+            "one-off topic-idea generation"
+            if mode == "topic_ideas"
+            else "one-off revision-only" if mode == "revision_only" else "one-off per chapter"
+        ),
         "purchase_mode": mode,
         "display_currency": DEFAULT_DISPLAY_CURRENCY,
         "recommended_plan": recommended,
-        "free_starter": None if mode == "revision_only" else {
+        "free_starter": None if mode in {"revision_only", "topic_ideas"} else {
             "price_display": "US$0",
             "chapter_number": FREE_CHAPTER_NUMBER,
             "maximum_selected_sections": FREE_CHAPTER_ONE_SECTION_LIMIT,

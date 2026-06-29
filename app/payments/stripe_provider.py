@@ -48,11 +48,15 @@ def initialize_stripe_payment(purchase: Dict[str, Any], *, database_url: str = "
     return_path = str(purchase_metadata.get("return_path") or CANCEL_PATH)
     if not return_path.startswith("/") or return_path.startswith("//"):
         return_path = CANCEL_PATH
-    description = (
-        "One guided chapter-strengthening working revision, one compliance review, and one editable DOCX export."
-        if purchase_mode == "revision_only"
-        else "One guided chapter working draft, one strengthening revision, one compliance review, and one editable DOCX export."
-    )
+    if purchase_mode == "topic_ideas":
+        description = (
+            "One guided topic-idea generation with proposed objectives, trend-grounded literature metadata, "
+            "possible data sources and instrument-source suggestions."
+        )
+    elif purchase_mode == "revision_only":
+        description = "One guided chapter-strengthening working revision, one compliance review, and one editable DOCX export."
+    else:
+        description = "One guided chapter working draft, one strengthening revision, one compliance review, and one editable DOCX export."
     cancel_separator = "&" if "?" in return_path else "?"
     metadata = {
         "product": "ProjectReady AI",

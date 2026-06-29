@@ -34,6 +34,11 @@ PLAN_GHS_ENV = {
     "bachelors_revision": "PROJECTREADY_PAYSTACK_BACHELORS_REVISION_GHS",
     "masters_revision": "PROJECTREADY_PAYSTACK_MASTERS_REVISION_GHS",
     "doctorate_revision": "PROJECTREADY_PAYSTACK_DOCTORATE_REVISION_GHS",
+    "topic_ideas_access": "PROJECTREADY_PAYSTACK_TOPIC_IDEAS_GHS",
+}
+
+PLAN_GHS_DEFAULTS = {
+    "topic_ideas_access": 10.00,
 }
 
 
@@ -71,10 +76,15 @@ def get_paystack_charge(plan_key: str) -> Dict[str, Any]:
     fixed_env_name = PLAN_GHS_ENV.get(str(plan_key).strip().lower())
     fixed_raw = os.environ.get(fixed_env_name, "").strip() if fixed_env_name else ""
 
+    plan_key_value = str(plan_key).strip().lower()
     if fixed_raw:
         charged_amount = round(_positive_float(fixed_raw, name=fixed_env_name or "fixed GHS price"), 2)
         calculation = "fixed_ghs_plan_price"
         exchange_rate: Optional[float] = None
+    elif plan_key_value in PLAN_GHS_DEFAULTS:
+        charged_amount = round(float(PLAN_GHS_DEFAULTS[plan_key_value]), 2)
+        calculation = "default_fixed_ghs_plan_price"
+        exchange_rate = None
     else:
         rate = _positive_float(
             os.environ.get("PROJECTREADY_PAYSTACK_USD_TO_GHS_RATE", "15.00"),
