@@ -7,7 +7,9 @@ from typing import Any, Dict
 
 from app.payments.store import (
     activate_purchase,
+    get_purchase,
     get_purchase_by_reference,
+    get_purchase_by_session,
     record_event_once,
     set_checkout_session,
 )
@@ -106,30 +108,112 @@ def initialize_stripe_payment(purchase: Dict[str, Any], *, database_url: str = "
     }
 
 
-def _session_to_dict(session: Any) -> Dict[str, Any]:
-    if hasattr(session, "to_dict_recursive"):
-        return session.to_dict_recursive()
-    return dict(session)
+def _stripe_object_to_dict(value: Any) -> Dict[str, Any]:
+    """Convert StripeObject, dict-like, or mapping values into a plain dict.
 
-
-def verify_and_activate_stripe_session(session_id: str, *, database_url: str = "") -> Dict[str, Any]:
-    stripe = _stripe_module()
+    Stripe SDK releases and API versions can expose nested values as
+    StripeObject instances rather than ordinary dictionaries. Keeping this
+    conversion in one place avoids brittle numeric-key/index access errors.
+    """
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    if hasattr(value, "to_dict_recursive"):
+        try:
+            converted = value.to_dict_recursive()
+            if isinstance(converted, dict):
+                return converted
+        except Exception:
+            # Some Stripe SDK/API-version combinations can fail while
+            # recursively converting newly introduced nested fields.
+            # Fall through to the mapping interface instead.
+            pass
+    if hasattr(value, "items"):
+        try:
+            return {str(key): item for key, item in value.items()}
+        except Exception:
+            return {}
     try:
-        session = stripe.checkout.Session.retrieve(session_id)
-    except Exception as exc:
-        raise StripePaymentError(f"Stripe session verification failed: {exc}") from exc
+        converted = dict(value)
+        return converted if isinstance(converted, dict) else {}
+    except Exception:
+        return {}
 
-    data = _session_to_dict(session)
-    metadata = data.get("metadata") or {}
-    reference = str(metadata.get("provider_reference") or "")
-    if not reference:
-        return {"ok": False, "activated": False, "message": "Stripe session has no ProjectReady reference."}
 
-    purchase = get_purchase_by_reference(reference, database_url=database_url)
+def _session_to_dict(session: Any) -> Dict[str, Any]:
+    return _stripe_object_to_dict(session)
+
+
+def _purchase_for_stripe_session(data: Dict[str, Any], *, database_url: str = "") -> Dict[str, Any] | None:
+    metadata = _stripe_object_to_dict(data.get("metadata"))
+    provider_reference = str(metadata.get("provider_reference") or "").strip()
+    purchase_id = str(metadata.get("purchase_id") or data.get("client_reference_id") or "").strip()
+    session_id = str(data.get("id") or "").strip()
+
+    purchase = None
+    if provider_reference:
+        purchase = get_purchase_by_reference(provider_reference, database_url=database_url)
+    if purchase is None and purchase_id:
+        purchase = get_purchase(purchase_id, database_url=database_url)
+    if purchase is None and session_id:
+        purchase = get_purchase_by_session(session_id, database_url=database_url)
+    return purchase
+
+
+def verify_and_activate_stripe_session_data(
+    session_data: Any,
+    *,
+    database_url: str = "",
+) -> Dict[str, Any]:
+    """Verify and activate using an already authenticated Stripe Session payload."""
+    data = _session_to_dict(session_data)
+    if not data:
+        return {
+            "ok": False,
+            "activated": False,
+            "message": "Stripe supplied an empty Checkout Session payload.",
+        }
+
+    metadata = _stripe_object_to_dict(data.get("metadata"))
+    purchase = _purchase_for_stripe_session(data, database_url=database_url)
     if not purchase:
-        return {"ok": False, "activated": False, "message": "No ProjectReady purchase matches this Stripe session."}
+        return {
+            "ok": False,
+            "activated": False,
+            "message": "No ProjectReady purchase matches this Stripe Checkout Session.",
+        }
 
-    if str(data.get("payment_status") or "").lower() != "paid":
+    reference = str(
+        metadata.get("provider_reference")
+        or purchase.get("provider_reference")
+        or ""
+    ).strip()
+    if not reference:
+        return {
+            "ok": False,
+            "activated": False,
+            "message": "The Stripe Checkout Session has no ProjectReady payment reference.",
+        }
+
+    metadata_purchase_id = str(metadata.get("purchase_id") or data.get("client_reference_id") or "").strip()
+    if metadata_purchase_id and metadata_purchase_id != str(purchase.get("id") or ""):
+        return {
+            "ok": False,
+            "activated": False,
+            "message": "Stripe purchase metadata does not match the stored ProjectReady purchase.",
+        }
+
+    metadata_project_id = str(metadata.get("project_id") or "").strip()
+    if metadata_project_id and metadata_project_id != str(purchase.get("project_id") or ""):
+        return {
+            "ok": False,
+            "activated": False,
+            "message": "Stripe project metadata does not match the stored ProjectReady project.",
+        }
+
+    payment_status = str(data.get("payment_status") or "").lower()
+    if payment_status != "paid":
         return {
             "ok": False,
             "activated": False,
@@ -137,16 +221,40 @@ def verify_and_activate_stripe_session(session_id: str, *, database_url: str = "
             "payment_status": data.get("payment_status"),
         }
 
-    amount_total = int(data.get("amount_total") or 0)
-    expected_subunit = amount_to_subunit(float(purchase["amount"]))
-    currency = str(data.get("currency") or "").upper()
-    if amount_total != expected_subunit or currency != str(purchase["currency"]).upper():
-        return {"ok": False, "activated": False, "message": "Stripe amount or currency does not match the chapter purchase."}
+    try:
+        amount_total = int(data.get("amount_total") or 0)
+        expected_subunit = amount_to_subunit(float(purchase["amount"]))
+    except (TypeError, ValueError, KeyError) as exc:
+        raise StripePaymentError(
+            f"Could not validate the Stripe payment amount: {type(exc).__name__}: {exc}"
+        ) from exc
 
-    customer_details = data.get("customer_details") or {}
-    stripe_email = str(customer_details.get("email") or data.get("customer_email") or "").lower()
-    if stripe_email and stripe_email != str(purchase["user_email"]).lower():
-        return {"ok": False, "activated": False, "message": "Stripe customer email does not match the chapter purchase."}
+    currency = str(data.get("currency") or "").upper()
+    expected_currency = str(purchase.get("currency") or "").upper()
+    if amount_total != expected_subunit or currency != expected_currency:
+        return {
+            "ok": False,
+            "activated": False,
+            "message": "Stripe amount or currency does not match the chapter purchase.",
+            "received_amount": amount_total,
+            "expected_amount": expected_subunit,
+            "received_currency": currency,
+            "expected_currency": expected_currency,
+        }
+
+    customer_details = _stripe_object_to_dict(data.get("customer_details"))
+    stripe_email = str(
+        customer_details.get("email")
+        or data.get("customer_email")
+        or ""
+    ).strip().lower()
+    purchase_email = str(purchase.get("user_email") or "").strip().lower()
+    if stripe_email and purchase_email and stripe_email != purchase_email:
+        return {
+            "ok": False,
+            "activated": False,
+            "message": "Stripe customer email does not match the chapter purchase.",
+        }
 
     activated = activate_purchase(
         provider_reference=reference,
@@ -155,8 +263,23 @@ def verify_and_activate_stripe_session(session_id: str, *, database_url: str = "
         provider_payload=data,
         database_url=database_url,
     )
-    return {"ok": True, "activated": True, "purchase": activated, "session": data}
+    return {
+        "ok": True,
+        "activated": True,
+        "purchase": activated,
+        "session": data,
+    }
 
+
+def verify_and_activate_stripe_session(session_id: str, *, database_url: str = "") -> Dict[str, Any]:
+    stripe = _stripe_module()
+    try:
+        session = stripe.checkout.Session.retrieve(session_id)
+    except Exception as exc:
+        raise StripePaymentError(
+            f"Stripe session verification failed: {type(exc).__name__}: {exc}"
+        ) from exc
+    return verify_and_activate_stripe_session_data(session, database_url=database_url)
 
 def handle_stripe_webhook(
     *,
@@ -172,7 +295,13 @@ def handle_stripe_webhook(
     except Exception as exc:
         return {"ok": False, "status_code": 400, "message": f"Invalid Stripe webhook: {exc}"}
 
-    event_dict = event.to_dict_recursive() if hasattr(event, "to_dict_recursive") else dict(event)
+    event_dict = _stripe_object_to_dict(event)
+    if not event_dict:
+        return {
+            "ok": False,
+            "status_code": 400,
+            "message": "Stripe webhook event could not be converted into a readable payload.",
+        }
     event_id = str(event_dict.get("id") or "")
     event_type = str(event_dict.get("type") or "")
     if event_type not in {"checkout.session.completed", "checkout.session.async_payment_succeeded"}:
@@ -185,11 +314,16 @@ def handle_stripe_webhook(
             "activated": False, "duplicate": not first_delivery,
         }
 
-    session = ((event_dict.get("data") or {}).get("object") or {})
-    session_id = str(session.get("id") or "")
-    # Activation is idempotent. Persist the event only after verification so
-    # failed deliveries remain retryable.
-    result = verify_and_activate_stripe_session(session_id, database_url=database_url)
+    event_data = _stripe_object_to_dict(event_dict.get("data"))
+    session = _stripe_object_to_dict(event_data.get("object"))
+    # The event signature has already authenticated this Checkout Session.
+    # Activate directly from the signed payload instead of making a second
+    # Stripe API request and reconverting a version-dependent StripeObject.
+    # Activation remains idempotent and failed deliveries stay retryable.
+    result = verify_and_activate_stripe_session_data(
+        session,
+        database_url=database_url,
+    )
     if result.get("ok"):
         first_delivery = record_event_once(
             provider="stripe", event_id=event_id, event_type=event_type,
