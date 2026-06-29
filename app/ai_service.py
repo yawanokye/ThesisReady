@@ -339,28 +339,28 @@ def _level_quality_profile(profile: dict[str, Any], chapter_number: int) -> dict
         "bachelors": {
             "quality_band": "paid_bachelor_draft",
             "draft_expectation": (
-                "Produce a complete thesis-standard undergraduate draft. It must be clear, well-structured, "
+                "Produce a substantial, editable thesis-standard undergraduate working draft. It must be clear, well-structured, "
                 "evidence-led and academically credible, but it should not overcomplicate the theory or methodology."
             ),
         },
         "nonresearch_masters": {
             "quality_band": "paid_nonresearch_masters_draft",
             "draft_expectation": (
-                "Produce a strong master's-level professional or applied draft. It must show synthesis, practical relevance, "
+                "Produce a substantial, editable master's-level professional or applied working draft. It must show synthesis, practical relevance, "
                 "methodological clarity and implications for practice or institutions."
             ),
         },
         "research_masters": {
             "quality_band": "paid_research_masters_draft",
             "draft_expectation": (
-                "Produce a research-master's/MPhil-level draft with deeper theoretical engagement, critical synthesis, "
+                "Produce a substantial, editable research-master's/MPhil working draft with deeper theoretical engagement, critical synthesis, "
                 "explicit gaps, strong methodology justification and clear objective-method alignment."
             ),
         },
         "doctoral": {
             "quality_band": "paid_doctoral_draft",
             "draft_expectation": (
-                "Produce a doctoral-level draft. It should read as advanced, supervisor-ready academic prose with originality, "
+                "Produce a substantial, editable doctoral working draft. It should read as advanced academic prose suitable for supervisor review with originality, "
                 "conceptual depth, methodological defensibility, careful critique and a clear contribution to knowledge or practice."
             ),
         },
@@ -859,7 +859,7 @@ def build_drafting_prompt(
     }
 
     prompt = {
-        "task": "Draft a full academic project chapter using selected institutional guideline sections.",
+        "task": "Develop an editable academic working draft from the user's own research inputs and selected institutional guideline sections.",
         "chapter": {
             "chapter_number": chapter_number,
             "chapter_title": effective_chapter_title,
@@ -881,7 +881,7 @@ def build_drafting_prompt(
         "output_requirements": [
             "Write in formal British English.",
             "Use the selected academic level internally to determine depth and sophistication, but never mention the selected level in the generated chapter text.",
-            "Follow the level_based_model_quality_route: the user is paying for a quality draft, so the main prose must be academically strong at the selected level; do not produce low-tier, shallow or mechanical writing.",
+            "Follow the level_based_model_quality_route: the user is paying for guided working-draft development, so the main prose must be academically strong at the selected level; do not produce low-tier, shallow or mechanical writing.",
             "Follow chapter_page_word_and_citation_targets. Aim to finish within its minimum and maximum word range, distribute the target across selected sections using section_word_budgets, and do not stop after a brief overview.",
             "Meet the depth target through evidence, synthesis, comparison, critique, methodological explanation, interpretation and study-specific application. Never meet it through repetition, generic padding, duplicated definitions or inflated wording.",
             "Use the stated citation-occurrences-per-1,000-words range as a planning guide. Increase citation density across substantive paragraphs while preserving strict relevance and source integrity.",
@@ -891,7 +891,7 @@ def build_drafting_prompt(
             "Use an evidence-to-paragraph method: each substantive paragraph should have a purpose, a claim grounded in supplied evidence or source-bank material, interpretation, and a clear link to the objective or chapter argument.",
             "Before producing a long paragraph, ask internally whether the user supplied enough context, evidence or source support for that paragraph. If not, write a shorter defensible paragraph and insert a precise bracketed attention placeholder for the missing evidence.",
             "Make the writing high-quality and human-supervised by adding discipline-specific reasoning, careful qualifications, context-specific transitions and clear links between evidence and the student's own objectives.",
-            "Where the user has supplied limited information, avoid creating long polished generic prose. Write a focused draft with bracketed attention placeholders asking for the exact missing facts, data, citations, institutional details, result tables, or supervisor decisions.",
+            "Where the user has supplied limited information, avoid creating long polished generic prose. Write a focused working draft with bracketed attention placeholders asking for the exact missing facts, data, citations, institutional details, result tables, or supervisor decisions.",
             "Respect the selected draft maturity: a structured draft can be more schematic; a supervisor-ready or revised academic draft must be more developed, but still grounded in user-supplied evidence and sources.",
             "Avoid very short sentences except where they are necessary for emphasis, transition, or clarity.",
             "Do not write sentences that say the work, chapter, section, depth, or argument is designed to meet the selected level of the project, thesis, or dissertation.",
@@ -910,6 +910,8 @@ def build_drafting_prompt(
             "Do not use raw HTML colour tags such as <span style=...>. Do not colour normal academic prose; only attention placeholders should be highlighted by the DOCX exporter. The only text requiring user attention should appear as bracketed placeholders such as [insert current statistic], [verify citation], [confirm sample size], or [provide supervisor-approved wording].",
             "Minimise the use of em dashes and en dashes. Use commas, semicolons, colons, parentheses, or separate sentences instead unless a dash is unavoidable.",
             "Draft only the selected sections.",
+            "Treat the output as an AI-assisted editable working draft developed from user-supplied research inputs. Never call it final, completed, submission-ready, ghostwritten or independently authored by ProjectReady AI.",
+            "The user remains responsible for authorship, source verification, factual accuracy, ethical compliance, institutional requirements and final submission decisions.",
             "For the Supplementary Methods and Analysis Guide, use any attached/sample output only as a guide to structure and table compactness. Do not copy its topic, constructs, sources, item wording or sample context unless those details are supplied in the current project profile.",
             "For the Supplementary Methods and Analysis Guide, suggest verified scale/instrument sources only from the current source bank, uploaded materials or verified project notes. If a verified source is not available, use [insert verified scale source for this construct].",
             "For the Supplementary Methods and Analysis Guide, make the output practical: alignment tables, item banks, coding notes, analysis-output checklist, reliability/validity checklist and appendix checklist should carry the detail.",
@@ -932,9 +934,9 @@ def build_drafting_prompt(
             "For Chapter Four, insert bracketed attention placeholders for required missing figures, graphs, path diagrams, conceptual diagrams or charts, and advise whether they belong in the main chapter or appendix.",
             "For Chapter Four, advise which materials should move to appendices, such as raw software output, lengthy diagnostic tables, full correlation matrices, full questionnaires, interview transcripts, codebooks and robustness checks.",
             "For Chapter Four, report only results found in uploaded files or student answers. Do not fabricate numbers, tables, themes, or interpretation.",
-            "For the Research Methods/Methodology chapter, produce a complete, clean, submission-ready methodology chapter. Do not present it as a planning note, upload summary, worksheet, or supplementary file.",
+            "For the Research Methods/Methodology chapter, produce a substantial, coherent methodology working draft suitable for supervisor review. Do not present it as a planning note, upload summary, worksheet, or supplementary file.",
             "For questionnaire or interview-guide outputs, build draft instruments from the constructs, variables and objectives supplied in the project profile rather than giving only a generic structure.",
-            "Keep a clear distinction between the main Research Methods/Methodology chapter and the Supplementary Methods and Analysis Guide. The main methodology chapter is the clean submission-ready chapter; the supplementary guide is a practical working guide for instruments, data sources, scale traceability, coding, validation checks and appendix materials.",
+            "Keep a clear distinction between the main Research Methods/Methodology chapter and the Supplementary Methods and Analysis Guide. The main methodology chapter is the coherent editable working draft; the supplementary guide is a practical planning guide for instruments, data sources, scale traceability, coding, validation checks and appendix materials.",
             "Do not overload the main Research Methods/Methodology chapter with a full questionnaire, interview guide, scale bank, secondary-data register, or data-source codebook. Those details belong in the separate Supplementary Methods and Analysis Guide or appendix unless the institution specifically requires them in the main chapter.",
             "For Chapter Five, base conclusions and recommendations only on findings supplied in the profile or answers.",
         ],
@@ -1744,7 +1746,7 @@ def _generate_chapter_in_chunks(
             "chunk_sequence": {"current": chunk_index, "total": len(chunks)},
         }
         chunk_prompt = dict(base_prompt)
-        chunk_prompt["task"] = f"Draft contiguous section chunk {chunk_index} of {len(chunks)} for one complete academic chapter."
+        chunk_prompt["task"] = f"Develop contiguous section chunk {chunk_index} of {len(chunks)} for one coherent academic working draft."
         chunk_prompt["selected_sections"] = chunk_sections
         chunk_prompt["chapter_page_word_and_citation_targets"] = chunk_req
         chunk_prompt["output_requirements"] = list(base_prompt.get("output_requirements") or []) + [

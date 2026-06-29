@@ -37,6 +37,8 @@ class ProjectCreate(BaseModel):
     project_kind: str = "standard"
     recovery_email: str = ""
     recovery_pin: str = ""
+    academic_integrity_confirmed: bool = False
+    user_contribution_confirmed: bool = False
 
 
 class SectionSelection(BaseModel):
@@ -66,6 +68,9 @@ class DraftRequest(BaseModel):
     draft_maturity: str = "Supervisor-ready draft"
     student_contribution: dict[str, Any] = Field(default_factory=dict)
     human_revision_pass: bool = True
+    academic_integrity_confirmed: bool = False
+    user_contribution_confirmed: bool = False
+    profile_updates: dict[str, Any] = Field(default_factory=dict)
 
 
 class DraftResponse(BaseModel):
@@ -167,6 +172,8 @@ class ChapterRevisionRequest(BaseModel):
     source_limit: int = 45
     source_bank: list[dict[str, Any]] = Field(default_factory=list)
     save_to_project: bool = True
+    academic_integrity_confirmed: bool = False
+    user_contribution_confirmed: bool = False
 
     @field_validator("academic_level")
     @classmethod

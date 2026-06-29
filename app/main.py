@@ -16,7 +16,7 @@ STATIC_DIR = BASE_DIR / "static"
 
 app = FastAPI(
     title="ProjectReady AI",
-    description="Customisable project work drafting and guideline-compliance assistant.",
+    description="Guided academic research-development, chapter-strengthening and compliance workspace.",
     version="0.1.0",
 )
 
@@ -87,6 +87,16 @@ def strengthen_chapter_alias() -> FileResponse:
 @app.get("/register")
 def register_page() -> FileResponse:
     return FileResponse(STATIC_DIR / "register.html")
+
+
+@app.get("/academic-integrity")
+def academic_integrity_page() -> FileResponse:
+    return FileResponse(STATIC_DIR / "academic_integrity.html")
+
+
+@app.get("/terms")
+def terms_page() -> FileResponse:
+    return FileResponse(STATIC_DIR / "terms.html")
 
 
 @app.get("/health")

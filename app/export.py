@@ -258,7 +258,7 @@ def export_chapter_docx(project: dict[str, Any], chapter_number: int, draft: str
     out_dir.mkdir(parents=True, exist_ok=True)
     project_title = str(project.get("title") or (project.get("profile") or {}).get("title") or "ProjectReady_AI_Draft")
     safe_title = _safe_filename(project_title)
-    path = out_dir / f"{safe_title}_chapter_{chapter_number}.docx"
+    path = out_dir / f"{safe_title}_chapter_{chapter_number}_working_draft.docx"
 
     doc = Document()
     _apply_document_defaults(doc)
@@ -275,8 +275,8 @@ def export_chapter_docx(project: dict[str, Any], chapter_number: int, draft: str
         doc.add_paragraph("Supplementary methods and analysis guide generated with ProjectReady AI.")
         guide_note = "Note: This is a working guide for instrument development, coding, validation, analysis planning and appendix organisation. Verify all scale sources, item adaptations, data rules and supervisor requirements before use."
     else:
-        doc.add_paragraph(f"Chapter {chapter_number} draft generated with ProjectReady AI.")
-        guide_note = "Note: Verify all citations, evidence, statistics, data, page numbers, and supervisor requirements before submission."
+        doc.add_paragraph(f"Chapter {chapter_number} AI-assisted working draft developed with ProjectReady AI.")
+        guide_note = "Responsible-use notice: This is an editable AI-assisted working draft developed from information supplied by the user. It is not a completed or submission-ready thesis, dissertation or assignment. The user must verify all sources, evidence, statistics, data, findings and institutional requirements, revise the text using independent academic judgement, and obtain appropriate supervisor or institutional approval before submission."
     note = doc.add_paragraph()
     _add_runs(note, guide_note, italic_default=True)
     doc.add_paragraph("")
@@ -293,7 +293,7 @@ def export_compliance_docx(project: dict[str, Any], chapter_number: int, check: 
 
     doc = Document()
     _apply_document_defaults(doc)
-    doc.add_heading("ProjectReady AI Compliance Report", level=0)
+    doc.add_heading("ProjectReady AI Academic Development and Compliance Report", level=0)
     doc.add_paragraph(f"Project: {project.get('title') or (project.get('profile') or {}).get('title', '')}")
     doc.add_paragraph(f"Chapter: {chapter_number}")
     doc.add_paragraph(f"Compliance score: {check.get('score_percent', 0)}%")

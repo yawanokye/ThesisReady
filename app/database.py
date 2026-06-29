@@ -8,12 +8,39 @@ from pathlib import Path
 from typing import Any, Iterator
 
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
-SQLITE_DB_PATH = Path(os.getenv("PROJECTREADY_SQLITE_DB_PATH", "projectready.db"))
 
 
 def _is_postgres() -> bool:
     value = DATABASE_URL.lower()
     return value.startswith("postgresql://") or value.startswith("postgres://")
+
+
+def _sqlite_path_from_settings() -> Path:
+    """Resolve SQLite storage from explicit path settings.
+
+    Render users may set DATABASE_URL=/var/data/projectready.db. Older builds
+    ignored that value unless it was PostgreSQL, which caused records to remain
+    in the temporary application directory. This resolver accepts a plain file
+    path or a sqlite:/// URL and still supports PROJECTREADY_SQLITE_DB_PATH.
+    """
+    explicit = os.getenv("PROJECTREADY_SQLITE_DB_PATH", "").strip()
+    if explicit:
+        return Path(explicit).expanduser()
+
+    value = DATABASE_URL.strip()
+    if value and not _is_postgres():
+        lowered = value.lower()
+        if lowered.startswith("sqlite:////"):
+            return Path("/" + value[len("sqlite:////"):]).expanduser()
+        if lowered.startswith("sqlite:///"):
+            return Path(value[len("sqlite:///"):]).expanduser()
+        if "://" not in value:
+            return Path(value).expanduser()
+
+    return Path("projectready.db")
+
+
+SQLITE_DB_PATH = _sqlite_path_from_settings()
 
 
 class PostgresCompatConnection:
@@ -42,6 +69,8 @@ class PostgresCompatConnection:
 
 
 def init_db() -> None:
+    backend = "PostgreSQL" if _is_postgres() else f"SQLite at {SQLITE_DB_PATH}"
+    print(f"ProjectReady database backend: {backend}")
     with get_conn() as conn:
         conn.execute(
             """

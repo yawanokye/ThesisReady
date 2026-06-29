@@ -1019,7 +1019,7 @@ def export_revised_chapter_docx(
 
     note = doc.add_paragraph()
     note.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = note.add_run("Revision display: wording added or changed by ProjectReady AI appears in blue. Student or supervisor action items appear in red. Exact unchanged wording remains black.")
+    run = note.add_run("Responsible-use notice: This is an editable AI-assisted working revision based on the user's existing chapter and research inputs. It is not a completed or submission-ready academic work. Wording added or changed by ProjectReady AI appears in blue, student or supervisor action items appear in red, and exact unchanged wording remains black. Verify every source, fact, method and finding before submission.")
     run.italic = True
     run.font.size = Pt(9)
     run.font.color.rgb = RGBColor(89, 98, 115)
@@ -1045,4 +1045,4 @@ def export_revised_chapter_docx(
     stream = io.BytesIO()
     doc.save(stream)
     stream.seek(0)
-    return stream, f"{safe_title}_strengthened_revision_blue.docx"
+    return stream, f"{safe_title}_strengthened_working_revision.docx"
