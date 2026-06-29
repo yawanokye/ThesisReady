@@ -50,8 +50,8 @@ def initialize_stripe_payment(purchase: Dict[str, Any], *, database_url: str = "
         return_path = CANCEL_PATH
     if purchase_mode == "topic_ideas":
         description = (
-            "One guided topic-idea generation with proposed objectives, trend-grounded literature metadata, "
-            "possible data sources and instrument-source suggestions."
+            "Unlock one full generation of up to 12 topic ideas after the two-idea free preview, with proposed "
+            "objectives, trend-grounded literature metadata, possible data sources and instrument-source suggestions."
         )
     elif purchase_mode == "revision_only":
         description = "One guided chapter-strengthening working revision, one compliance review, and one editable DOCX export."

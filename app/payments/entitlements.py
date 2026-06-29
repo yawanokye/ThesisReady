@@ -132,7 +132,7 @@ CHAPTER_PLANS: Dict[str, Dict[str, Any]] = {
     },
     "topic_ideas_access": {
         "name": "Topic Ideas Access",
-        "description": "One guided topic-idea generation with trend grounding, proposed objectives, possible data sources and instrument-source suggestions.",
+        "description": "Unlock one full generation of up to 12 topic ideas after the two-idea free preview, with trend grounding, proposed objectives, possible data sources and instrument-source suggestions.",
         "price_usd": _price_env("PROJECTREADY_TOPIC_IDEAS_USD", 1.50),
         "levels": ["Topic Ideas"],
         "purchase_mode": "topic_ideas",
