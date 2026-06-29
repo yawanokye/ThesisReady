@@ -223,6 +223,35 @@ th { background: #f2f4f7; }
   margin: 8px 0;
   line-height: 1.5;
 }
+.source-tier {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-bottom: 8px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.source-tier.highly_relevant {
+  background: #dcfce7;
+  color: #166534;
+}
+.source-tier.partly_relevant {
+  background: #fef3c7;
+  color: #92400e;
+}
+.source-relevance {
+  margin-top: 7px;
+  padding: 8px 10px;
+  border-left: 3px solid #93c5fd;
+  background: #eff6ff;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+}
 .source-link a {
   color: var(--primary);
   font-weight: 700;

@@ -904,15 +904,23 @@ async function findSources() {
   const payload = {
     query: $("sourceSearchQuery") ? $("sourceSearchQuery").value.trim() : "",
     max_results: $("sourceMaxResults") ? Number($("sourceMaxResults").value) : 30,
-    include_older_foundational: $("includeOlderFoundational") ? $("includeOlderFoundational").checked : true
+    include_older_foundational: $("includeOlderFoundational") ? $("includeOlderFoundational").checked : true,
+    use_relevance_gate: true,
+    attach_not_relevant_sources: false
   };
   $("sourceStatus").textContent = "Searching scholarly sources and attaching them to the project...";
   const result = await api(`/api/projects/${currentProjectId}/find-sources`, { method: "POST", body: JSON.stringify(payload) });
   latestSourceSearchResult = result;
-  accumulatedSourceBank = mergeSourceBank(accumulatedSourceBank, result.source_bank || result.sources || []);
+  // The backend replaces earlier automated search results after each refined
+  // search. Mirror that behaviour locally so stale unrelated sources are not
+  // sent back during drafting.
+  accumulatedSourceBank = result.source_bank || result.sources || [];
   renderSources(result);
   const errors = (result.provider_errors || []).length;
-  $("sourceStatus").textContent = `Attached ${(result.source_bank_count || result.count || 0)} sources to the project. ${errors ? errors + " provider(s) could not be reached." : ""}`;
+  const attached = result.attached_count_this_search ?? result.count ?? 0;
+  const rejected = result.rejected_irrelevant_count || 0;
+  const requested = result.requested_count || payload.max_results;
+  $("sourceStatus").textContent = `Attached ${attached} relevant source(s) from a maximum of ${requested}. Rejected ${rejected} unrelated record(s). ${errors ? errors + " provider(s) could not be reached." : ""}`;
 }
 
 function renderSources(result) {
@@ -923,23 +931,32 @@ function renderSources(result) {
     box.innerHTML = `<p class="hint">No source records were found. Refine the search terms and try again.</p>`;
     return;
   }
+  const relevance = result.relevance_summary || {};
+  const requested = result.requested_count || sources.length;
   const meta = `
     <div class="source-meta">
       <strong>Search query:</strong> ${escapeHtml(result.query || "")}<br />
       <strong>Recent-reference window:</strong> ${escapeHtml(result.recent_reference_window || "")}<br />
-      <strong>Databases searched:</strong> ${escapeHtml((result.databases || []).join(", "))}
+      <strong>Databases searched:</strong> ${escapeHtml((result.databases || []).join(", "))}<br />
+      <strong>Relevance gate:</strong> ${escapeHtml(relevance.highly_relevant || 0)} highly relevant, ${escapeHtml(relevance.partly_relevant || 0)} partly relevant, ${escapeHtml(relevance.not_attached_as_irrelevant || 0)} unrelated rejected.<br />
+      <strong>Result rule:</strong> ${escapeHtml(sources.length)} attached from a requested maximum of ${escapeHtml(requested)}. The app no longer pads the list with unrelated papers.
     </div>`;
   const cards = sources.map((src, idx) => {
     const authors = Array.isArray(src.authors) ? src.authors.join(", ") : (src.authors || "");
     const doi = src.doi ? ` DOI: ${escapeHtml(src.doi)}` : "";
     const url = src.url ? `<a href="${escapeHtml(src.url)}" target="_blank" rel="noopener">Open source record</a>` : "";
     const abstract = src.abstract ? `<p>${escapeHtml(src.abstract)}</p>` : `<p class="hint">No abstract was returned by the metadata provider.</p>`;
+    const tier = src.relevance_tier || "partly_relevant";
+    const tierLabel = tier === "highly_relevant" ? "Highly relevant" : "Partly relevant";
     return `
       <div class="source-card">
+        <div class="source-tier ${escapeHtml(tier)}">${escapeHtml(tierLabel)}</div>
         <div class="source-title">${idx + 1}. ${escapeHtml(src.title || "Untitled source")}</div>
         <div class="source-sub">${escapeHtml(authors)} ${src.year ? "(" + escapeHtml(src.year) + ")" : ""}</div>
         <div class="source-sub">${escapeHtml(src.source || src.database || "")} ${doi}</div>
         ${abstract}
+        <div class="source-relevance"><strong>Why it matched:</strong> ${escapeHtml(src.relevance_reason || "Direct topic match identified.")}</div>
+        <div class="source-relevance"><strong>Suggested use:</strong> ${escapeHtml(src.suggested_use || "Use only where it directly supports the claim.")}</div>
         <div class="source-hint"><strong>Citation hint:</strong> ${escapeHtml(src.apa_hint || "")}</div>
         <div class="source-link">${url}</div>
       </div>`;
