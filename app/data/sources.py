@@ -71,6 +71,8 @@ def find_sources(project_id: str, payload: SourceSearchRequest):
             query=payload.query,
             max_results=payload.max_results,
             include_older_foundational=payload.include_older_foundational,
+            use_relevance_gate=payload.use_relevance_gate,
+            attach_not_relevant_sources=payload.attach_not_relevant_sources,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -81,19 +83,34 @@ def find_sources(project_id: str, payload: SourceSearchRequest):
     existing_sources = profile.get("source_bank") or []
     if not isinstance(existing_sources, list):
         existing_sources = []
-    profile["source_bank"] = _merge_sources(existing_sources, new_sources)
+
+    # Replace earlier automated search results so a refined search also removes
+    # stale unrelated records. Preserve only sources explicitly marked as manual
+    # or user-verified.
+    preserved_sources = [
+        src for src in existing_sources
+        if isinstance(src, dict) and (
+            bool(src.get("user_verified"))
+            or str(src.get("attachment_origin") or "") in {"manual", "uploaded", "user_verified"}
+        )
+    ]
+    profile["source_bank"] = _merge_sources(preserved_sources, new_sources)
     profile["retrieved_sources"] = result
     profile["source_search_terms"] = payload.query
 
-    # Also keep human-readable notes so the drafting model can see the sources through both
-    # structured source_bank and project-profile context. This enriches rather than replaces
-    # user-pasted verified evidence.
+    # Refresh, rather than append to, the machine-generated source-note block.
+    # This prevents unrelated records from an earlier search remaining in the
+    # prompt after the user refines the query.
+    marker = "Retrieved literature sources attached to this project:"
     notes = str(profile.get("citation_evidence_notes") or "").strip()
+    if marker in notes:
+        notes = notes.split(marker, 1)[0].rstrip()
     source_note_block = _source_notes(new_sources)
     if source_note_block:
-        addition = "Retrieved literature sources attached to this project:\n" + source_note_block
-        if addition not in notes:
-            profile["citation_evidence_notes"] = (notes + "\n\n" + addition).strip() if notes else addition
+        addition = marker + "\n" + source_note_block
+        profile["citation_evidence_notes"] = (notes + "\n\n" + addition).strip() if notes else addition
+    else:
+        profile["citation_evidence_notes"] = notes
 
     with get_conn() as conn:
         conn.execute(
@@ -105,6 +122,8 @@ def find_sources(project_id: str, payload: SourceSearchRequest):
     return {
         "project_id": project_id,
         "source_bank_count": len(profile.get("source_bank") or []),
+        "attached_count_this_search": len(new_sources),
+        "source_bank": profile.get("source_bank") or [],
         **result,
     }
 
