@@ -11,6 +11,25 @@ The application now sells access per project chapter.
 
 Paid access is tied to the saved project ID and chapter number. It expires after 90 days. African billing countries are routed to Paystack. Other billing countries are routed to Stripe.
 
+
+## Topic Ideas access
+
+Topic Ideas uses a one-time generation credit rather than a chapter entitlement.
+
+| Billing market | Price | Provider | Included |
+|---|---:|---|---|
+| Ghana | GHS 10.00 | Paystack | One generation of up to 12 topic ideas |
+| Outside Ghana | US$1.50 | Stripe | One generation of up to 12 topic ideas |
+
+Set:
+
+```text
+PROJECTREADY_TOPIC_IDEAS_USD=1.50
+PROJECTREADY_PAYSTACK_TOPIC_IDEAS_GHS=10.00
+```
+
+The credit remains available for 30 days and is consumed only after a successful generation. A failed generation automatically returns the credit.
+
 ## 1. Install dependencies
 
 ```bash
