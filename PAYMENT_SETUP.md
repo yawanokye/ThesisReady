@@ -14,12 +14,12 @@ Paid access is tied to the saved project ID and chapter number. It expires after
 
 ## Topic Ideas access
 
-Topic Ideas uses a one-time generation credit rather than a chapter entitlement.
+Topic Ideas provides a two-idea free preview. Payment unlocks one full generation credit rather than a chapter entitlement.
 
 | Billing market | Price | Provider | Included |
 |---|---:|---|---|
-| Ghana | GHS 10.00 | Paystack | One generation of up to 12 topic ideas |
-| Outside Ghana | US$1.50 | Stripe | One generation of up to 12 topic ideas |
+| Ghana | GHS 10.00 | Paystack | After 2 free ideas, unlock one generation of up to 12 ideas |
+| Outside Ghana | US$1.50 | Stripe | After 2 free ideas, unlock one generation of up to 12 ideas |
 
 Set:
 
