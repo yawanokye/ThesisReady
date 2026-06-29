@@ -1,6 +1,10 @@
 const $ = (id) => document.getElementById(id);
 let lastIdeaText = "";
 const TOPIC_ACCESS_STORAGE_KEY = "projectready-topic-ideas-access-v1";
+const TOPIC_FORM_STORAGE_KEY = "projectready-topic-ideas-form-v1";
+const FREE_PREVIEW_IDEAS = 2;
+const PAID_MAXIMUM_IDEAS = 12;
+let paidAccessReady = false;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -73,18 +77,37 @@ function selectedTopicMarket() {
   return document.querySelector('input[name="topicMarket"]:checked')?.value || "ghana";
 }
 
+function updateGenerationControls(unlocked) {
+  paidAccessReady = Boolean(unlocked);
+  const select = $("maxIdeas");
+  const button = $("generateIdeasBtn");
+  const help = $("maxIdeasHelp");
+  if (select) select.disabled = !paidAccessReady;
+  if (button) button.textContent = paidAccessReady ? "Generate unlocked ideas" : "Generate 2 free ideas";
+  if (help) {
+    help.textContent = paidAccessReady
+      ? "Choose 5, 8, 10 or 12 ideas for your one unlocked generation."
+      : "Your free preview returns 2 ideas. Unlock to choose up to 12.";
+  }
+}
+
 function setTopicAccessState(kind, message) {
   const badge = $("topicAccessBadge");
   const status = $("topicAccessStatus");
   badge.className = `topic-access-badge ${kind || ""}`.trim();
-  badge.textContent = kind === "ready" ? "1 generation available" : kind === "used" ? "Access used" : "Payment required";
+  badge.textContent = kind === "ready"
+    ? "Up to 12 unlocked"
+    : kind === "used"
+      ? "Unlock used"
+      : "2 ideas free";
   status.textContent = message;
 }
 
 async function checkTopicAccess({ quiet = false } = {}) {
   const credential = readTopicCredential();
   if (!credential) {
-    setTopicAccessState("", "Choose your market and complete payment to unlock one topic-idea generation.");
+    updateGenerationControls(false);
+    setTopicAccessState("free", "Generate your first 2 ideas free. Unlock only when you want a fuller set of up to 12 ideas.");
     return false;
   }
   try {
@@ -94,13 +117,20 @@ async function checkTopicAccess({ quiet = false } = {}) {
     });
     const remaining = Number(result.remaining?.draft || 0);
     if (result.allowed && remaining > 0) {
-      setTopicAccessState("ready", `Payment confirmed. ${remaining} topic-idea generation is available until ${String(result.expires_at || "").slice(0, 10)}.`);
+      updateGenerationControls(true);
+      setTopicAccessState("ready", `Payment confirmed. Choose up to 12 ideas for the unlocked generation before ${String(result.expires_at || "").slice(0, 10)}.`);
       return true;
     }
-    setTopicAccessState("used", remaining < 1 ? "This access has already been used. Purchase another generation to continue." : "This access is no longer active.");
+    updateGenerationControls(false);
+    setTopicAccessState("used", remaining < 1
+      ? "The unlocked generation has been used. You may still generate a new 2-idea free preview or purchase another unlock."
+      : "This access is no longer active. The 2-idea free preview remains available.");
     return false;
   } catch (error) {
-    if (!quiet) setTopicAccessState("", error.message || "Topic Ideas access could not be verified.");
+    updateGenerationControls(false);
+    if (!quiet) {
+      setTopicAccessState("free", `${error.message || "Paid access could not be verified."} You can still generate 2 ideas free.`);
+    }
     return false;
   }
 }
@@ -113,8 +143,9 @@ async function startTopicIdeasCheckout() {
     $("topicPaymentEmail").focus();
     return;
   }
+  saveTopicFormDraft();
   button.disabled = true;
-  $("topicAccessStatus").textContent = "Creating secure checkout...";
+  $("topicAccessStatus").textContent = "Creating secure checkout to unlock up to 12 ideas...";
   try {
     const data = await api("/api/topic-ideas/checkout", {
       method: "POST",
@@ -142,6 +173,42 @@ function collectPayload() {
     max_ideas: Number($("maxIdeas").value || 8),
     include_older_foundational: $("includeOlderFoundational").checked,
   };
+}
+
+function saveTopicFormDraft() {
+  try {
+    localStorage.setItem(TOPIC_FORM_STORAGE_KEY, JSON.stringify(collectPayload()));
+  } catch (_) {}
+}
+
+function restoreTopicFormDraft() {
+  try {
+    const value = JSON.parse(localStorage.getItem(TOPIC_FORM_STORAGE_KEY) || "null");
+    if (!value) return;
+    const mappings = {
+      researchArea: "research_area",
+      context: "context",
+      countryRegion: "country_region",
+      level: "level",
+      methodology: "methodology",
+      dataType: "data_type",
+      keywords: "keywords",
+      trendFocus: "trend_focus",
+      maxIdeas: "max_ideas",
+    };
+    Object.entries(mappings).forEach(([id, key]) => {
+      if ($(id) && value[key] !== undefined && value[key] !== null) $(id).value = String(value[key]);
+    });
+    if ($("includeOlderFoundational") && value.include_older_foundational !== undefined) {
+      $("includeOlderFoundational").checked = Boolean(value.include_older_foundational);
+    }
+  } catch (_) {}
+}
+
+function showFreePreviewUnlock(show = true) {
+  const panel = $("freePreviewUnlock");
+  if (!panel) return;
+  panel.hidden = !show;
 }
 
 function listText(value) {
@@ -265,7 +332,11 @@ function renderIdeas(result) {
   const ideasBox = $("ideaResults");
   const sourceBox = $("sourceRecords");
   const excluded = result.excluded_retracted_count || 0;
+  const accessLabel = result.free_preview
+    ? `Free preview: ${Number(result.ideas_returned || 2)} of up to ${Number(result.paid_maximum_ideas || PAID_MAXIMUM_IDEAS)} ideas`
+    : `Unlocked set: ${Number(result.ideas_returned || (result.ideas || []).length)} ideas`;
   meta.innerHTML = `
+    <strong>Access:</strong> ${escapeHtml(accessLabel)}<br />
     <strong>Academic level:</strong> ${escapeHtml(result.selected_level || "Not specified")}<br />
     <strong>Trend summary:</strong> ${escapeHtml(result.trend_summary || "No trend summary returned.")}<br />
     <strong>Search query:</strong> ${escapeHtml(result.query || "")}<br />
@@ -280,9 +351,11 @@ function renderIdeas(result) {
     ideasBox.className = "idea-results empty-state";
     ideasBox.innerHTML = "<p>No ideas were returned. Refine the research area and try again.</p>";
     $("copyIdeasBtn").disabled = true;
+    showFreePreviewUnlock(false);
     return;
   }
 
+  showFreePreviewUnlock(Boolean(result.free_preview));
   ideasBox.className = "idea-results";
   ideasBox.innerHTML = ideas.map((idea, idx) => `
     <article class="idea-card">
@@ -361,29 +434,44 @@ async function generateIdeas(event) {
     $("ideaStatus").textContent = "Please enter a research area or broad topic.";
     return;
   }
+
   const accessReady = await checkTopicAccess({ quiet: true });
-  if (!accessReady) {
-    setTopicAccessState("", "Payment is required before topic ideas can be generated. Ghana: GHS 10. Outside Ghana: US$1.50.");
-    $("topicPaymentEmail").scrollIntoView({ behavior: "smooth", block: "center" });
-    return;
-  }
-  $("ideaStatus").textContent = "Searching current literature, datasets and possible instrument sources, then generating topic ideas...";
+  payload.max_ideas = accessReady
+    ? Math.max(5, Math.min(Number(payload.max_ideas || PAID_MAXIMUM_IDEAS), PAID_MAXIMUM_IDEAS))
+    : FREE_PREVIEW_IDEAS;
+
+  $("ideaStatus").textContent = accessReady
+    ? `Searching current literature and generating ${payload.max_ideas} unlocked topic ideas...`
+    : "Searching current literature and generating your 2 free topic ideas...";
   $("generateIdeasBtn").disabled = true;
+  showFreePreviewUnlock(false);
+  saveTopicFormDraft();
+
   try {
     const result = await api("/api/topic-ideas", {
       method: "POST",
-      headers: topicAccessHeaders(),
+      headers: accessReady ? topicAccessHeaders() : {},
       body: JSON.stringify(payload),
     });
     renderIdeas(result);
     const providerErrors = (result.provider_errors || []).length;
-    $("ideaStatus").textContent = providerErrors
-      ? `Generated ideas. ${providerErrors} metadata provider(s) could not be reached.`
-      : "Generated topic ideas, objectives, possible data sources and possible instrument sources.";
-    await checkTopicAccess({ quiet: true });
+    if (result.free_preview) {
+      $("ideaStatus").textContent = providerErrors
+        ? `Your 2 free ideas are ready. ${providerErrors} metadata provider(s) could not be reached. Unlock to compare up to 12 ideas.`
+        : "Your 2 free ideas are ready. Unlock to generate a fuller set of up to 12 ideas to compare and select from.";
+      setTopicAccessState("free", "Free preview completed. Unlock up to 12 ideas for GHS 10 in Ghana or US$1.50 outside Ghana.");
+    } else {
+      $("ideaStatus").textContent = providerErrors
+        ? `Generated the unlocked idea set. ${providerErrors} metadata provider(s) could not be reached.`
+        : "Generated the unlocked topic ideas, objectives, possible data sources and possible instrument sources.";
+      await checkTopicAccess({ quiet: true });
+    }
   } catch (err) {
     $("ideaStatus").textContent = `Error: ${err.message}`;
-    if (err.status === 402) setTopicAccessState("", err.message);
+    if (err.status === 402) {
+      updateGenerationControls(false);
+      setTopicAccessState("free", `${err.message} You can still generate 2 ideas free.`);
+    }
   } finally {
     $("generateIdeasBtn").disabled = false;
   }
@@ -403,6 +491,8 @@ function clearIdeas() {
   $("ideaStatus").textContent = "";
   lastIdeaText = "";
   $("copyIdeasBtn").disabled = true;
+  showFreePreviewUnlock(false);
+  updateGenerationControls(paidAccessReady);
 }
 
 async function copyIdeas() {
@@ -416,14 +506,22 @@ window.addEventListener("DOMContentLoaded", () => {
   $("clearIdeasBtn").addEventListener("click", clearIdeas);
   $("copyIdeasBtn").addEventListener("click", copyIdeas);
   $("unlockTopicIdeasBtn").addEventListener("click", startTopicIdeasCheckout);
+  $("unlockFromPreviewBtn").addEventListener("click", startTopicIdeasCheckout);
   $("checkTopicAccessBtn").addEventListener("click", () => checkTopicAccess());
 
+  restoreTopicFormDraft();
+  updateGenerationControls(false);
   const profile = registrationProfile();
   if (profile?.email && !$("topicPaymentEmail").value) $("topicPaymentEmail").value = profile.email;
   const params = new URLSearchParams(window.location.search);
   if (params.get("payment") === "success") {
-    $("topicAccessStatus").textContent = "Payment returned successfully. Confirming access...";
-    checkTopicAccess();
+    $("topicAccessStatus").textContent = "Payment returned successfully. Confirming your up-to-12-ideas access...";
+    checkTopicAccess().then((ready) => {
+      if (ready) {
+        $("ideaStatus").textContent = "Access confirmed. Choose how many ideas you want, then select Generate unlocked ideas.";
+        $("generateIdeasBtn").scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    });
     history.replaceState({}, "", window.location.pathname);
   } else if (params.get("payment") === "cancelled" || params.get("payment") === "failed") {
     setTopicAccessState("", "Payment was not completed. You can try again when ready.");

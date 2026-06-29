@@ -495,3 +495,62 @@ body.topic-page {
 @media (max-width: 620px) {
   .topic-price-grid { grid-template-columns: 1fr; }
 }
+
+/* Two-idea free preview and paid full-set unlock */
+.topic-access-badge.free {
+  background: #ecfdf5;
+  color: #047857;
+  border-color: #6ee7b7;
+}
+.field-help {
+  display: block;
+  margin-top: 0.35rem;
+  color: #64748b;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+#maxIdeas:disabled {
+  background: #f1f5f9;
+  color: #64748b;
+  cursor: not-allowed;
+}
+.free-preview-unlock {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid #86efac;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #f0fdf4, #eff6ff);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.07);
+}
+.free-preview-unlock[hidden] { display: none; }
+.free-preview-unlock h3 {
+  margin: 0.15rem 0 0.35rem;
+  color: #14532d;
+}
+.free-preview-unlock p { margin: 0.2rem 0; }
+.free-preview-price-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin: 0.8rem 0;
+}
+.free-preview-price-row span {
+  padding: 0.65rem;
+  border: 1px solid #bbf7d0;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.86);
+  color: #334155;
+}
+#unlockFromPreviewBtn {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.75rem 1rem;
+  background: #047857;
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+}
+#unlockFromPreviewBtn:hover { filter: brightness(0.96); }
+@media (max-width: 620px) {
+  .free-preview-price-row { grid-template-columns: 1fr; }
+}

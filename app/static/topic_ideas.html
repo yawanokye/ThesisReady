@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ProjectReady AI | Thesis Topic Ideas</title>
   <link rel="stylesheet" href="/static/styles.css?v=20260618-suite-ui-verified" />
-  <link rel="stylesheet" href="/static/topic_ideas.css?v=20260629-paid-access" />
+  <link rel="stylesheet" href="/static/topic_ideas.css?v=20260629-free-two-unlock" />
   <link rel="stylesheet" href="/static/projectready-suite.css?v=20260618-suite-ui-verified" />
 </head>
 <body class="topic-page suite-page ideas-suite">
@@ -26,8 +26,8 @@
     <section class="topic-hero">
       <div>
         <p class="eyebrow">Research idea generator</p>
-        <h1>Generate thesis and dissertation titles from current research trends and feasible data directions</h1>
-        <p class="lead">Enter a research area, context and possible variables. ProjectReady AI uses scholarly metadata signals, excludes detected retracted papers, and suggests researchable titles with brief synopses, level-appropriate proposed objectives, possible methods, likely variables and feasibility notes.</p><div class="suite-capability-strip"><span class="suite-pill green">Trend grounded</span><span class="suite-pill">Synopsis included</span><span class="suite-pill purple">Level-fit objectives</span><span class="suite-pill amber">Feasibility note</span><span class="suite-pill purple">Source records</span></div>
+        <h1>Generate 2 thesis or dissertation ideas free, then unlock up to 12 to compare</h1>
+        <p class="lead">Enter a research area, context and possible variables. Your first 2 ideas are free. ProjectReady AI uses scholarly metadata signals, excludes detected retracted papers, and suggests researchable titles with brief synopses, level-appropriate proposed objectives, possible methods, likely variables and feasibility notes. Unlock only when you want a fuller set of up to 12 ideas to compare.</p><div class="suite-capability-strip"><span class="suite-pill green">Trend grounded</span><span class="suite-pill">Synopsis included</span><span class="suite-pill purple">Level-fit objectives</span><span class="suite-pill amber">Feasibility note</span><span class="suite-pill purple">Source records</span></div>
       </div>
       <aside class="topic-note">
         <strong>Responsible use</strong>
@@ -49,7 +49,7 @@
       <div><strong>2</strong><span>Context</span></div>
       <div><strong>3</strong><span>Trend scan</span></div>
       <div><strong>4</strong><span>Titles + objectives</span></div>
-      <div><strong>5</strong><span>Feasibility</span></div>
+      <div><strong>5</strong><span>Unlock up to 12</span></div>
     </section>
 
     <section class="topic-layout">
@@ -57,12 +57,12 @@
         <section class="topic-access-card" aria-labelledby="topicAccessHeading">
           <div class="topic-access-heading">
             <div>
-              <p class="eyebrow">One-time access</p>
-              <h2 id="topicAccessHeading">Unlock Topic Ideas</h2>
+              <p class="eyebrow">Free preview, optional unlock</p>
+              <h2 id="topicAccessHeading">Start with 2 ideas free</h2>
             </div>
-            <span id="topicAccessBadge" class="topic-access-badge">Payment required</span>
+            <span id="topicAccessBadge" class="topic-access-badge free">2 ideas free</span>
           </div>
-          <p>One payment provides one guided generation of up to 12 topic ideas, with proposed objectives, trend-grounded literature records, possible data sources and possible instrument-source suggestions.</p>
+          <p>Generate the first 2 ideas free. When you want more alternatives, one payment unlocks one guided generation of up to 12 ideas, with proposed objectives, trend-grounded literature records, possible data sources and possible instrument-source suggestions.</p>
           <div class="topic-price-grid">
             <label class="topic-price-option">
               <input type="radio" name="topicMarket" value="ghana" checked />
@@ -77,10 +77,10 @@
             <input id="topicPaymentEmail" type="email" autocomplete="email" placeholder="name@example.com" />
           </label>
           <div class="topic-access-actions">
-            <button id="unlockTopicIdeasBtn" type="button">Unlock Topic Ideas</button>
+            <button id="unlockTopicIdeasBtn" type="button">Unlock up to 12 ideas</button>
             <button id="checkTopicAccessBtn" type="button" class="secondary-action">Check access</button>
           </div>
-          <p id="topicAccessStatus" class="status" aria-live="polite">Ghana: GHS 10. Outside Ghana: US$1.50.</p>
+          <p id="topicAccessStatus" class="status" aria-live="polite">Generate 2 ideas free. Unlock up to 12 for GHS 10 in Ghana or US$1.50 outside Ghana.</p>
           <p class="hint topic-market-note">Choose Ghana only when Ghana is your billing country. International payments are processed in US dollars.</p>
         </section>
 
@@ -133,13 +133,14 @@
               <option>Limited data access</option>
             </select>
           </label>
-          <label><span class="field-label">Number of title ideas</span>
-            <select id="maxIdeas">
+          <label><span class="field-label">Number of ideas after unlocking</span>
+            <select id="maxIdeas" disabled>
               <option value="5">5</option>
-              <option value="8" selected>8</option>
+              <option value="8">8</option>
               <option value="10">10</option>
-              <option value="12">12</option>
+              <option value="12" selected>12</option>
             </select>
+            <small id="maxIdeasHelp" class="field-help">Your free preview returns 2 ideas. Unlock to choose up to 12.</small>
           </label>
         </div>
 
@@ -148,7 +149,7 @@
         </label>
         <label class="inline topic-inline"><input type="checkbox" id="includeOlderFoundational" checked /> Include older foundational sources where relevant</label>
         <div class="actions topic-actions">
-          <button id="generateIdeasBtn" type="submit">Generate topic ideas</button>
+          <button id="generateIdeasBtn" type="submit">Generate 2 free ideas</button>
           <button id="clearIdeasBtn" type="button" class="secondary-action">Clear</button>
         </div>
         <p id="ideaStatus" class="status"></p>
@@ -158,14 +159,26 @@
         <div class="result-head">
           <div>
             <h2>2. Suggested titles, synopses and objectives</h2>
-            <p class="hint">Each idea includes a synopsis, level-appropriate objectives, variables or constructs, possible secondary datasets, and possible questionnaire or instrument sources that may be adopted or adapted.</p>
+            <p class="hint">The free preview shows 2 complete ideas. Unlocking provides a fuller set of up to 12 ideas to compare and select from. Each idea includes a synopsis, level-appropriate objectives, variables or constructs, possible secondary datasets, and possible questionnaire or instrument sources that may be adopted or adapted.</p>
           </div>
           <button id="copyIdeasBtn" type="button" disabled>Copy results</button>
         </div>
         <div id="ideaMeta" class="idea-meta"></div>
         <div id="ideaResults" class="idea-results empty-state">
-          <p>Generated ideas will appear here.</p>
+          <p>Your 2 free ideas will appear here.</p>
         </div>
+        <section id="freePreviewUnlock" class="free-preview-unlock" hidden aria-live="polite">
+          <div>
+            <p class="eyebrow">Want more alternatives?</p>
+            <h3>Unlock up to 12 ideas to compare and select from</h3>
+            <p>Your research details will be kept in this browser while you complete payment.</p>
+          </div>
+          <div class="free-preview-price-row">
+            <span><strong>Ghana</strong> GHS 10 through Paystack</span>
+            <span><strong>Outside Ghana</strong> US$1.50 through Stripe</span>
+          </div>
+          <button id="unlockFromPreviewBtn" type="button">Unlock up to 12 ideas</button>
+        </section>
       </section>
     </section>
 
@@ -176,6 +189,6 @@
     </section>
   </main>
 
-  <script src="/static/topic_ideas.js?v=20260629-paid-access"></script>
+  <script src="/static/topic_ideas.js?v=20260629-free-two-unlock"></script>
 </body>
 </html>
