@@ -1,20 +1,15 @@
-"""ProjectReady AI chapter pricing and entitlement rules.
+"""ProjectReady AI pricing and entitlement rules.
 
-Commercial model
-----------------
-* Free Starter: Chapter One only, up to five selected sections, no paid extras.
-* Every paid purchase is tied to one project chapter.
-* A paid chapter includes one initial draft, one revision, one compliance check,
-  and one DOCX export.
-* The displayed international prices are fixed in USD.
-* African customers are routed to Paystack and charged in GHS. The GHS amount
-  is configured in ``paystack_payments.py`` through Render environment values.
+Two purchase pathways are supported:
+* Standard chapter package: one draft, one revision, one compliance check and one DOCX export.
+* Revision-only package: one strengthening revision, one compliance check and one DOCX export for a chapter brought from outside ProjectReady AI.
 """
 from __future__ import annotations
 
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
+import os
 import re
 
 DEFAULT_DISPLAY_CURRENCY = "USD"
@@ -29,12 +24,22 @@ ACTION_FIELDS: Dict[str, Tuple[str, str]] = {
     "export": ("exports_total", "exports_used"),
 }
 
+
+def _price_env(name: str, default: float) -> float:
+    try:
+        value = float(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    return round(max(value, 0.5), 2)
+
+
 CHAPTER_PLANS: Dict[str, Dict[str, Any]] = {
     "bachelors_chapter": {
         "name": "Bachelors Project",
         "description": "One undergraduate project chapter with guided academic drafting and checking.",
         "price_usd": 4.99,
         "levels": ["Bachelors"],
+        "purchase_mode": "chapter",
         "drafts": 1,
         "revisions": 1,
         "compliance_checks": 1,
@@ -51,6 +56,7 @@ CHAPTER_PLANS: Dict[str, Dict[str, Any]] = {
             "Research Masters / MPhil",
             "MPhil",
         ],
+        "purchase_mode": "chapter",
         "drafts": 1,
         "revisions": 1,
         "compliance_checks": 1,
@@ -63,16 +69,66 @@ CHAPTER_PLANS: Dict[str, Dict[str, Any]] = {
         "price_usd": 19.99,
         "levels": [
             "Professional Doctorate (e.g. DBA, DEd)",
+            "Professional Doctorate / DBA / DEd",
             "Professional Doctorate",
             "DBA",
             "DEd",
             "PhD",
         ],
+        "purchase_mode": "chapter",
         "drafts": 1,
         "revisions": 1,
         "compliance_checks": 1,
         "docx_exports": 1,
         "display_order": 3,
+    },
+    "bachelors_revision": {
+        "name": "Bachelors Chapter Strengthening",
+        "description": "Strengthen one existing undergraduate chapter brought from outside ProjectReady AI.",
+        "price_usd": _price_env("PROJECTREADY_BACHELORS_REVISION_USD", 2.99),
+        "levels": ["Bachelors"],
+        "purchase_mode": "revision_only",
+        "drafts": 0,
+        "revisions": 1,
+        "compliance_checks": 1,
+        "docx_exports": 1,
+        "display_order": 11,
+    },
+    "masters_revision": {
+        "name": "Masters / MPhil Chapter Strengthening",
+        "description": "Strengthen one existing Masters or MPhil chapter brought from outside ProjectReady AI.",
+        "price_usd": _price_env("PROJECTREADY_MASTERS_REVISION_USD", 5.99),
+        "levels": [
+            "Non-Research Masters",
+            "Research Masters (e.g. MPhil)",
+            "Research Masters / MPhil",
+            "MPhil",
+        ],
+        "purchase_mode": "revision_only",
+        "drafts": 0,
+        "revisions": 1,
+        "compliance_checks": 1,
+        "docx_exports": 1,
+        "display_order": 12,
+    },
+    "doctorate_revision": {
+        "name": "Doctoral Chapter Strengthening",
+        "description": "Strengthen one existing professional doctorate or PhD chapter with advanced academic depth.",
+        "price_usd": _price_env("PROJECTREADY_DOCTORATE_REVISION_USD", 11.99),
+        "levels": [
+            "Professional Doctorate (e.g. DBA, DEd)",
+            "Professional Doctorate / DBA / DEd",
+            "Professional Doctorate",
+            "DBA",
+            "DEd",
+            "PhD",
+        ],
+        "purchase_mode": "revision_only",
+        "drafts": 0,
+        "revisions": 1,
+        "compliance_checks": 1,
+        "docx_exports": 1,
+        "display_order": 13,
     },
 }
 
@@ -82,16 +138,16 @@ def _normalise_text(value: Any) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def normalise_purchase_mode(value: str) -> str:
+    mode = str(value or "chapter").strip().lower().replace("-", "_")
+    return "revision_only" if mode in {"revision", "revision_only", "strengthening"} else "chapter"
+
+
 def normalise_email(email: str) -> str:
     return str(email or "").strip().lower()
 
 
 def normalise_chapter_key(chapter_number: Any, chapter_title: str = "") -> str:
-    """Return a stable chapter entitlement key.
-
-    ProjectReady labels can change between templates and UI builds, so payment
-    ownership is bound to the project ID and numeric chapter rather than title text.
-    """
     try:
         number = int(chapter_number)
     except Exception as exc:
@@ -101,8 +157,12 @@ def normalise_chapter_key(chapter_number: Any, chapter_title: str = "") -> str:
     return f"chapter-{number}"
 
 
-def ordered_plans() -> List[Tuple[str, Dict[str, Any]]]:
-    return sorted(CHAPTER_PLANS.items(), key=lambda item: item[1].get("display_order", 999))
+def ordered_plans(purchase_mode: str | None = None) -> List[Tuple[str, Dict[str, Any]]]:
+    mode = normalise_purchase_mode(purchase_mode or "chapter") if purchase_mode else None
+    items = CHAPTER_PLANS.items()
+    if mode:
+        items = [item for item in items if item[1].get("purchase_mode", "chapter") == mode]
+    return sorted(items, key=lambda item: item[1].get("display_order", 999))
 
 
 def get_plan(plan_key: str) -> Dict[str, Any]:
@@ -119,42 +179,41 @@ def get_plan(plan_key: str) -> Dict[str, Any]:
     return result
 
 
-def plan_key_for_level(level: str) -> str:
+def plan_key_for_level(level: str, purchase_mode: str = "chapter") -> str:
     target = _normalise_text(level)
+    mode = normalise_purchase_mode(purchase_mode)
     if not target:
         raise ValueError("Academic level is required.")
 
-    # Exact and near-exact configured values first.
-    for key, plan in ordered_plans():
+    for key, plan in ordered_plans(mode):
         for configured_level in plan.get("levels", []):
             if target == _normalise_text(configured_level):
                 return key
 
-    # Tolerant matching for values sent by older ProjectReady UI builds.
+    suffix = "revision" if mode == "revision_only" else "chapter"
     if "bachelor" in target or "undergraduate" in target:
-        return "bachelors_chapter"
+        return f"bachelors_{suffix}"
     if any(token in target for token in ("phd", "doctorate", "dba", "ded")):
-        return "doctorate_chapter"
+        return f"doctorate_{suffix}"
     if any(token in target for token in ("master", "mphil")):
-        return "masters_chapter"
+        return f"masters_{suffix}"
+    raise ValueError(f"No {mode.replace('_', ' ')} plan is configured for academic level: {level}")
 
-    raise ValueError(f"No paid chapter plan is configured for academic level: {level}")
 
-
-def validate_plan_for_level(plan_key: str, level: str) -> Dict[str, Any]:
-    expected = plan_key_for_level(level)
+def validate_plan_for_level(plan_key: str, level: str, purchase_mode: str = "chapter") -> Dict[str, Any]:
+    expected = plan_key_for_level(level, purchase_mode)
     supplied = str(plan_key or "").strip().lower()
     if supplied != expected:
         return {
             "allowed": False,
-            "reason": "plan_level_mismatch",
-            "message": "The selected plan does not match the academic level.",
+            "reason": "plan_level_or_mode_mismatch",
+            "message": "The selected plan does not match the academic level or purchase pathway.",
             "recommended_plan": expected,
         }
     return {
         "allowed": True,
-        "reason": "plan_matches_level",
-        "message": "The selected plan matches the academic level.",
+        "reason": "plan_matches_level_and_mode",
+        "message": "The selected plan matches the academic level and purchase pathway.",
         "recommended_plan": expected,
     }
 
@@ -178,16 +237,17 @@ def quota_payload(plan_key: str) -> Dict[str, int]:
     }
 
 
-def build_plans_payload(level: str = "") -> Dict[str, Any]:
+def build_plans_payload(level: str = "", purchase_mode: str = "chapter") -> Dict[str, Any]:
+    mode = normalise_purchase_mode(purchase_mode)
     recommended: Optional[str] = None
     if str(level or "").strip():
         try:
-            recommended = plan_key_for_level(level)
+            recommended = plan_key_for_level(level, mode)
         except ValueError:
             recommended = None
 
     plans: List[Dict[str, Any]] = []
-    for key, _ in ordered_plans():
+    for key, _ in ordered_plans(mode):
         plan = get_plan(key)
         plans.append(
             {
@@ -195,10 +255,11 @@ def build_plans_payload(level: str = "") -> Dict[str, Any]:
                 "name": plan["name"],
                 "description": plan["description"],
                 "levels": plan["levels"],
+                "purchase_mode": plan["purchase_mode"],
                 "amount": plan["amount"],
                 "currency": plan["currency"],
                 "price_display": plan["price_display"],
-                "per": "chapter",
+                "per": "uploaded chapter" if mode == "revision_only" else "chapter",
                 "includes": {
                     "initial_draft": plan["drafts"],
                     "revision": plan["revisions"],
@@ -212,10 +273,11 @@ def build_plans_payload(level: str = "") -> Dict[str, Any]:
 
     return {
         "product": "ProjectReady AI",
-        "billing_model": "one-off per chapter",
+        "billing_model": "one-off revision-only" if mode == "revision_only" else "one-off per chapter",
+        "purchase_mode": mode,
         "display_currency": DEFAULT_DISPLAY_CURRENCY,
         "recommended_plan": recommended,
-        "free_starter": {
+        "free_starter": None if mode == "revision_only" else {
             "price_display": "US$0",
             "chapter_number": FREE_CHAPTER_NUMBER,
             "maximum_selected_sections": FREE_CHAPTER_ONE_SECTION_LIMIT,
@@ -233,7 +295,6 @@ def is_free_generation_allowed(
     selected_section_ids: List[str] | Tuple[str, ...] | None,
     revision_mode: bool = False,
 ) -> Dict[str, Any]:
-    """Apply the Free Starter limit without depending on template-specific IDs."""
     try:
         number = int(chapter_number)
     except Exception:
@@ -244,7 +305,7 @@ def is_free_generation_allowed(
         return {
             "allowed": False,
             "reason": "revision_requires_paid_chapter",
-            "message": "Chapter revision is included after purchasing the chapter plan.",
+            "message": "Chapter revision requires a paid chapter or revision-only plan.",
         }
     if number != FREE_CHAPTER_NUMBER:
         return {
@@ -256,10 +317,7 @@ def is_free_generation_allowed(
         return {
             "allowed": False,
             "reason": "free_section_limit_exceeded",
-            "message": (
-                f"Free Starter allows up to {FREE_CHAPTER_ONE_SECTION_LIMIT} selected "
-                "sections of Chapter One."
-            ),
+            "message": f"Free Starter allows up to {FREE_CHAPTER_ONE_SECTION_LIMIT} selected sections of Chapter One.",
         }
     if not selected:
         return {

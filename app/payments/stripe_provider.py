@@ -39,6 +39,19 @@ def amount_to_subunit(amount: float) -> int:
 
 def initialize_stripe_payment(purchase: Dict[str, Any], *, database_url: str = "") -> Dict[str, Any]:
     stripe = _stripe_module()
+    purchase_metadata = purchase.get("metadata_json") or {}
+    if not isinstance(purchase_metadata, dict):
+        purchase_metadata = {}
+    purchase_mode = str(purchase_metadata.get("purchase_mode") or "chapter")
+    return_path = str(purchase_metadata.get("return_path") or CANCEL_PATH)
+    if not return_path.startswith("/") or return_path.startswith("//"):
+        return_path = CANCEL_PATH
+    description = (
+        "One chapter strengthening revision, one compliance check, and one DOCX export."
+        if purchase_mode == "revision_only"
+        else "One chapter draft, one revision, one compliance check, and one DOCX export."
+    )
+    cancel_separator = "&" if "?" in return_path else "?"
     metadata = {
         "product": "ProjectReady AI",
         "purchase_id": purchase["id"],
@@ -48,6 +61,7 @@ def initialize_stripe_payment(purchase: Dict[str, Any], *, database_url: str = "
         "chapter_number": str(purchase["chapter_number"]),
         "academic_level": purchase["academic_level"],
         "plan_key": purchase["plan_key"],
+        "purchase_mode": purchase_mode,
     }
     try:
         session = stripe.checkout.Session.create(
@@ -62,7 +76,7 @@ def initialize_stripe_payment(purchase: Dict[str, Any], *, database_url: str = "
                         "unit_amount": amount_to_subunit(float(purchase["amount"])),
                         "product_data": {
                             "name": f"ProjectReady AI, {purchase['chapter_title'] or purchase['chapter_key']}",
-                            "description": "One chapter draft, one revision, one compliance check, and one DOCX export.",
+                            "description": description,
                         },
                     },
                 }
@@ -70,7 +84,7 @@ def initialize_stripe_payment(purchase: Dict[str, Any], *, database_url: str = "
             metadata=metadata,
             payment_intent_data={"metadata": metadata},
             success_url=f"{APP_BASE_URL}/payment/stripe/success?session_id={{CHECKOUT_SESSION_ID}}",
-            cancel_url=f"{APP_BASE_URL}{CANCEL_PATH}?payment=cancelled&purchase_id={purchase['id']}",
+            cancel_url=f"{APP_BASE_URL}{return_path}{cancel_separator}payment=cancelled&purchase_id={purchase['id']}",
             allow_promotion_codes=False,
         )
     except Exception as exc:

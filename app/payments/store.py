@@ -736,3 +736,116 @@ def rollback_claim(usage_id: str, *, database_url: str = "") -> None:
         except Exception:
             conn.rollback()
             raise
+
+
+def rotate_project_access_tokens(
+    project_id: str,
+    *,
+    database_url: str = "",
+) -> list[Dict[str, Any]]:
+    """Issue fresh browser credentials for active purchases after PIN recovery.
+
+    The recovery email and PIN are verified by the project-recovery layer before
+    this function is called. Only the newest active purchase for each chapter is
+    rotated and returned. Rotating invalidates the old browser token for that
+    purchase, which prevents a lost device from retaining paid access.
+    """
+    init_payment_tables(database_url)
+    project_value = str(project_id or "").strip()
+    if not project_value:
+        return []
+
+    if _is_postgres(database_url):
+        with _postgres_connection(database_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT * FROM projectready_purchases
+                    WHERE project_id=%s AND status IN ('paid', 'active')
+                    ORDER BY created_at DESC
+                    """,
+                    (project_value,),
+                )
+                purchases = [_row_to_dict(row) or {} for row in cur.fetchall()]
+                restored: list[Dict[str, Any]] = []
+                seen_chapters: set[str] = set()
+                for purchase in purchases:
+                    chapter_key = str(purchase.get("chapter_key") or "")
+                    if not chapter_key or chapter_key in seen_chapters:
+                        continue
+                    expires = purchase.get("expires_at")
+                    if isinstance(expires, str):
+                        try:
+                            expires = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+                        except Exception:
+                            expires = None
+                    if expires and getattr(expires, "tzinfo", None) is None:
+                        expires = expires.replace(tzinfo=timezone.utc)
+                    if expires and expires <= _utc_now():
+                        continue
+                    access_token = secrets.token_urlsafe(32)
+                    cur.execute(
+                        """
+                        UPDATE projectready_purchases
+                        SET access_token_hash=%s, updated_at=CURRENT_TIMESTAMP
+                        WHERE id=%s
+                        """,
+                        (_hash_token(access_token), purchase["id"]),
+                    )
+                    restored.append({
+                        "purchase_id": purchase["id"],
+                        "access_token": access_token,
+                        "project_id": purchase["project_id"],
+                        "chapter_number": int(purchase["chapter_number"]),
+                        "chapter_key": chapter_key,
+                        "plan_key": purchase.get("plan_key"),
+                        "expires_at": str(purchase.get("expires_at") or ""),
+                    })
+                    seen_chapters.add(chapter_key)
+            conn.commit()
+        return restored
+
+    with _sqlite_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        rows = conn.execute(
+            """
+            SELECT * FROM projectready_purchases
+            WHERE project_id=? AND status IN ('paid', 'active')
+            ORDER BY created_at DESC
+            """,
+            (project_value,),
+        ).fetchall()
+        restored: list[Dict[str, Any]] = []
+        seen_chapters: set[str] = set()
+        for row in rows:
+            purchase = _row_to_dict(row) or {}
+            chapter_key = str(purchase.get("chapter_key") or "")
+            if not chapter_key or chapter_key in seen_chapters:
+                continue
+            expires = purchase.get("expires_at")
+            if isinstance(expires, str):
+                try:
+                    expires = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+                except Exception:
+                    expires = None
+            if expires and getattr(expires, "tzinfo", None) is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            if expires and expires <= _utc_now():
+                continue
+            access_token = secrets.token_urlsafe(32)
+            conn.execute(
+                "UPDATE projectready_purchases SET access_token_hash=?, updated_at=? WHERE id=?",
+                (_hash_token(access_token), _utc_iso(), purchase["id"]),
+            )
+            restored.append({
+                "purchase_id": purchase["id"],
+                "access_token": access_token,
+                "project_id": purchase["project_id"],
+                "chapter_number": int(purchase["chapter_number"]),
+                "chapter_key": chapter_key,
+                "plan_key": purchase.get("plan_key"),
+                "expires_at": str(purchase.get("expires_at") or ""),
+            })
+            seen_chapters.add(chapter_key)
+        conn.commit()
+    return restored
