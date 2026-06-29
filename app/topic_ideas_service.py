@@ -608,7 +608,7 @@ def _fallback_ideas(payload: dict[str, Any], sources: list[dict[str, Any]], coun
 
 def generate_topic_ideas(payload: dict[str, Any]) -> dict[str, Any]:
     """Generate source-grounded thesis ideas with DeepSeek V4 Pro by default."""
-    max_ideas = max(3, min(int(payload.get("max_ideas") or 8), 12))
+    max_ideas = max(2, min(int(payload.get("max_ideas") or 8), 12))
     profile = _build_topic_search_profile(payload)
     search_terms = " ".join([
         str(payload.get("research_area") or ""),
