@@ -170,6 +170,14 @@ def chapter_strengthener_targets(payload: ChapterTargetRequest) -> dict[str, Any
 @router.post("/api/chapter-strengthener/external-projects")
 def create_external_revision_project(payload: ExternalRevisionProjectCreate) -> dict[str, Any]:
     """Create a lightweight project for a chapter written outside ProjectReady AI."""
+    if not payload.academic_integrity_confirmed or not payload.user_contribution_confirmed:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Confirm that the uploaded chapter is part of your own authorised academic work, "
+                "that you supplied the underlying research materials, and that you will independently review the revision."
+            ),
+        )
     project_id = str(uuid.uuid4())
     chapter_number = _chapter_number(payload.chapter_type)
     chapter_title = _chapter_title(payload.chapter_type, payload.chapter_title)
@@ -200,6 +208,8 @@ def create_external_revision_project(payload: ExternalRevisionProjectCreate) -> 
         "contribution_claim": payload.contribution_claim,
         "data_and_results": payload.data_and_results,
         "created_for": "chapter_strengthener",
+        "academic_integrity_confirmed": True,
+        "user_contribution_confirmed": True,
     }
     drafts = {str(chapter_number): payload.chapter_text}
     with get_conn() as conn:
@@ -254,6 +264,13 @@ def strengthen_project_chapter(
     request: Request,
 ) -> dict[str, Any]:
     project = _project_or_404(project_id)
+    if not payload.academic_integrity_confirmed or not payload.user_contribution_confirmed:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Confirm the responsible-use and user-contribution declarations before strengthening the chapter."
+            ),
+        )
     chapter_number = _chapter_number(payload.chapter_type)
     title = _chapter_title(payload.chapter_type, payload.chapter_title)
     merged_payload = _merge_project_profile(payload.model_dump(), project)

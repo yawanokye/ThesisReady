@@ -54,6 +54,14 @@ def _check_recovery_rate_limit(request: Request, email: str) -> None:
 
 @router.post("")
 def create_project(payload: ProjectCreate):
+    if not payload.academic_integrity_confirmed or not payload.user_contribution_confirmed:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Confirm the academic-integrity and user-contribution declarations "
+                "before creating the research project."
+            ),
+        )
     project_id = str(uuid.uuid4())
     raw = payload.model_dump()
     recovery_email = str(raw.pop("recovery_email", "") or "").strip()

@@ -112,6 +112,142 @@ def _merge_payload_sources_into_profile(profile: dict[str, Any], payload: DraftR
         profile["source_search_terms"] = source_terms
     return profile
 
+
+def _plain_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, dict):
+        return " ".join(_plain_text(item) for item in value.values())
+    if isinstance(value, (list, tuple, set)):
+        return " ".join(_plain_text(item) for item in value)
+    return re.sub(r"\s+", " ", str(value)).strip()
+
+
+def _apply_profile_updates(project: dict[str, Any], payload: DraftRequest) -> None:
+    updates = getattr(payload, "profile_updates", None) or {}
+    if not isinstance(updates, dict):
+        return
+    profile = project.get("profile") or {}
+    allowed = {
+        "title", "level", "academic_level_guidance", "reference_currency_rule",
+        "thesis_format", "format_notes", "research_area", "study_context",
+        "citation_evidence_notes", "research_approach", "data_type", "variables",
+        "objectives", "research_questions", "hypotheses", "notes",
+        "other_chapter_title", "other_chapter_instructions", "draft_maturity",
+        "student_contribution", "academic_integrity_confirmed",
+        "user_contribution_confirmed",
+    }
+    for key in allowed:
+        if key not in updates:
+            continue
+        value = updates[key]
+        if key == "title":
+            title = str(value or "").strip()
+            if title:
+                project["title"] = title
+                profile["title"] = title
+            continue
+        profile[key] = value
+    project["profile"] = profile
+
+
+def _readiness_error(missing: list[str]) -> HTTPException:
+    return HTTPException(
+        status_code=422,
+        detail={
+            "code": "guided_development_input_required",
+            "message": (
+                "ProjectReady AI develops working drafts from the researcher's own "
+                "materials. Complete the listed research inputs before continuing: "
+                + "; ".join(missing)
+            ),
+            "missing": missing,
+        },
+    )
+
+
+def _validate_guided_development_request(
+    project: dict[str, Any],
+    payload: DraftRequest,
+    *,
+    revision_mode: bool,
+    revision_text: str,
+) -> None:
+    if not bool(getattr(payload, "academic_integrity_confirmed", False)):
+        raise _readiness_error([
+            "confirm that this is your own academic project and that the output will be reviewed under your institution's academic-integrity requirements"
+        ])
+    if not bool(getattr(payload, "user_contribution_confirmed", False)):
+        raise _readiness_error([
+            "confirm that you have supplied your own research direction, materials, evidence or existing writing"
+        ])
+    if not payload.selected_section_ids:
+        raise _readiness_error(["select at least one required chapter section"])
+
+    if revision_mode:
+        if len(_plain_text(revision_text)) < 100:
+            raise _readiness_error(["upload or paste the existing chapter that you want to strengthen"])
+        return
+
+    profile = project.get("profile") or {}
+    contribution = profile.get("student_contribution") or {}
+    answers_text = _plain_text(payload.answers)
+    objectives_text = _plain_text(profile.get("objectives"))
+    research_logic = " ".join([
+        objectives_text,
+        _plain_text(profile.get("research_questions")),
+        _plain_text(profile.get("hypotheses")),
+        answers_text,
+    ]).strip()
+
+    categories = {
+        "context": _plain_text(profile.get("study_context")),
+        "research_logic": research_logic,
+        "student_position": " ".join([
+            _plain_text(contribution.get("central_argument")),
+            _plain_text(contribution.get("local_context_notes")),
+        ]).strip(),
+        "evidence": " ".join([
+            _plain_text(profile.get("citation_evidence_notes")),
+            _plain_text(contribution.get("evidence_anchors")),
+            _plain_text(profile.get("source_bank")),
+        ]).strip(),
+        "institutional_direction": " ".join([
+            _plain_text(profile.get("format_notes")),
+            _plain_text(contribution.get("supervisor_comments")),
+            _plain_text(payload.extra_instructions),
+        ]).strip(),
+    }
+    missing: list[str] = []
+    if len(_plain_text(project.get("title") or profile.get("title"))) < 3:
+        missing.append("enter the approved or provisional research title")
+    if len(_plain_text(profile.get("research_area"))) < 3 and len(categories["context"]) < 30:
+        missing.append("describe the research area and study context")
+    if len(research_logic) < 60:
+        missing.append("provide research objectives, questions or detailed answers to the selected section prompts")
+
+    meaningful_categories = sum(1 for value in categories.values() if len(value) >= 35)
+    total_user_input = sum(len(value) for value in categories.values())
+    if meaningful_categories < 2 or total_user_input < 140:
+        missing.append("add meaningful context, evidence, student judgement, institutional guidance or supervisor direction")
+
+    if int(payload.chapter_number or 0) == 2:
+        source_bank = profile.get("source_bank") or []
+        has_verified_evidence = len(_plain_text(profile.get("citation_evidence_notes"))) >= 50
+        if not source_bank and not has_verified_evidence and len(answers_text) < 500:
+            missing.append("attach relevant literature sources or provide verified reference notes for the literature review")
+
+    if int(payload.chapter_number or 0) == 4:
+        uploaded_results = profile.get("uploaded_results") or {}
+        result_record = uploaded_results.get(str(payload.chapter_number)) or {}
+        result_text = _plain_text(result_record.get("extracted_text") or result_record.get("text"))
+        if len(result_text) < 50:
+            missing.append("upload the actual results or findings for Chapter Four")
+
+    if missing:
+        raise _readiness_error(missing)
+
+
 @router.post("/{project_id}/draft")
 def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
     project = _get_project_or_404(project_id)
@@ -119,6 +255,8 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
         chapter = get_chapter(payload.chapter_number)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    _apply_profile_updates(project, payload)
 
     # Some deployed frontends include revision-mode fields. Use getattr defaults so
     # the endpoint remains stable even when schemas and frontend files are updated
@@ -190,6 +328,20 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
                 human_parts.append(f"{label}: {value}")
         extra_instructions = (extra_instructions + "\n\n" + "\n".join(human_parts)).strip()
 
+    responsible_use_instruction = (
+        "Responsible-use requirement: develop an editable AI-assisted working draft from the user's own research inputs. "
+        "Do not describe the output as completed, final, submission-ready, ghostwritten or independently authored by the platform. "
+        "Do not fabricate sources, data, findings, approvals or institutional facts. Preserve clear attention placeholders for missing evidence."
+    )
+    extra_instructions = (extra_instructions + "\n\n" + responsible_use_instruction).strip()
+
+    _validate_guided_development_request(
+        project,
+        payload,
+        revision_mode=revision_mode,
+        revision_text=revision_text,
+    )
+
     other_title = getattr(payload, "other_chapter_title", "") or project["profile"].get("other_chapter_title", "")
     other_instructions = getattr(payload, "other_chapter_instructions", "") or project["profile"].get("other_chapter_instructions", "")
     if payload.chapter_number == 6 and (other_title or other_instructions):
@@ -219,7 +371,7 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
         )
         existing_free_draft = bool((project.get("drafts") or {}).get(str(payload.chapter_number), "").strip())
         if not free_check.get("allowed") or existing_free_draft:
-            message = free_check.get("message") or "Unlock this chapter to continue."
+            message = free_check.get("message") or "Unlock guided chapter development to continue."
             if existing_free_draft and free_check.get("allowed"):
                 message = "The Free Starter draft for Chapter One has already been used. Unlock the chapter to generate another draft."
             raise HTTPException(
@@ -261,10 +413,10 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
             conn.execute(
                 """
                 UPDATE projects
-                SET profile_json = ?, drafts_json = ?, selected_sections_json = ?, updated_at = CURRENT_TIMESTAMP
+                SET title = ?, profile_json = ?, drafts_json = ?, selected_sections_json = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
                 """,
-                (json.dumps(project.get("profile", {})), json.dumps(drafts), json.dumps(selected), project_id),
+                (project.get("title") or project.get("profile", {}).get("title") or "Untitled project", json.dumps(project.get("profile", {})), json.dumps(drafts), json.dumps(selected), project_id),
             )
             conn.commit()
 
@@ -290,6 +442,7 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
             "access_mode": access_mode,
             "entitlement_action": action,
             "generation_metrics": metrics,
+            "working_draft_notice": "AI-assisted working draft. Review, verify and revise it before any academic use or submission.",
         }
 
     try:
@@ -490,7 +643,7 @@ def export_instrument(project_id: str, chapter_number: int):
 def export_methods_supplement(project_id: str):
     project = _get_project_or_404(project_id)
     # This is intentionally independent of the selected chapter. The main
-    # Research Methods/Methodology chapter remains a submission-ready chapter,
+    # Research Methods/Methodology chapter remains a coherent working draft for supervisor review,
     # while this supplementary chapter gathers instruments, measurement details,
     # variable/data-source registers and appendix materials for analysis.
     path = export_methods_supplement_docx(project, 0, EXPORT_DIR)
