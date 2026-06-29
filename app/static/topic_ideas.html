@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ProjectReady AI | Thesis Topic Ideas</title>
   <link rel="stylesheet" href="/static/styles.css?v=20260618-suite-ui-verified" />
-  <link rel="stylesheet" href="/static/topic_ideas.css?v=20260623-level-objectives" />
+  <link rel="stylesheet" href="/static/topic_ideas.css?v=20260629-paid-access" />
   <link rel="stylesheet" href="/static/projectready-suite.css?v=20260618-suite-ui-verified" />
 </head>
 <body class="topic-page suite-page ideas-suite">
@@ -54,6 +54,36 @@
 
     <section class="topic-layout">
       <form id="ideaForm" class="topic-card topic-form">
+        <section class="topic-access-card" aria-labelledby="topicAccessHeading">
+          <div class="topic-access-heading">
+            <div>
+              <p class="eyebrow">One-time access</p>
+              <h2 id="topicAccessHeading">Unlock Topic Ideas</h2>
+            </div>
+            <span id="topicAccessBadge" class="topic-access-badge">Payment required</span>
+          </div>
+          <p>One payment provides one guided generation of up to 12 topic ideas, with proposed objectives, trend-grounded literature records, possible data sources and possible instrument-source suggestions.</p>
+          <div class="topic-price-grid">
+            <label class="topic-price-option">
+              <input type="radio" name="topicMarket" value="ghana" checked />
+              <span><strong>Ghana</strong><small>GHS 10 through Paystack</small></span>
+            </label>
+            <label class="topic-price-option">
+              <input type="radio" name="topicMarket" value="international" />
+              <span><strong>Outside Ghana</strong><small>US$1.50 through Stripe</small></span>
+            </label>
+          </div>
+          <label><span class="field-label">Payment email</span>
+            <input id="topicPaymentEmail" type="email" autocomplete="email" placeholder="name@example.com" />
+          </label>
+          <div class="topic-access-actions">
+            <button id="unlockTopicIdeasBtn" type="button">Unlock Topic Ideas</button>
+            <button id="checkTopicAccessBtn" type="button" class="secondary-action">Check access</button>
+          </div>
+          <p id="topicAccessStatus" class="status" aria-live="polite">Ghana: GHS 10. Outside Ghana: US$1.50.</p>
+          <p class="hint topic-market-note">Choose Ghana only when Ghana is your billing country. International payments are processed in US dollars.</p>
+        </section>
+
         <h2>1. Describe the research interest</h2>
         <label class="priority-field"><span class="field-label">Research area or broad topic</span>
           <input id="researchArea" required placeholder="e.g. digital financial literacy, green procurement, stakeholder engagement, AI in education" />
@@ -118,7 +148,7 @@
         </label>
         <label class="inline topic-inline"><input type="checkbox" id="includeOlderFoundational" checked /> Include older foundational sources where relevant</label>
         <div class="actions topic-actions">
-          <button id="generateIdeasBtn" type="submit">Generate title ideas</button>
+          <button id="generateIdeasBtn" type="submit">Generate topic ideas</button>
           <button id="clearIdeasBtn" type="button" class="secondary-action">Clear</button>
         </div>
         <p id="ideaStatus" class="status"></p>
@@ -146,6 +176,6 @@
     </section>
   </main>
 
-  <script src="/static/topic_ideas.js?v=20260625-data-instruments"></script>
+  <script src="/static/topic_ideas.js?v=20260629-paid-access"></script>
 </body>
 </html>

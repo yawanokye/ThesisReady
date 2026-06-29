@@ -1,5 +1,6 @@
 const $ = (id) => document.getElementById(id);
 let lastIdeaText = "";
+const TOPIC_ACCESS_STORAGE_KEY = "projectready-topic-ideas-access-v1";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -12,14 +13,120 @@ function escapeHtml(value) {
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
     ...options,
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
   });
+  const raw = await response.text();
+  let data = {};
+  try { data = raw ? JSON.parse(raw) : {}; } catch (_) { data = { detail: raw }; }
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || response.statusText);
+    const detail = typeof data.detail === "string" ? data.detail : (data.detail?.message || data.message || response.statusText);
+    const error = new Error(detail || "Request failed.");
+    error.status = response.status;
+    error.data = data;
+    throw error;
   }
-  return response.json();
+  return data;
+}
+
+function readTopicCredential() {
+  try {
+    const value = JSON.parse(localStorage.getItem(TOPIC_ACCESS_STORAGE_KEY) || "null");
+    if (value?.purchase_id && value?.access_token) return value;
+  } catch (_) {}
+  return null;
+}
+
+function saveTopicCredential(data) {
+  const credential = {
+    purchase_id: data.purchase_id,
+    access_token: data.access_token,
+    access_id: data.access_id || data.project_id || "",
+    provider: data.provider || "",
+    saved_at: new Date().toISOString(),
+  };
+  localStorage.setItem(TOPIC_ACCESS_STORAGE_KEY, JSON.stringify(credential));
+  return credential;
+}
+
+function topicAccessHeaders() {
+  const credential = readTopicCredential();
+  if (!credential) return {};
+  return {
+    "X-ProjectReady-Purchase-ID": credential.purchase_id,
+    "X-ProjectReady-Access-Token": credential.access_token,
+    "X-Idempotency-Key": crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+  };
+}
+
+function registrationProfile() {
+  for (const key of ["projectready-registration", "projectready-user-profile", "projectready_profile"]) {
+    try {
+      const value = JSON.parse(localStorage.getItem(key) || "null");
+      if (value?.email) return value;
+    } catch (_) {}
+  }
+  return null;
+}
+
+function selectedTopicMarket() {
+  return document.querySelector('input[name="topicMarket"]:checked')?.value || "ghana";
+}
+
+function setTopicAccessState(kind, message) {
+  const badge = $("topicAccessBadge");
+  const status = $("topicAccessStatus");
+  badge.className = `topic-access-badge ${kind || ""}`.trim();
+  badge.textContent = kind === "ready" ? "1 generation available" : kind === "used" ? "Access used" : "Payment required";
+  status.textContent = message;
+}
+
+async function checkTopicAccess({ quiet = false } = {}) {
+  const credential = readTopicCredential();
+  if (!credential) {
+    setTopicAccessState("", "Choose your market and complete payment to unlock one topic-idea generation.");
+    return false;
+  }
+  try {
+    const result = await api("/api/payments/entitlement-status", {
+      method: "POST",
+      body: JSON.stringify({ purchase_id: credential.purchase_id, access_token: credential.access_token }),
+    });
+    const remaining = Number(result.remaining?.draft || 0);
+    if (result.allowed && remaining > 0) {
+      setTopicAccessState("ready", `Payment confirmed. ${remaining} topic-idea generation is available until ${String(result.expires_at || "").slice(0, 10)}.`);
+      return true;
+    }
+    setTopicAccessState("used", remaining < 1 ? "This access has already been used. Purchase another generation to continue." : "This access is no longer active.");
+    return false;
+  } catch (error) {
+    if (!quiet) setTopicAccessState("", error.message || "Topic Ideas access could not be verified.");
+    return false;
+  }
+}
+
+async function startTopicIdeasCheckout() {
+  const button = $("unlockTopicIdeasBtn");
+  const email = $("topicPaymentEmail").value.trim();
+  if (!email || !email.includes("@")) {
+    setTopicAccessState("", "Enter a valid payment email address.");
+    $("topicPaymentEmail").focus();
+    return;
+  }
+  button.disabled = true;
+  $("topicAccessStatus").textContent = "Creating secure checkout...";
+  try {
+    const data = await api("/api/topic-ideas/checkout", {
+      method: "POST",
+      body: JSON.stringify({ email, market: selectedTopicMarket(), return_path: "/topic-ideas" }),
+    });
+    saveTopicCredential(data);
+    if (!data.checkout_url) throw new Error("The payment provider did not return a checkout URL.");
+    window.location.assign(data.checkout_url);
+  } catch (error) {
+    setTopicAccessState("", error.message || "Checkout could not start.");
+    button.disabled = false;
+  }
 }
 
 function collectPayload() {
@@ -254,24 +361,41 @@ async function generateIdeas(event) {
     $("ideaStatus").textContent = "Please enter a research area or broad topic.";
     return;
   }
-  $("ideaStatus").textContent = "Searching current literature, datasets and possible instrument sources, then generating title ideas...";
+  const accessReady = await checkTopicAccess({ quiet: true });
+  if (!accessReady) {
+    setTopicAccessState("", "Payment is required before topic ideas can be generated. Ghana: GHS 10. Outside Ghana: US$1.50.");
+    $("topicPaymentEmail").scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+  $("ideaStatus").textContent = "Searching current literature, datasets and possible instrument sources, then generating topic ideas...";
   $("generateIdeasBtn").disabled = true;
   try {
-    const result = await api("/api/topic-ideas", { method: "POST", body: JSON.stringify(payload) });
+    const result = await api("/api/topic-ideas", {
+      method: "POST",
+      headers: topicAccessHeaders(),
+      body: JSON.stringify(payload),
+    });
     renderIdeas(result);
     const providerErrors = (result.provider_errors || []).length;
     $("ideaStatus").textContent = providerErrors
       ? `Generated ideas. ${providerErrors} metadata provider(s) could not be reached.`
-      : "Generated title ideas, objectives, possible data sources and possible instrument sources.";
+      : "Generated topic ideas, objectives, possible data sources and possible instrument sources.";
+    await checkTopicAccess({ quiet: true });
   } catch (err) {
     $("ideaStatus").textContent = `Error: ${err.message}`;
+    if (err.status === 402) setTopicAccessState("", err.message);
   } finally {
     $("generateIdeasBtn").disabled = false;
   }
 }
 
 function clearIdeas() {
+  const paymentEmail = $("topicPaymentEmail").value;
+  const market = selectedTopicMarket();
   $("ideaForm").reset();
+  $("topicPaymentEmail").value = paymentEmail;
+  const marketRadio = document.querySelector(`input[name="topicMarket"][value="${market}"]`);
+  if (marketRadio) marketRadio.checked = true;
   $("ideaMeta").innerHTML = "";
   $("ideaResults").className = "idea-results empty-state";
   $("ideaResults").innerHTML = "<p>Generated ideas will appear here.</p>";
@@ -291,4 +415,20 @@ window.addEventListener("DOMContentLoaded", () => {
   $("ideaForm").addEventListener("submit", generateIdeas);
   $("clearIdeasBtn").addEventListener("click", clearIdeas);
   $("copyIdeasBtn").addEventListener("click", copyIdeas);
+  $("unlockTopicIdeasBtn").addEventListener("click", startTopicIdeasCheckout);
+  $("checkTopicAccessBtn").addEventListener("click", () => checkTopicAccess());
+
+  const profile = registrationProfile();
+  if (profile?.email && !$("topicPaymentEmail").value) $("topicPaymentEmail").value = profile.email;
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("payment") === "success") {
+    $("topicAccessStatus").textContent = "Payment returned successfully. Confirming access...";
+    checkTopicAccess();
+    history.replaceState({}, "", window.location.pathname);
+  } else if (params.get("payment") === "cancelled" || params.get("payment") === "failed") {
+    setTopicAccessState("", "Payment was not completed. You can try again when ready.");
+    history.replaceState({}, "", window.location.pathname);
+  } else {
+    checkTopicAccess({ quiet: true });
+  }
 });

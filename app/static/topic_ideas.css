@@ -422,3 +422,76 @@ body.topic-page {
   .resource-card-head { display: block; }
   .resource-card-head > span { display: inline-flex; margin-top: 0.35rem; }
 }
+
+
+/* Paid Topic Ideas access */
+.topic-access-card {
+  margin: -0.1rem -0.1rem 1.2rem;
+  padding: 1rem;
+  border: 1px solid #bfdbfe;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #eff6ff, #f8fafc);
+}
+.topic-access-heading,
+.topic-access-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.topic-access-heading h2 { margin: 0; }
+.topic-access-heading .eyebrow { margin: 0 0 0.15rem; }
+.topic-access-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.38rem 0.7rem;
+  background: #fff7ed;
+  color: #9a3412;
+  border: 1px solid #fdba74;
+  font-size: 0.83rem;
+  font-weight: 800;
+}
+.topic-access-badge.ready {
+  background: #ecfdf5;
+  color: #047857;
+  border-color: #6ee7b7;
+}
+.topic-access-badge.used {
+  background: #f1f5f9;
+  color: #475569;
+  border-color: #cbd5e1;
+}
+.topic-price-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+  margin: 0.8rem 0;
+}
+.topic-price-option {
+  display: flex !important;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.75rem;
+  border: 1px solid #bfdbfe;
+  border-radius: 14px;
+  background: #fff;
+  cursor: pointer;
+}
+.topic-price-option input { width: auto; margin: 0.25rem 0 0; }
+.topic-price-option span { display: grid; gap: 0.1rem; }
+.topic-price-option small { color: #475569; font-weight: 600; }
+#unlockTopicIdeasBtn {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.72rem 1rem;
+  background: #047857;
+  color: white;
+  font-weight: 800;
+  cursor: pointer;
+}
+#unlockTopicIdeasBtn:disabled { opacity: 0.55; cursor: wait; }
+@media (max-width: 620px) {
+  .topic-price-grid { grid-template-columns: 1fr; }
+}
