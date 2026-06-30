@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Payment Access Recovery | ProjectReady AI</title>
+  <link rel="stylesheet" href="/static/payment_recovery.css?v=20260630-all-payments-v1" />
+</head>
+<body>
+  <main class="recovery-shell">
+    <header>
+      <p class="eyebrow">ProjectReady AI support tool</p>
+      <h1>Payment access recovery</h1>
+      <p>Search all ProjectReady AI purchases by the customer’s exact payment email. A payment reference is optional. Create a one-time recovery link only after confirming the complaint.</p>
+    </header>
+
+    <section class="panel">
+      <label>Support recovery key
+        <input id="supportKey" type="password" autocomplete="off" placeholder="PROJECTREADY_SUPPORT_RECOVERY_KEY" />
+      </label>
+      <label>Customer payment email
+        <input id="customerEmail" type="email" autocomplete="email" placeholder="customer@example.com" />
+      </label>
+      <label>Payment ID or reference <span>(optional)</span>
+        <input id="paymentIdentifier" type="text" autocomplete="off" placeholder="Purchase ID, PRAI reference or Stripe session ID" />
+      </label>
+      <label>Support note <span>(optional)</span>
+        <textarea id="operatorNote" rows="3" placeholder="e.g. Customer reported paid access remained locked"></textarea>
+      </label>
+      <button id="searchPayments" type="button">Search payment records</button>
+      <p id="status" class="status" aria-live="polite"></p>
+    </section>
+
+    <section id="results" class="results" aria-live="polite"></section>
+
+    <section id="linkPanel" class="panel recovery-link-panel" hidden>
+      <h2>One-time customer recovery link</h2>
+      <p>This link expires after 60 minutes and can be used once. Send it only to the verified customer.</p>
+      <textarea id="recoveryUrl" rows="4" readonly></textarea>
+      <button id="copyRecoveryUrl" type="button">Copy recovery link</button>
+    </section>
+  </main>
+  <script src="/static/payment_recovery_admin.js?v=20260630-all-payments-v1"></script>
+</body>
+</html>

@@ -576,3 +576,12 @@ body.topic-page {
 }
 .topic-access-recovery label { margin-bottom: 0.65rem; }
 #restoreTopicAccessBtn:disabled { opacity: 0.55; cursor: wait; }
+
+.topic-trial-panel {
+  border-color: rgba(38, 104, 173, 0.28);
+  background: rgba(239, 247, 255, 0.72);
+}
+
+.topic-trial-panel summary {
+  color: #123f72;
+}

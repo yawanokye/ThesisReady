@@ -176,6 +176,57 @@ async function checkTopicAccess({ quiet = false, allowRecovery = true } = {}) {
   }
 }
 
+async function loadTopicAccessPlan() {
+  try {
+    const plan = await api("/api/topic-ideas/access-plan");
+    const trialPanel = $("topicTrialPanel");
+    if (trialPanel) trialPanel.hidden = !Boolean(plan.trial?.available);
+    return plan;
+  } catch (_) {
+    const trialPanel = $("topicTrialPanel");
+    if (trialPanel) trialPanel.hidden = true;
+    return null;
+  }
+}
+
+async function activateTopicTrial() {
+  const button = $("activateTopicTrialBtn");
+  const email = $("topicPaymentEmail")?.value.trim() || "";
+  const trialKey = $("topicTrialKey")?.value.trim() || "";
+  if (!email || !email.includes("@")) {
+    setTopicAccessState("", "Enter a valid email address before activating trial access.");
+    $("topicPaymentEmail")?.focus();
+    return;
+  }
+  if (!trialKey) {
+    setTopicAccessState("", "Enter the private Topic Ideas trial key.");
+    $("topicTrialKey")?.focus();
+    return;
+  }
+  button.disabled = true;
+  $("topicAccessStatus").textContent = "Activating trial access through the normal entitlement system...";
+  try {
+    const data = await api("/api/topic-ideas/activate-trial", {
+      method: "POST",
+      body: JSON.stringify({ email, trial_key: trialKey }),
+    });
+    saveTopicCredential(data);
+    $("topicTrialKey").value = "";
+    const ready = await checkTopicAccess({ quiet: true, allowRecovery: false });
+    if (!ready) throw new Error("The trial record was created but the entitlement did not become active.");
+    setTopicAccessState("ready", data.recovered
+      ? "Trial credential restored. Choose 5, 8, 10 or 12 ideas."
+      : "Trial access activated. Choose 5, 8, 10 or 12 ideas.");
+    $("ideaStatus").textContent = "Trial unlock confirmed. The options are enabled without a payment or an existing Purchase ID.";
+    $("maxIdeas")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  } catch (error) {
+    updateGenerationControls(false);
+    setTopicAccessState("free", error.message || "Trial access could not be activated.");
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function redeemTopicHandoff(handoff) {
   const data = await api("/api/topic-ideas/redeem-handoff", {
     method: "POST",
@@ -593,8 +644,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   $("unlockFromPreviewBtn").addEventListener("click", startTopicIdeasCheckout);
   $("checkTopicAccessBtn").addEventListener("click", () => checkTopicAccess());
   $("restoreTopicAccessBtn").addEventListener("click", restoreTopicAccessFromForm);
+  $("activateTopicTrialBtn").addEventListener("click", activateTopicTrial);
 
   restoreTopicFormDraft();
+  await loadTopicAccessPlan();
   updateGenerationControls(false);
   const profile = registrationProfile();
   if (profile?.email && !$("topicPaymentEmail").value) $("topicPaymentEmail").value = profile.email;
