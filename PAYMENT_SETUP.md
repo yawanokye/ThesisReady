@@ -174,3 +174,32 @@ No additional environment variable is required. The payment and handoff tables m
 ```env
 DATABASE_URL=/var/data/projectready.db
 ```
+
+## Topic Ideas administrator trial key
+
+To test the internal Topic Ideas unlock before making another payment, temporarily set:
+
+```env
+PROJECTREADY_TOPIC_IDEAS_TRIAL_KEY=your-private-random-trial-key
+```
+
+The Topic Ideas page will show an **Administrator trial access** panel. The key creates a Purchase ID automatically and issues the same one-generation entitlement used by a paid purchase. The key is assigned to the first email that activates it. The same email may reuse it to restore a lost browser credential, but it does not reset a consumed generation. Remove or rotate the environment variable after the test.
+
+This test bypasses the payment provider. It confirms the application unlock and entitlement path, not the Paystack or Stripe callback.
+
+
+## Support recovery for all payments
+
+Set a strong private environment variable:
+
+```env
+PROJECTREADY_SUPPORT_RECOVERY_KEY=replace-with-a-long-random-secret
+```
+
+Open the support dashboard at:
+
+```text
+https://projectreadyai.com/admin/payment-recovery
+```
+
+The dashboard searches the persistent payment database using the customer's exact payment email. A Purchase ID, ProjectReady provider reference or Stripe Checkout Session ID may be entered when available, but it is not required. Select the correct paid record and create a one-time recovery link. The customer opens the link on the device where access should be restored. The link expires after 60 minutes, works once and does not extend or reset the purchased quota.
