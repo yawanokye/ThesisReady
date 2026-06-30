@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ProjectReady AI | Thesis Topic Ideas</title>
   <link rel="stylesheet" href="/static/styles.css?v=20260618-suite-ui-verified" />
-  <link rel="stylesheet" href="/static/topic_ideas.css?v=20260629-free-two-unlock" />
+  <link rel="stylesheet" href="/static/topic_ideas.css?v=20260630-payment-handoff-v3" />
   <link rel="stylesheet" href="/static/projectready-suite.css?v=20260618-suite-ui-verified" />
 </head>
 <body class="topic-page suite-page ideas-suite">
@@ -81,6 +81,14 @@
             <button id="checkTopicAccessBtn" type="button" class="secondary-action">Check access</button>
           </div>
           <p id="topicAccessStatus" class="status" aria-live="polite">Generate 2 ideas free. Unlock up to 12 for GHS 10 in Ghana or US$1.50 outside Ghana.</p>
+          <details id="topicRecoveryPanel" class="topic-access-recovery">
+            <summary>Paid but the options are still locked?</summary>
+            <p>Enter the same payment email and the Purchase ID returned after checkout. ProjectReady AI will verify the transaction directly with Paystack or Stripe and issue a fresh access credential.</p>
+            <label><span class="field-label">Purchase ID</span>
+              <input id="topicRecoveryPurchaseId" type="text" autocomplete="off" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+            </label>
+            <button id="restoreTopicAccessBtn" type="button" class="secondary-action">Restore paid access</button>
+          </details>
           <p class="hint topic-market-note">Choose Ghana only when Ghana is your billing country. International payments are processed in US dollars.</p>
         </section>
 
@@ -189,6 +197,6 @@
     </section>
   </main>
 
-  <script src="/static/topic_ideas.js?v=20260629-free-two-unlock"></script>
+  <script src="/static/topic_ideas.js?v=20260630-payment-handoff-v3"></script>
 </body>
 </html>

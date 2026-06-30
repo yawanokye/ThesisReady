@@ -554,3 +554,25 @@ body.topic-page {
 @media (max-width: 620px) {
   .free-preview-price-row { grid-template-columns: 1fr; }
 }
+
+/* Durable payment-return and recovery controls */
+.topic-access-recovery {
+  margin-top: 0.75rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+.topic-access-recovery summary {
+  cursor: pointer;
+  font-weight: 800;
+  color: #0f172a;
+}
+.topic-access-recovery[open] summary { margin-bottom: 0.6rem; }
+.topic-access-recovery p {
+  margin: 0 0 0.7rem;
+  color: #475569;
+  line-height: 1.5;
+}
+.topic-access-recovery label { margin-bottom: 0.65rem; }
+#restoreTopicAccessBtn:disabled { opacity: 0.55; cursor: wait; }

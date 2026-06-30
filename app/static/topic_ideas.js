@@ -5,6 +5,7 @@ const TOPIC_FORM_STORAGE_KEY = "projectready-topic-ideas-form-v1";
 const FREE_PREVIEW_IDEAS = 2;
 const PAID_MAXIMUM_IDEAS = 12;
 let paidAccessReady = false;
+let runtimeTopicCredential = null;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -34,14 +35,25 @@ async function api(path, options = {}) {
 }
 
 function readTopicCredential() {
-  try {
-    const value = JSON.parse(localStorage.getItem(TOPIC_ACCESS_STORAGE_KEY) || "null");
-    if (value?.purchase_id && value?.access_token) return value;
-  } catch (_) {}
+  if (runtimeTopicCredential?.purchase_id && runtimeTopicCredential?.access_token) {
+    return runtimeTopicCredential;
+  }
+  for (const storage of [sessionStorage, localStorage]) {
+    try {
+      const value = JSON.parse(storage.getItem(TOPIC_ACCESS_STORAGE_KEY) || "null");
+      if (value?.purchase_id && value?.access_token) {
+        runtimeTopicCredential = value;
+        return value;
+      }
+    } catch (_) {}
+  }
   return null;
 }
 
 function saveTopicCredential(data) {
+  if (!data?.purchase_id || !data?.access_token) {
+    throw new Error("The server did not return a complete Topic Ideas access credential.");
+  }
   const credential = {
     purchase_id: data.purchase_id,
     access_token: data.access_token,
@@ -49,8 +61,20 @@ function saveTopicCredential(data) {
     provider: data.provider || "",
     saved_at: new Date().toISOString(),
   };
-  localStorage.setItem(TOPIC_ACCESS_STORAGE_KEY, JSON.stringify(credential));
+  runtimeTopicCredential = credential;
+  for (const storage of [sessionStorage, localStorage]) {
+    try { storage.setItem(TOPIC_ACCESS_STORAGE_KEY, JSON.stringify(credential)); } catch (_) {}
+  }
+  const recoveryInput = $("topicRecoveryPurchaseId");
+  if (recoveryInput) recoveryInput.value = credential.purchase_id;
   return credential;
+}
+
+function clearTopicCredential() {
+  runtimeTopicCredential = null;
+  for (const storage of [sessionStorage, localStorage]) {
+    try { storage.removeItem(TOPIC_ACCESS_STORAGE_KEY); } catch (_) {}
+  }
 }
 
 function topicAccessHeaders() {
@@ -103,7 +127,7 @@ function setTopicAccessState(kind, message) {
   status.textContent = message;
 }
 
-async function checkTopicAccess({ quiet = false } = {}) {
+async function checkTopicAccess({ quiet = false, allowRecovery = true } = {}) {
   const credential = readTopicCredential();
   if (!credential) {
     updateGenerationControls(false);
@@ -111,27 +135,87 @@ async function checkTopicAccess({ quiet = false } = {}) {
     return false;
   }
   try {
-    const result = await api("/api/payments/entitlement-status", {
+    const result = await api("/api/topic-ideas/payment-status", {
       method: "POST",
       body: JSON.stringify({ purchase_id: credential.purchase_id, access_token: credential.access_token }),
     });
     const remaining = Number(result.remaining?.draft || 0);
     if (result.allowed && remaining > 0) {
       updateGenerationControls(true);
-      setTopicAccessState("ready", `Payment confirmed. Choose up to 12 ideas for the unlocked generation before ${String(result.expires_at || "").slice(0, 10)}.`);
+      const select = $("maxIdeas");
+      if (select && Number(select.value || 0) < 5) select.value = "12";
+      setTopicAccessState("ready", `Payment confirmed. Choose 5, 8, 10 or 12 ideas for the unlocked generation before ${String(result.expires_at || "").slice(0, 10)}.`);
       return true;
     }
     updateGenerationControls(false);
+    if (String(result.status || "").toLowerCase() === "pending") {
+      setTopicAccessState("free", result.verification_message
+        ? `Payment is not yet confirmed: ${result.verification_message}`
+        : "Payment is still being confirmed. Select Check access again in a few seconds.");
+      return false;
+    }
     setTopicAccessState("used", remaining < 1
       ? "The unlocked generation has been used. You may still generate a new 2-idea free preview or purchase another unlock."
       : "This access is no longer active. The 2-idea free preview remains available.");
     return false;
   } catch (error) {
+    const email = $("topicPaymentEmail")?.value.trim() || "";
+    if (allowRecovery && error.status === 403 && credential.purchase_id && email) {
+      try {
+        await recoverTopicAccess(credential.purchase_id, email, { quiet: true });
+        return checkTopicAccess({ quiet, allowRecovery: false });
+      } catch (_) {
+        // Fall through to the clear user-facing message below.
+      }
+    }
     updateGenerationControls(false);
     if (!quiet) {
-      setTopicAccessState("free", `${error.message || "Paid access could not be verified."} You can still generate 2 ideas free.`);
+      setTopicAccessState("free", `${error.message || "Paid access could not be verified."} Use Restore paid access below if payment was completed.`);
     }
     return false;
+  }
+}
+
+async function redeemTopicHandoff(handoff) {
+  const data = await api("/api/topic-ideas/redeem-handoff", {
+    method: "POST",
+    body: JSON.stringify({ handoff }),
+  });
+  saveTopicCredential(data);
+  return data;
+}
+
+async function recoverTopicAccess(purchaseId, email, { quiet = false } = {}) {
+  const cleanPurchaseId = String(purchaseId || "").trim();
+  const cleanEmail = String(email || "").trim();
+  if (!cleanPurchaseId) throw new Error("Enter the Purchase ID shown after payment.");
+  if (!cleanEmail || !cleanEmail.includes("@")) throw new Error("Enter the same email address used for payment.");
+  if (!quiet) $("topicAccessStatus").textContent = "Verifying the paid transaction and restoring access...";
+  const data = await api("/api/topic-ideas/recover-access", {
+    method: "POST",
+    body: JSON.stringify({ purchase_id: cleanPurchaseId, email: cleanEmail }),
+  });
+  saveTopicCredential(data);
+  if (!quiet) setTopicAccessState("ready", "Paid access restored. Choose 5, 8, 10 or 12 ideas.");
+  return data;
+}
+
+async function restoreTopicAccessFromForm() {
+  const button = $("restoreTopicAccessBtn");
+  const purchaseId = $("topicRecoveryPurchaseId")?.value.trim() || readTopicCredential()?.purchase_id || "";
+  const email = $("topicPaymentEmail")?.value.trim() || "";
+  button.disabled = true;
+  try {
+    await recoverTopicAccess(purchaseId, email);
+    const ready = await checkTopicAccess({ allowRecovery: false });
+    if (ready) {
+      $("ideaStatus").textContent = "Access restored. Choose how many ideas you want, then select Generate unlocked ideas.";
+    }
+  } catch (error) {
+    updateGenerationControls(false);
+    setTopicAccessState("free", error.message || "Paid access could not be restored.");
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -501,32 +585,64 @@ async function copyIdeas() {
   $("ideaStatus").textContent = "Copied title ideas to clipboard.";
 }
 
-window.addEventListener("DOMContentLoaded", () => {
+window.addEventListener("DOMContentLoaded", async () => {
   $("ideaForm").addEventListener("submit", generateIdeas);
   $("clearIdeasBtn").addEventListener("click", clearIdeas);
   $("copyIdeasBtn").addEventListener("click", copyIdeas);
   $("unlockTopicIdeasBtn").addEventListener("click", startTopicIdeasCheckout);
   $("unlockFromPreviewBtn").addEventListener("click", startTopicIdeasCheckout);
   $("checkTopicAccessBtn").addEventListener("click", () => checkTopicAccess());
+  $("restoreTopicAccessBtn").addEventListener("click", restoreTopicAccessFromForm);
 
   restoreTopicFormDraft();
   updateGenerationControls(false);
   const profile = registrationProfile();
   if (profile?.email && !$("topicPaymentEmail").value) $("topicPaymentEmail").value = profile.email;
+
   const params = new URLSearchParams(window.location.search);
+  const returnedPurchaseId = params.get("purchase_id") || "";
+  const existingCredential = readTopicCredential();
+  if ($("topicRecoveryPurchaseId")) {
+    $("topicRecoveryPurchaseId").value = returnedPurchaseId || existingCredential?.purchase_id || "";
+  }
+
   if (params.get("payment") === "success") {
-    $("topicAccessStatus").textContent = "Payment returned successfully. Confirming your up-to-12-ideas access...";
-    checkTopicAccess().then((ready) => {
-      if (ready) {
-        $("ideaStatus").textContent = "Access confirmed. Choose how many ideas you want, then select Generate unlocked ideas.";
-        $("generateIdeasBtn").scrollIntoView({ behavior: "smooth", block: "center" });
+    $("topicAccessStatus").textContent = "Payment received. Activating your up-to-12-ideas access...";
+    let handoffError = null;
+    const handoff = params.get("handoff") || "";
+    try {
+      if (handoff) {
+        await redeemTopicHandoff(handoff);
+      } else if (returnedPurchaseId && $("topicPaymentEmail").value.trim()) {
+        await recoverTopicAccess(returnedPurchaseId, $("topicPaymentEmail").value.trim(), { quiet: true });
       }
-    });
+    } catch (error) {
+      handoffError = error;
+    }
+
+    let ready = await checkTopicAccess({ quiet: true });
+    if (!ready && returnedPurchaseId && $("topicPaymentEmail").value.trim()) {
+      try {
+        await recoverTopicAccess(returnedPurchaseId, $("topicPaymentEmail").value.trim(), { quiet: true });
+        ready = await checkTopicAccess({ quiet: true, allowRecovery: false });
+      } catch (error) {
+        handoffError = handoffError || error;
+      }
+    }
+
+    if (ready) {
+      $("ideaStatus").textContent = "Access confirmed. Choose 5, 8, 10 or 12 ideas, then select Generate unlocked ideas.";
+      $("generateIdeasBtn").scrollIntoView({ behavior: "smooth", block: "center" });
+    } else {
+      const message = handoffError?.message || "Payment was received, but automatic access restoration is incomplete. Enter the payment email and Purchase ID below, then select Restore paid access.";
+      setTopicAccessState("free", message);
+      $("topicRecoveryPanel").open = true;
+    }
     history.replaceState({}, "", window.location.pathname);
   } else if (params.get("payment") === "cancelled" || params.get("payment") === "failed") {
-    setTopicAccessState("", "Payment was not completed. You can try again when ready.");
+    setTopicAccessState("free", "Payment was not completed. You can try again when ready.");
     history.replaceState({}, "", window.location.pathname);
   } else {
-    checkTopicAccess({ quiet: true });
+    await checkTopicAccess({ quiet: true });
   }
 });
