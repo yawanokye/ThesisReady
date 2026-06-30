@@ -105,6 +105,22 @@ def terms_page() -> FileResponse:
     return FileResponse(STATIC_DIR / "terms.html")
 
 
+@app.get("/admin/payment-recovery")
+def payment_recovery_admin_page() -> FileResponse:
+    return FileResponse(
+        STATIC_DIR / "payment_recovery_admin.html",
+        headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
+    )
+
+
+@app.get("/payment/recover")
+def payment_recover_page() -> FileResponse:
+    return FileResponse(
+        STATIC_DIR / "payment_recover.html",
+        headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
+    )
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
