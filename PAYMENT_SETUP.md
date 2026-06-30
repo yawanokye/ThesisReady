@@ -156,3 +156,21 @@ PROJECTREADY_PAYSTACK_DOCTORATE_REVISION_GHS=<approved GHS price>
 ```
 
 The revision-only plan includes one strengthening revision, one compliance check and one DOCX export. It contains no initial draft credit.
+
+## Topic Ideas payment-return activation
+
+The Topic Ideas payment flow now uses three recovery layers so a successful payment cannot remain locked merely because browser storage was cleared or the customer returned through a different hostname.
+
+1. The Stripe or Paystack callback verifies and activates the purchase.
+2. The callback creates a short-lived, single-use server handoff code and returns the customer to `/topic-ideas`.
+3. The Topic Ideas page redeems the handoff for a fresh opaque access credential and immediately enables the 5, 8, 10 and 12 idea options.
+
+The page also checks a pending transaction directly with its original provider instead of depending only on webhook timing. A customer whose payment is already complete can use **Paid but the options are still locked?** with the payment email and Purchase ID to restore access.
+
+The access handoff does not place the real access token in the URL. Only a hashed, expiring, single-use handoff is stored in the database.
+
+No additional environment variable is required. The payment and handoff tables must remain on the persistent database configured by:
+
+```env
+DATABASE_URL=/var/data/projectready.db
+```
