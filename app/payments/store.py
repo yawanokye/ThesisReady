@@ -7,7 +7,7 @@ when its file is placed on a persistent disk such as /var/data.
 from __future__ import annotations
 
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import os
@@ -112,11 +112,22 @@ CREATE TABLE IF NOT EXISTS projectready_entitlement_usage (
     metadata_json JSONB DEFAULT '{}'::jsonb
 );
 
+CREATE TABLE IF NOT EXISTS projectready_access_handoffs (
+    code_hash TEXT PRIMARY KEY,
+    purchase_id TEXT NOT NULL REFERENCES projectready_purchases(id) ON DELETE CASCADE,
+    purpose TEXT NOT NULL DEFAULT 'payment_return',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMPTZ NOT NULL,
+    redeemed_at TIMESTAMPTZ
+);
+
 CREATE INDEX IF NOT EXISTS idx_pr_purchase_email ON projectready_purchases(user_email);
 CREATE INDEX IF NOT EXISTS idx_pr_purchase_project_chapter ON projectready_purchases(project_id, chapter_key);
 CREATE INDEX IF NOT EXISTS idx_pr_purchase_reference ON projectready_purchases(provider_reference);
 CREATE INDEX IF NOT EXISTS idx_pr_purchase_status ON projectready_purchases(status);
 CREATE INDEX IF NOT EXISTS idx_pr_usage_purchase ON projectready_entitlement_usage(purchase_id);
+CREATE INDEX IF NOT EXISTS idx_pr_handoff_purchase ON projectready_access_handoffs(purchase_id);
+CREATE INDEX IF NOT EXISTS idx_pr_handoff_expiry ON projectready_access_handoffs(expires_at);
 """
 
 SQLITE_SCHEMA = """
@@ -174,11 +185,23 @@ CREATE TABLE IF NOT EXISTS projectready_entitlement_usage (
     FOREIGN KEY(purchase_id) REFERENCES projectready_purchases(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS projectready_access_handoffs (
+    code_hash TEXT PRIMARY KEY,
+    purchase_id TEXT NOT NULL,
+    purpose TEXT NOT NULL DEFAULT 'payment_return',
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    redeemed_at TEXT,
+    FOREIGN KEY(purchase_id) REFERENCES projectready_purchases(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_pr_purchase_email ON projectready_purchases(user_email);
 CREATE INDEX IF NOT EXISTS idx_pr_purchase_project_chapter ON projectready_purchases(project_id, chapter_key);
 CREATE INDEX IF NOT EXISTS idx_pr_purchase_reference ON projectready_purchases(provider_reference);
 CREATE INDEX IF NOT EXISTS idx_pr_purchase_status ON projectready_purchases(status);
 CREATE INDEX IF NOT EXISTS idx_pr_usage_purchase ON projectready_entitlement_usage(purchase_id);
+CREATE INDEX IF NOT EXISTS idx_pr_handoff_purchase ON projectready_access_handoffs(purchase_id);
+CREATE INDEX IF NOT EXISTS idx_pr_handoff_expiry ON projectready_access_handoffs(expires_at);
 """
 
 
@@ -428,6 +451,217 @@ def get_purchase_by_session(checkout_session_id: str, *, database_url: str = "")
                 return _row_to_dict(cur.fetchone())
     with _sqlite_connection(database_url) as conn:
         return _row_to_dict(conn.execute("SELECT * FROM projectready_purchases WHERE checkout_session_id=?", (checkout_session_id,)).fetchone())
+
+
+def rotate_access_token(purchase_id: str, *, database_url: str = "") -> Dict[str, Any]:
+    """Issue a fresh opaque browser credential for an existing purchase.
+
+    Only the token hash is stored. Rotating after a verified payment return lets
+    the browser recover access even when pre-checkout localStorage was blocked,
+    cleared, or isolated by a www/apex-domain change.
+    """
+    init_payment_tables(database_url)
+    new_token = secrets.token_urlsafe(32)
+    token_hash = _hash_token(new_token)
+
+    if _is_postgres(database_url):
+        with _postgres_connection(database_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE projectready_purchases
+                    SET access_token_hash=%s, updated_at=CURRENT_TIMESTAMP
+                    WHERE id=%s
+                    RETURNING *
+                    """,
+                    (token_hash, purchase_id),
+                )
+                row = cur.fetchone()
+            conn.commit()
+    else:
+        with _sqlite_connection(database_url) as conn:
+            now = _utc_iso()
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                "UPDATE projectready_purchases SET access_token_hash=?, updated_at=? WHERE id=?",
+                (token_hash, now, purchase_id),
+            )
+            row = conn.execute(
+                "SELECT * FROM projectready_purchases WHERE id=?",
+                (purchase_id,),
+            ).fetchone()
+            conn.commit()
+
+    purchase = _row_to_dict(row)
+    if not purchase:
+        raise ValueError("The paid access record could not be found.")
+    purchase["access_token"] = new_token
+    return purchase
+
+
+def create_access_handoff(
+    purchase_id: str,
+    *,
+    purpose: str = "payment_return",
+    ttl_minutes: int = 20,
+    database_url: str = "",
+) -> str:
+    """Create a short-lived, single-use payment-return handoff code."""
+    init_payment_tables(database_url)
+    purchase = get_purchase(purchase_id, database_url=database_url)
+    if not purchase or str(purchase.get("status") or "").lower() not in {"paid", "active"}:
+        raise ValueError("A paid purchase is required before access can be handed to the browser.")
+
+    raw_code = secrets.token_urlsafe(32)
+    code_hash = _hash_token(raw_code)
+    now = _utc_now()
+    expires_at = now + timedelta(minutes=max(5, min(int(ttl_minutes or 20), 60)))
+
+    if _is_postgres(database_url):
+        with _postgres_connection(database_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM projectready_access_handoffs WHERE purchase_id=%s AND redeemed_at IS NULL",
+                    (purchase_id,),
+                )
+                cur.execute(
+                    """
+                    INSERT INTO projectready_access_handoffs
+                        (code_hash, purchase_id, purpose, expires_at)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (code_hash, purchase_id, str(purpose or "payment_return")[:80], expires_at),
+                )
+            conn.commit()
+    else:
+        with _sqlite_connection(database_url) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                "DELETE FROM projectready_access_handoffs WHERE purchase_id=? AND redeemed_at IS NULL",
+                (purchase_id,),
+            )
+            conn.execute(
+                """
+                INSERT INTO projectready_access_handoffs
+                    (code_hash, purchase_id, purpose, created_at, expires_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    code_hash,
+                    purchase_id,
+                    str(purpose or "payment_return")[:80],
+                    now.isoformat(),
+                    expires_at.isoformat(),
+                ),
+            )
+            conn.commit()
+    return raw_code
+
+
+def redeem_access_handoff(code: str, *, database_url: str = "") -> Dict[str, Any]:
+    """Redeem a payment-return code once and rotate the browser access token."""
+    init_payment_tables(database_url)
+    raw_code = str(code or "").strip()
+    if len(raw_code) < 20:
+        raise PermissionError("The payment return code is missing or invalid.")
+    code_hash = _hash_token(raw_code)
+    new_token = secrets.token_urlsafe(32)
+    token_hash = _hash_token(new_token)
+    now = _utc_now()
+
+    if _is_postgres(database_url):
+        with _postgres_connection(database_url) as conn:
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT h.*, p.status AS purchase_status, p.plan_key
+                        FROM projectready_access_handoffs h
+                        JOIN projectready_purchases p ON p.id=h.purchase_id
+                        WHERE h.code_hash=%s
+                        FOR UPDATE
+                        """,
+                        (code_hash,),
+                    )
+                    handoff = _row_to_dict(cur.fetchone())
+                    if not handoff:
+                        raise PermissionError("The payment return code is invalid.")
+                    if handoff.get("redeemed_at"):
+                        raise PermissionError("This payment return code has already been used.")
+                    expires = handoff.get("expires_at")
+                    if expires and getattr(expires, "tzinfo", None) is None:
+                        expires = expires.replace(tzinfo=timezone.utc)
+                    if not expires or expires <= now:
+                        raise PermissionError("The payment return code has expired.")
+                    if str(handoff.get("purchase_status") or "").lower() not in {"paid", "active"}:
+                        raise PermissionError("The payment has not been activated.")
+                    cur.execute(
+                        "UPDATE projectready_access_handoffs SET redeemed_at=CURRENT_TIMESTAMP WHERE code_hash=%s",
+                        (code_hash,),
+                    )
+                    cur.execute(
+                        """
+                        UPDATE projectready_purchases
+                        SET access_token_hash=%s, updated_at=CURRENT_TIMESTAMP
+                        WHERE id=%s
+                        RETURNING *
+                        """,
+                        (token_hash, handoff["purchase_id"]),
+                    )
+                    row = cur.fetchone()
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+    else:
+        with _sqlite_connection(database_url) as conn:
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                handoff = _row_to_dict(conn.execute(
+                    """
+                    SELECT h.*, p.status AS purchase_status, p.plan_key
+                    FROM projectready_access_handoffs h
+                    JOIN projectready_purchases p ON p.id=h.purchase_id
+                    WHERE h.code_hash=?
+                    """,
+                    (code_hash,),
+                ).fetchone())
+                if not handoff:
+                    raise PermissionError("The payment return code is invalid.")
+                if handoff.get("redeemed_at"):
+                    raise PermissionError("This payment return code has already been used.")
+                try:
+                    expires = datetime.fromisoformat(str(handoff.get("expires_at") or "").replace("Z", "+00:00"))
+                except Exception:
+                    expires = None
+                if expires and expires.tzinfo is None:
+                    expires = expires.replace(tzinfo=timezone.utc)
+                if not expires or expires <= now:
+                    raise PermissionError("The payment return code has expired.")
+                if str(handoff.get("purchase_status") or "").lower() not in {"paid", "active"}:
+                    raise PermissionError("The payment has not been activated.")
+                conn.execute(
+                    "UPDATE projectready_access_handoffs SET redeemed_at=? WHERE code_hash=?",
+                    (now.isoformat(), code_hash),
+                )
+                conn.execute(
+                    "UPDATE projectready_purchases SET access_token_hash=?, updated_at=? WHERE id=?",
+                    (token_hash, now.isoformat(), handoff["purchase_id"]),
+                )
+                row = conn.execute(
+                    "SELECT * FROM projectready_purchases WHERE id=?",
+                    (handoff["purchase_id"],),
+                ).fetchone()
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+
+    purchase = _row_to_dict(row)
+    if not purchase:
+        raise ValueError("The paid access record could not be restored.")
+    purchase["access_token"] = new_token
+    return purchase
 
 
 def verify_access_token(purchase_id: str, access_token: str, *, database_url: str = "") -> bool:
