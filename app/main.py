@@ -17,7 +17,7 @@ STATIC_DIR = BASE_DIR / "static"
 app = FastAPI(
     title="ProjectReady AI",
     description="Guided academic research-development, chapter-strengthening and compliance workspace.",
-    version="0.1.0",
+    version="0.1.1",
 )
 
 app.add_middleware(
@@ -57,12 +57,18 @@ def workspace() -> FileResponse:
 
 @app.get("/topic-ideas")
 def topic_ideas_page() -> FileResponse:
-    return FileResponse(STATIC_DIR / "topic_ideas.html")
+    return FileResponse(
+        STATIC_DIR / "topic_ideas.html",
+        headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
+    )
 
 
 @app.get("/ideas")
 def ideas_page_alias() -> FileResponse:
-    return FileResponse(STATIC_DIR / "topic_ideas.html")
+    return FileResponse(
+        STATIC_DIR / "topic_ideas.html",
+        headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
+    )
 
 
 @app.get("/journal-article")
