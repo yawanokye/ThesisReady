@@ -28,10 +28,15 @@ from app.payments.paystack import (
 )
 from app.payments.router import choose_payment_provider, normalise_country_code
 from app.payments.store import (
+    create_access_handoff,
     create_pending_purchase,
     entitlement_status,
+    get_purchase,
     init_payment_tables,
     make_provider_reference,
+    redeem_access_handoff,
+    rotate_access_token,
+    verify_access_token,
 )
 from app.payments.stripe_provider import (
     StripePaymentError,
@@ -83,6 +88,15 @@ class TopicIdeasCheckoutRequest(BaseModel):
         if market in {"international", "outside_ghana", "other", "global"}:
             return "international"
         raise ValueError("Choose Ghana or Outside Ghana.")
+
+
+class TopicIdeasHandoffRequest(BaseModel):
+    handoff: str = Field(min_length=20, max_length=300)
+
+
+class TopicIdeasRecoveryRequest(BaseModel):
+    purchase_id: str = Field(min_length=10, max_length=100)
+    email: str = Field(min_length=5, max_length=254)
 
 
 def _valid_email(email: str) -> str:
@@ -139,6 +153,65 @@ def _server_chapter_title(project: Dict[str, Any], chapter_number: int, supplied
 def _redirect(path: str, **params: Any) -> RedirectResponse:
     separator = "&" if "?" in path else "?"
     return RedirectResponse(f"{path}{separator}{urlencode(params)}", status_code=303)
+
+
+def _is_topic_ideas_purchase(purchase: Dict[str, Any]) -> bool:
+    metadata = purchase.get("metadata_json") or {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+    return (
+        str(purchase.get("plan_key") or "").lower() == "topic_ideas_access"
+        or str(metadata.get("purchase_mode") or "").lower() == "topic_ideas"
+    )
+
+
+def _successful_payment_redirect(purchase: Dict[str, Any], provider: str) -> RedirectResponse:
+    metadata = purchase.get("metadata_json") or {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+    params: Dict[str, Any] = {
+        "payment": "success",
+        "provider": provider,
+        "purchase_id": purchase.get("id", ""),
+        "project_id": purchase.get("project_id", ""),
+        "chapter": purchase.get("chapter_number", ""),
+        "mode": metadata.get("purchase_mode", "chapter"),
+    }
+    # Topic Ideas no longer depends on a pre-checkout localStorage token. The
+    # signed provider callback creates a short-lived, single-use server handoff
+    # which the returning browser redeems for a fresh opaque access credential.
+    if _is_topic_ideas_purchase(purchase):
+        try:
+            params["handoff"] = create_access_handoff(
+                str(purchase.get("id") or ""),
+                purpose=f"{provider}_payment_return",
+                database_url=DATABASE_URL,
+            )
+        except Exception:
+            # Never strand a paid customer on the provider callback. The return
+            # URL still contains the purchase id, and the recovery endpoint can
+            # verify the provider transaction and issue a fresh credential.
+            params["handoff_status"] = "recovery_required"
+    return _redirect(_purchase_return_path(purchase), **params)
+
+
+def _verify_pending_topic_purchase(purchase: Dict[str, Any]) -> Dict[str, Any]:
+    if str(purchase.get("status") or "").lower() in {"paid", "active"}:
+        return purchase
+    provider = str(purchase.get("payment_provider") or "").lower()
+    if provider == "stripe":
+        session_id = str(purchase.get("checkout_session_id") or "").strip()
+        if not session_id:
+            return purchase
+        result = verify_and_activate_stripe_session(session_id, database_url=DATABASE_URL)
+    elif provider == "paystack":
+        reference = str(purchase.get("provider_reference") or "").strip()
+        if not reference:
+            return purchase
+        result = verify_and_activate_purchase(reference, database_url=DATABASE_URL)
+    else:
+        return purchase
+    return (result.get("purchase") or purchase) if result.get("ok") else purchase
 
 
 @api_router.get("/api/payments/plans")
@@ -277,6 +350,84 @@ def start_topic_ideas_checkout(payload: TopicIdeasCheckoutRequest) -> Dict[str, 
     }
 
 
+@api_router.post("/api/topic-ideas/redeem-handoff")
+def redeem_topic_ideas_handoff(payload: TopicIdeasHandoffRequest) -> Dict[str, Any]:
+    try:
+        purchase = redeem_access_handoff(payload.handoff, database_url=DATABASE_URL)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not _is_topic_ideas_purchase(purchase):
+        raise HTTPException(status_code=403, detail="This payment does not unlock Topic Ideas.")
+    status = entitlement_status(
+        str(purchase.get("id") or ""),
+        str(purchase.get("access_token") or ""),
+        database_url=DATABASE_URL,
+    )
+    return {
+        "ok": True,
+        "purchase_id": purchase.get("id"),
+        "access_token": purchase.get("access_token"),
+        "access_id": purchase.get("project_id"),
+        "provider": purchase.get("payment_provider"),
+        "status": status,
+    }
+
+
+@api_router.post("/api/topic-ideas/recover-access")
+def recover_topic_ideas_access(payload: TopicIdeasRecoveryRequest) -> Dict[str, Any]:
+    email = _valid_email(payload.email)
+    purchase = get_purchase(payload.purchase_id, database_url=DATABASE_URL)
+    if not purchase or not _is_topic_ideas_purchase(purchase):
+        raise HTTPException(status_code=404, detail="No Topic Ideas payment matches those recovery details.")
+    if str(purchase.get("user_email") or "").strip().lower() != email:
+        raise HTTPException(status_code=403, detail="The payment email does not match this purchase.")
+    try:
+        purchase = _verify_pending_topic_purchase(purchase)
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=f"The payment could not yet be verified: {exc}") from exc
+    if str(purchase.get("status") or "").lower() not in {"paid", "active"}:
+        raise HTTPException(status_code=409, detail="The payment is still pending or was not completed.")
+    refreshed = rotate_access_token(str(purchase.get("id") or ""), database_url=DATABASE_URL)
+    status = entitlement_status(
+        str(refreshed.get("id") or ""),
+        str(refreshed.get("access_token") or ""),
+        database_url=DATABASE_URL,
+    )
+    return {
+        "ok": True,
+        "purchase_id": refreshed.get("id"),
+        "access_token": refreshed.get("access_token"),
+        "access_id": refreshed.get("project_id"),
+        "provider": refreshed.get("payment_provider"),
+        "status": status,
+    }
+
+
+@api_router.post("/api/topic-ideas/payment-status")
+def topic_ideas_payment_status(payload: EntitlementStatusRequest) -> Dict[str, Any]:
+    if not verify_access_token(payload.purchase_id, payload.access_token, database_url=DATABASE_URL):
+        raise HTTPException(status_code=403, detail={"reason": "invalid_entitlement_token", "message": "The saved access credential is no longer valid."})
+    purchase = get_purchase(payload.purchase_id, database_url=DATABASE_URL) or {}
+    if not _is_topic_ideas_purchase(purchase):
+        raise HTTPException(status_code=403, detail="This purchase does not unlock Topic Ideas.")
+    verification_message = ""
+    if str(purchase.get("status") or "").lower() not in {"paid", "active"}:
+        try:
+            purchase = _verify_pending_topic_purchase(purchase)
+        except Exception as exc:
+            verification_message = str(exc)[:240]
+    result = entitlement_status(
+        payload.purchase_id,
+        payload.access_token,
+        database_url=DATABASE_URL,
+    )
+    result["verification_message"] = verification_message
+    result["payment_provider"] = purchase.get("payment_provider")
+    return result
+
+
 @api_router.post("/api/payments/checkout")
 def start_checkout(payload: CheckoutRequest) -> Dict[str, Any]:
     email = _valid_email(payload.email)
@@ -404,15 +555,7 @@ def paystack_callback(reference: str = "", trxref: str = ""):
     if not result.get("ok"):
         return _redirect(SUCCESS_PATH, payment="failed", provider="paystack")
     purchase = result.get("purchase") or {}
-    return _redirect(
-        _purchase_return_path(purchase),
-        payment="success",
-        provider="paystack",
-        purchase_id=purchase.get("id", ""),
-        project_id=purchase.get("project_id", ""),
-        chapter=purchase.get("chapter_number", ""),
-        mode=(purchase.get("metadata_json") or {}).get("purchase_mode", "chapter"),
-    )
+    return _successful_payment_redirect(purchase, "paystack")
 
 
 @api_router.post("/payment/paystack/webhook")
@@ -441,15 +584,7 @@ def stripe_success(session_id: str = ""):
     if not result.get("ok"):
         return _redirect(SUCCESS_PATH, payment="failed", provider="stripe")
     purchase = result.get("purchase") or {}
-    return _redirect(
-        _purchase_return_path(purchase),
-        payment="success",
-        provider="stripe",
-        purchase_id=purchase.get("id", ""),
-        project_id=purchase.get("project_id", ""),
-        chapter=purchase.get("chapter_number", ""),
-        mode=(purchase.get("metadata_json") or {}).get("purchase_mode", "chapter"),
-    )
+    return _successful_payment_redirect(purchase, "stripe")
 
 
 @api_router.post("/payment/stripe/webhook")
