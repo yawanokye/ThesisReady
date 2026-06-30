@@ -121,6 +121,14 @@ CREATE TABLE IF NOT EXISTS projectready_access_handoffs (
     redeemed_at TIMESTAMPTZ
 );
 
+CREATE TABLE IF NOT EXISTS projectready_payment_recovery_audit (
+    id TEXT PRIMARY KEY,
+    purchase_id TEXT NOT NULL REFERENCES projectready_purchases(id) ON DELETE CASCADE,
+    action TEXT NOT NULL,
+    operator_note TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_pr_purchase_email ON projectready_purchases(user_email);
 CREATE INDEX IF NOT EXISTS idx_pr_purchase_project_chapter ON projectready_purchases(project_id, chapter_key);
 CREATE INDEX IF NOT EXISTS idx_pr_purchase_reference ON projectready_purchases(provider_reference);
@@ -128,6 +136,7 @@ CREATE INDEX IF NOT EXISTS idx_pr_purchase_status ON projectready_purchases(stat
 CREATE INDEX IF NOT EXISTS idx_pr_usage_purchase ON projectready_entitlement_usage(purchase_id);
 CREATE INDEX IF NOT EXISTS idx_pr_handoff_purchase ON projectready_access_handoffs(purchase_id);
 CREATE INDEX IF NOT EXISTS idx_pr_handoff_expiry ON projectready_access_handoffs(expires_at);
+CREATE INDEX IF NOT EXISTS idx_pr_recovery_purchase ON projectready_payment_recovery_audit(purchase_id);
 """
 
 SQLITE_SCHEMA = """
@@ -195,6 +204,15 @@ CREATE TABLE IF NOT EXISTS projectready_access_handoffs (
     FOREIGN KEY(purchase_id) REFERENCES projectready_purchases(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS projectready_payment_recovery_audit (
+    id TEXT PRIMARY KEY,
+    purchase_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    operator_note TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(purchase_id) REFERENCES projectready_purchases(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_pr_purchase_email ON projectready_purchases(user_email);
 CREATE INDEX IF NOT EXISTS idx_pr_purchase_project_chapter ON projectready_purchases(project_id, chapter_key);
 CREATE INDEX IF NOT EXISTS idx_pr_purchase_reference ON projectready_purchases(provider_reference);
@@ -202,6 +220,7 @@ CREATE INDEX IF NOT EXISTS idx_pr_purchase_status ON projectready_purchases(stat
 CREATE INDEX IF NOT EXISTS idx_pr_usage_purchase ON projectready_entitlement_usage(purchase_id);
 CREATE INDEX IF NOT EXISTS idx_pr_handoff_purchase ON projectready_access_handoffs(purchase_id);
 CREATE INDEX IF NOT EXISTS idx_pr_handoff_expiry ON projectready_access_handoffs(expires_at);
+CREATE INDEX IF NOT EXISTS idx_pr_recovery_purchase ON projectready_payment_recovery_audit(purchase_id);
 """
 
 
@@ -451,6 +470,114 @@ def get_purchase_by_session(checkout_session_id: str, *, database_url: str = "")
                 return _row_to_dict(cur.fetchone())
     with _sqlite_connection(database_url) as conn:
         return _row_to_dict(conn.execute("SELECT * FROM projectready_purchases WHERE checkout_session_id=?", (checkout_session_id,)).fetchone())
+
+
+
+def find_purchases_for_recovery(
+    email: str,
+    *,
+    identifier: str = "",
+    limit: int = 20,
+    database_url: str = "",
+) -> list[Dict[str, Any]]:
+    """Find purchases for support recovery by exact email and optional ID/reference.
+
+    The optional identifier may be an internal purchase ID, the ProjectReady
+    provider reference, or a Stripe Checkout Session ID. Email matching is exact
+    after normalisation. No access token is returned by this function.
+    """
+    init_payment_tables(database_url)
+    email_value = normalise_email(email)
+    if not email_value or "@" not in email_value:
+        return []
+    identifier_value = str(identifier or "").strip()
+    safe_limit = max(1, min(int(limit or 20), 50))
+
+    if _is_postgres(database_url):
+        with _postgres_connection(database_url) as conn:
+            with conn.cursor() as cur:
+                if identifier_value:
+                    cur.execute(
+                        """
+                        SELECT * FROM projectready_purchases
+                        WHERE LOWER(user_email)=LOWER(%s)
+                          AND (id=%s OR provider_reference=%s OR checkout_session_id=%s)
+                        ORDER BY created_at DESC
+                        LIMIT %s
+                        """,
+                        (email_value, identifier_value, identifier_value, identifier_value, safe_limit),
+                    )
+                else:
+                    cur.execute(
+                        """
+                        SELECT * FROM projectready_purchases
+                        WHERE LOWER(user_email)=LOWER(%s)
+                        ORDER BY created_at DESC
+                        LIMIT %s
+                        """,
+                        (email_value, safe_limit),
+                    )
+                return [_row_to_dict(row) or {} for row in cur.fetchall()]
+
+    with _sqlite_connection(database_url) as conn:
+        if identifier_value:
+            rows = conn.execute(
+                """
+                SELECT * FROM projectready_purchases
+                WHERE LOWER(user_email)=LOWER(?)
+                  AND (id=? OR provider_reference=? OR checkout_session_id=?)
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (email_value, identifier_value, identifier_value, identifier_value, safe_limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT * FROM projectready_purchases
+                WHERE LOWER(user_email)=LOWER(?)
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (email_value, safe_limit),
+            ).fetchall()
+        return [_row_to_dict(row) or {} for row in rows]
+
+
+def record_recovery_audit(
+    purchase_id: str,
+    *,
+    action: str,
+    operator_note: str = "",
+    database_url: str = "",
+) -> None:
+    """Record a support recovery action without storing any access secret."""
+    init_payment_tables(database_url)
+    audit_id = str(uuid.uuid4())
+    action_value = str(action or "recovery_link_created")[:80]
+    note_value = str(operator_note or "")[:500]
+    if _is_postgres(database_url):
+        with _postgres_connection(database_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO projectready_payment_recovery_audit
+                    (id, purchase_id, action, operator_note)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (audit_id, purchase_id, action_value, note_value),
+                )
+            conn.commit()
+        return
+    with _sqlite_connection(database_url) as conn:
+        conn.execute(
+            """
+            INSERT INTO projectready_payment_recovery_audit
+            (id, purchase_id, action, operator_note, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (audit_id, purchase_id, action_value, note_value, _utc_iso()),
+        )
 
 
 def rotate_access_token(purchase_id: str, *, database_url: str = "") -> Dict[str, Any]:
