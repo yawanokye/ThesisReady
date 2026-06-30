@@ -1,6 +1,8 @@
 """FastAPI routes for ProjectReady AI chapter and revision-only checkout."""
 from __future__ import annotations
 
+import hashlib
+import hmac
 import os
 import uuid
 from typing import Any, Dict, Optional
@@ -28,13 +30,17 @@ from app.payments.paystack import (
 )
 from app.payments.router import choose_payment_provider, normalise_country_code
 from app.payments.store import (
+    activate_purchase,
     create_access_handoff,
     create_pending_purchase,
     entitlement_status,
+    find_purchases_for_recovery,
     get_purchase,
+    get_purchase_by_reference,
     init_payment_tables,
     make_provider_reference,
     redeem_access_handoff,
+    record_recovery_audit,
     rotate_access_token,
     verify_access_token,
 )
@@ -99,6 +105,28 @@ class TopicIdeasRecoveryRequest(BaseModel):
     email: str = Field(min_length=5, max_length=254)
 
 
+class TopicIdeasTrialRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=254)
+    trial_key: str = Field(min_length=8, max_length=200)
+
+
+class PaymentRecoveryRedeemRequest(BaseModel):
+    handoff: str = Field(min_length=20, max_length=300)
+
+
+class SupportRecoverySearchRequest(BaseModel):
+    support_key: str = Field(min_length=8, max_length=300)
+    email: str = Field(min_length=5, max_length=254)
+    payment_identifier: str = Field(default="", max_length=200)
+
+
+class SupportRecoveryCreateRequest(BaseModel):
+    support_key: str = Field(min_length=8, max_length=300)
+    email: str = Field(min_length=5, max_length=254)
+    purchase_id: str = Field(min_length=10, max_length=100)
+    operator_note: str = Field(default="", max_length=500)
+
+
 def _valid_email(email: str) -> str:
     value = str(email or "").strip().lower()
     if "@" not in value or value.startswith("@") or value.endswith("@") or "." not in value.split("@", 1)[1]:
@@ -155,6 +183,90 @@ def _redirect(path: str, **params: Any) -> RedirectResponse:
     return RedirectResponse(f"{path}{separator}{urlencode(params)}", status_code=303)
 
 
+def _configured_topic_trial_key() -> str:
+    return os.environ.get("PROJECTREADY_TOPIC_IDEAS_TRIAL_KEY", "").strip()
+
+
+def _configured_support_recovery_key() -> str:
+    return os.environ.get("PROJECTREADY_SUPPORT_RECOVERY_KEY", "").strip()
+
+
+def _require_support_recovery_key(supplied: str) -> None:
+    configured = _configured_support_recovery_key()
+    if not configured:
+        raise HTTPException(status_code=503, detail="Payment support recovery is not configured.")
+    if len(configured) < 16:
+        raise HTTPException(status_code=503, detail="PROJECTREADY_SUPPORT_RECOVERY_KEY must contain at least 16 characters.")
+    if not hmac.compare_digest(str(supplied or "").encode("utf-8"), configured.encode("utf-8")):
+        raise HTTPException(status_code=403, detail="The payment support recovery key is invalid.")
+
+
+def _purchase_product_area(purchase: Dict[str, Any]) -> str:
+    metadata = purchase.get("metadata_json") or {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+    if _is_topic_ideas_purchase(purchase):
+        return "topic_ideas"
+    mode = str(metadata.get("purchase_mode") or "chapter").strip().lower()
+    return "chapter_strengthener" if mode == "revision_only" else "thesis_workspace"
+
+
+def _verify_pending_purchase(purchase: Dict[str, Any]) -> Dict[str, Any]:
+    if str(purchase.get("status") or "").lower() in {"paid", "active"}:
+        return purchase
+    provider = str(purchase.get("payment_provider") or "").lower()
+    if provider == "stripe":
+        session_id = str(purchase.get("checkout_session_id") or "").strip()
+        if not session_id:
+            return purchase
+        result = verify_and_activate_stripe_session(session_id, database_url=DATABASE_URL)
+    elif provider == "paystack":
+        reference = str(purchase.get("provider_reference") or "").strip()
+        if not reference:
+            return purchase
+        result = verify_and_activate_purchase(reference, database_url=DATABASE_URL)
+    elif provider == "trial":
+        return purchase
+    else:
+        return purchase
+    return (result.get("purchase") or purchase) if result.get("ok") else purchase
+
+
+def _recovery_purchase_payload(purchase: Dict[str, Any]) -> Dict[str, Any]:
+    metadata = purchase.get("metadata_json") or {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+    return {
+        "purchase_id": purchase.get("id"),
+        "payment_provider": purchase.get("payment_provider"),
+        "provider_reference": purchase.get("provider_reference"),
+        "checkout_session_id": purchase.get("checkout_session_id"),
+        "product_area": _purchase_product_area(purchase),
+        "project_id": purchase.get("project_id"),
+        "chapter_number": purchase.get("chapter_number"),
+        "chapter_title": purchase.get("chapter_title"),
+        "plan_key": purchase.get("plan_key"),
+        "amount": float(purchase.get("amount") or 0),
+        "currency": purchase.get("currency"),
+        "status": purchase.get("status"),
+        "created_at": str(purchase.get("created_at") or ""),
+        "paid_at": str(purchase.get("paid_at") or ""),
+        "expires_at": str(purchase.get("expires_at") or ""),
+        "return_path": _purchase_return_path(purchase, "/topic-ideas" if _is_topic_ideas_purchase(purchase) else SUCCESS_PATH),
+        "remaining": {
+            "draft": max(int(purchase.get("drafts_total") or 0) - int(purchase.get("drafts_used") or 0), 0),
+            "revision": max(int(purchase.get("revisions_total") or 0) - int(purchase.get("revisions_used") or 0), 0),
+            "compliance": max(int(purchase.get("compliance_total") or 0) - int(purchase.get("compliance_used") or 0), 0),
+            "export": max(int(purchase.get("exports_total") or 0) - int(purchase.get("exports_used") or 0), 0),
+        },
+    }
+
+
+def _topic_trial_reference(configured_key: str) -> str:
+    fingerprint = hashlib.sha256(configured_key.encode("utf-8")).hexdigest()[:24].upper()
+    return f"PRAI-TRIAL-{fingerprint}"
+
+
 def _is_topic_ideas_purchase(purchase: Dict[str, Any]) -> bool:
     metadata = purchase.get("metadata_json") or {}
     if not isinstance(metadata, dict):
@@ -196,22 +308,104 @@ def _successful_payment_redirect(purchase: Dict[str, Any], provider: str) -> Red
 
 
 def _verify_pending_topic_purchase(purchase: Dict[str, Any]) -> Dict[str, Any]:
-    if str(purchase.get("status") or "").lower() in {"paid", "active"}:
+    if not _is_topic_ideas_purchase(purchase):
         return purchase
-    provider = str(purchase.get("payment_provider") or "").lower()
-    if provider == "stripe":
-        session_id = str(purchase.get("checkout_session_id") or "").strip()
-        if not session_id:
-            return purchase
-        result = verify_and_activate_stripe_session(session_id, database_url=DATABASE_URL)
-    elif provider == "paystack":
-        reference = str(purchase.get("provider_reference") or "").strip()
-        if not reference:
-            return purchase
-        result = verify_and_activate_purchase(reference, database_url=DATABASE_URL)
-    else:
-        return purchase
-    return (result.get("purchase") or purchase) if result.get("ok") else purchase
+    return _verify_pending_purchase(purchase)
+
+
+@api_router.post("/api/admin/payment-recovery/search")
+def search_payment_recovery(payload: SupportRecoverySearchRequest) -> Dict[str, Any]:
+    """Search all ProjectReady payment products by exact customer email.
+
+    This is a support-only endpoint. It never returns an access token. The
+    optional identifier may be the internal Purchase ID, Paystack/ProjectReady
+    reference, or Stripe Checkout Session ID.
+    """
+    _require_support_recovery_key(payload.support_key)
+    email = _valid_email(payload.email)
+    purchases = find_purchases_for_recovery(
+        email,
+        identifier=str(payload.payment_identifier or "").strip(),
+        database_url=DATABASE_URL,
+    )
+    return {
+        "ok": True,
+        "email": email,
+        "count": len(purchases),
+        "purchases": [_recovery_purchase_payload(item) for item in purchases],
+    }
+
+
+@api_router.post("/api/admin/payment-recovery/create-link")
+def create_payment_recovery_link(payload: SupportRecoveryCreateRequest, request: Request) -> Dict[str, Any]:
+    """Create a short-lived, single-use recovery link for any paid product."""
+    _require_support_recovery_key(payload.support_key)
+    email = _valid_email(payload.email)
+    purchase = get_purchase(payload.purchase_id, database_url=DATABASE_URL)
+    if not purchase:
+        raise HTTPException(status_code=404, detail="The selected purchase could not be found.")
+    if str(purchase.get("user_email") or "").strip().lower() != email:
+        raise HTTPException(status_code=403, detail="The customer email does not match this purchase.")
+    try:
+        purchase = _verify_pending_purchase(purchase)
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=f"Provider verification failed: {exc}") from exc
+    if str(purchase.get("status") or "").lower() not in {"paid", "active"}:
+        raise HTTPException(status_code=409, detail="The transaction is not yet verified as paid.")
+
+    try:
+        handoff = create_access_handoff(
+            str(purchase.get("id") or ""),
+            purpose="support_payment_recovery",
+            ttl_minutes=60,
+            database_url=DATABASE_URL,
+        )
+        record_recovery_audit(
+            str(purchase.get("id") or ""),
+            action="support_recovery_link_created",
+            operator_note=payload.operator_note,
+            database_url=DATABASE_URL,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    configured_base = os.environ.get("APP_BASE_URL", "").strip().rstrip("/")
+    base_url = configured_base or str(request.base_url).rstrip("/")
+    recovery_url = f"{base_url}/payment/recover?handoff={handoff}"
+    return {
+        "ok": True,
+        "recovery_url": recovery_url,
+        "expires_in_minutes": 60,
+        "purchase": _recovery_purchase_payload(purchase),
+        "message": "Send this one-time recovery link to the customer. It expires in 60 minutes and can be used once.",
+    }
+
+
+@api_router.post("/api/payments/redeem-recovery")
+def redeem_payment_recovery(payload: PaymentRecoveryRedeemRequest) -> Dict[str, Any]:
+    """Redeem a support-created handoff and issue a fresh product credential."""
+    try:
+        purchase = redeem_access_handoff(payload.handoff, database_url=DATABASE_URL)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    record_recovery_audit(
+        str(purchase.get("id") or ""),
+        action="support_recovery_link_redeemed",
+        database_url=DATABASE_URL,
+    )
+    return {
+        "ok": True,
+        "purchase_id": purchase.get("id"),
+        "access_token": purchase.get("access_token"),
+        "provider": purchase.get("payment_provider"),
+        "product_area": _purchase_product_area(purchase),
+        "project_id": purchase.get("project_id"),
+        "chapter_number": purchase.get("chapter_number"),
+        "chapter_title": purchase.get("chapter_title"),
+        "return_path": _purchase_return_path(purchase, "/topic-ideas" if _is_topic_ideas_purchase(purchase) else SUCCESS_PATH),
+    }
 
 
 @api_router.get("/api/payments/plans")
@@ -250,6 +444,12 @@ def topic_ideas_access_plan() -> Dict[str, Any]:
         "free_preview": {
             "ideas": 2,
             "payment_required": False,
+        },
+        "trial": {
+            "available": bool(_configured_topic_trial_key()),
+            "purchase_id_required": False,
+            "maximum_ideas": 12,
+            "message": "An administrator trial key can issue the same one-generation entitlement without a payment transaction.",
         },
         "includes": {
             "topic_idea_generations": 1,
@@ -347,6 +547,108 @@ def start_topic_ideas_checkout(payload: TopicIdeasCheckoutRequest) -> Dict[str, 
             "validity_days": int(plan["validity_days"]),
         },
         "message": "Checkout created to unlock up to 12 ideas. This browser stores the access credential before redirecting to payment.",
+    }
+
+
+@api_router.post("/api/topic-ideas/activate-trial")
+def activate_topic_ideas_trial(payload: TopicIdeasTrialRequest) -> Dict[str, Any]:
+    """Issue a real Topic Ideas entitlement from a private one-time trial key.
+
+    The trial follows the same purchase, access-token, entitlement-status and
+    generation-consumption path as a paid purchase. It bypasses only the
+    external Paystack or Stripe checkout so the application unlock can be
+    tested without another charge. The configured key is never stored or
+    returned. Its fingerprint makes the key single-customer and reusable only
+    by the same email for credential recovery.
+    """
+    email = _valid_email(payload.email)
+    supplied_key = str(payload.trial_key or "").strip()
+    configured_key = _configured_topic_trial_key()
+    if not configured_key:
+        raise HTTPException(status_code=503, detail="Topic Ideas trial access is not configured.")
+    if len(configured_key) < 12:
+        raise HTTPException(status_code=503, detail="The configured Topic Ideas trial key is too short. Use at least 12 characters.")
+    if not hmac.compare_digest(supplied_key.encode("utf-8"), configured_key.encode("utf-8")):
+        raise HTTPException(status_code=403, detail="The Topic Ideas trial key is invalid.")
+
+    provider_reference = _topic_trial_reference(configured_key)
+    existing = get_purchase_by_reference(provider_reference, database_url=DATABASE_URL)
+    if existing:
+        if not _is_topic_ideas_purchase(existing):
+            raise HTTPException(status_code=409, detail="The configured trial key conflicts with another access record.")
+        if str(existing.get("user_email") or "").strip().lower() != email:
+            raise HTTPException(status_code=409, detail="This trial key has already been assigned to another email address.")
+        if str(existing.get("status") or "").lower() not in {"paid", "active"}:
+            existing = activate_purchase(
+                provider_reference=provider_reference,
+                verified_amount=0.0,
+                verified_currency="GHS",
+                provider_payload={"source": "configured_topic_ideas_trial", "status": "activated"},
+                database_url=DATABASE_URL,
+            )
+        refreshed = rotate_access_token(str(existing.get("id") or ""), database_url=DATABASE_URL)
+        status = entitlement_status(
+            str(refreshed.get("id") or ""),
+            str(refreshed.get("access_token") or ""),
+            database_url=DATABASE_URL,
+        )
+        return {
+            "ok": True,
+            "trial": True,
+            "recovered": True,
+            "purchase_id": refreshed.get("id"),
+            "access_token": refreshed.get("access_token"),
+            "access_id": refreshed.get("project_id"),
+            "provider": "trial",
+            "status": status,
+            "message": "Trial access restored for the same email address.",
+        }
+
+    purchase = create_pending_purchase(
+        user_email=email,
+        project_id=f"topic-ideas-trial-{uuid.uuid4()}",
+        chapter_number=99,
+        chapter_title="Topic Ideas Trial Access",
+        academic_level="Topic Ideas",
+        plan_key="topic_ideas_access",
+        amount=0.0,
+        currency="GHS",
+        display_amount=0.0,
+        display_currency="GHS",
+        payment_provider="trial",
+        provider_reference=provider_reference,
+        metadata={
+            "billing_country": "GH",
+            "billing_market": "internal_trial",
+            "product_area": "topic_ideas",
+            "purchase_mode": "topic_ideas",
+            "access_source": "configured_trial_key",
+            "return_path": "/topic-ideas",
+        },
+        database_url=DATABASE_URL,
+    )
+    activate_purchase(
+        provider_reference=provider_reference,
+        verified_amount=0.0,
+        verified_currency="GHS",
+        provider_payload={"source": "configured_topic_ideas_trial", "status": "activated"},
+        database_url=DATABASE_URL,
+    )
+    status = entitlement_status(
+        str(purchase.get("id") or ""),
+        str(purchase.get("access_token") or ""),
+        database_url=DATABASE_URL,
+    )
+    return {
+        "ok": True,
+        "trial": True,
+        "recovered": False,
+        "purchase_id": purchase.get("id"),
+        "access_token": purchase.get("access_token"),
+        "access_id": purchase.get("project_id"),
+        "provider": "trial",
+        "status": status,
+        "message": "Trial access activated. Choose 5, 8, 10 or 12 ideas.",
     }
 
 
