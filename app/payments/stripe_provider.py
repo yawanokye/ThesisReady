@@ -7,6 +7,7 @@ switch safely without overwriting production secrets.
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from typing import Any, Dict
 
 from app.payments.store import (
@@ -206,33 +207,123 @@ def initialize_stripe_payment(purchase: Dict[str, Any], *, database_url: str = "
     }
 
 
-def _stripe_object_to_dict(value: Any) -> Dict[str, Any]:
-    """Convert StripeObject, dict-like, or mapping values into a plain dict."""
-    if value is None:
-        return {}
-    if isinstance(value, dict):
+def _stripe_plain_value(value: Any, *, _depth: int = 0) -> Any:
+    """Convert Stripe SDK objects into ordinary Python values.
+
+    Recent Stripe SDK objects are mapping-like, but some releases do not
+    behave correctly with ``dict(obj)`` and can raise ``KeyError: 0``. The
+    conversion therefore prefers Stripe's recursive serializer, then its
+    internal ``_data`` mapping, and finally safe key-based access.
+    """
+    if _depth > 20:
+        return None
+    if value is None or isinstance(value, (str, int, float, bool)):
         return value
-    if hasattr(value, "to_dict_recursive"):
+    if isinstance(value, (list, tuple, set)):
+        return [_stripe_plain_value(item, _depth=_depth + 1) for item in value]
+
+    for method_name in ("to_dict_recursive", "to_dict"):
+        method = getattr(value, method_name, None)
+        if callable(method):
+            try:
+                converted = method()
+            except Exception:
+                converted = None
+            if converted is not None and converted is not value:
+                return _stripe_plain_value(converted, _depth=_depth + 1)
+
+    raw_data = getattr(value, "_data", None)
+    if isinstance(raw_data, Mapping):
+        return {
+            str(key): _stripe_plain_value(item, _depth=_depth + 1)
+            for key, item in raw_data.items()
+        }
+
+    if isinstance(value, Mapping):
         try:
-            converted = value.to_dict_recursive()
-            if isinstance(converted, dict):
+            return {
+                str(key): _stripe_plain_value(item, _depth=_depth + 1)
+                for key, item in value.items()
+            }
+        except Exception:
+            pass
+
+    keys_method = getattr(value, "keys", None)
+    if callable(keys_method):
+        try:
+            keys = list(keys_method())
+            converted: Dict[str, Any] = {}
+            for key in keys:
+                try:
+                    item = value[key]
+                except Exception:
+                    item = getattr(value, str(key), None)
+                converted[str(key)] = _stripe_plain_value(item, _depth=_depth + 1)
+            if converted:
                 return converted
         except Exception:
             pass
-    if hasattr(value, "items"):
+
+    return value
+
+
+def _stripe_object_to_dict(value: Any) -> Dict[str, Any]:
+    """Convert a Stripe object or mapping into a plain dictionary."""
+    converted = _stripe_plain_value(value)
+    return converted if isinstance(converted, dict) else {}
+
+
+def _stripe_get(value: Any, key: str, default: Any = None) -> Any:
+    if value is None:
+        return default
+    if isinstance(value, Mapping):
         try:
-            return {str(key): item for key, item in value.items()}
+            return value.get(key, default)
         except Exception:
-            return {}
+            pass
+    raw_data = getattr(value, "_data", None)
+    if isinstance(raw_data, Mapping):
+        try:
+            return raw_data.get(key, default)
+        except Exception:
+            pass
     try:
-        converted = dict(value)
-        return converted if isinstance(converted, dict) else {}
+        return getattr(value, key)
     except Exception:
-        return {}
+        return default
 
 
 def _session_to_dict(session: Any) -> Dict[str, Any]:
-    return _stripe_object_to_dict(session)
+    """Normalise a Checkout Session across Stripe SDK versions."""
+    data = _stripe_object_to_dict(session)
+    if not isinstance(data, dict):
+        data = {}
+
+    scalar_fields = (
+        "id",
+        "object",
+        "livemode",
+        "client_reference_id",
+        "payment_status",
+        "status",
+        "amount_total",
+        "currency",
+        "customer_email",
+        "payment_intent",
+    )
+    for field in scalar_fields:
+        if data.get(field) is None:
+            value = _stripe_get(session, field)
+            if value is not None:
+                data[field] = _stripe_plain_value(value)
+
+    for field in ("metadata", "customer_details"):
+        current = data.get(field)
+        if not isinstance(current, dict):
+            current = _stripe_object_to_dict(_stripe_get(session, field))
+        data[field] = current if isinstance(current, dict) else {}
+
+    return data
 
 
 def _purchase_for_stripe_session(data: Dict[str, Any], *, database_url: str = "") -> Dict[str, Any] | None:
@@ -382,6 +473,13 @@ def verify_and_activate_stripe_session_data(
 
 
 def verify_and_activate_stripe_session(session_id: str, *, database_url: str = "") -> Dict[str, Any]:
+    session_id = str(session_id or "").strip()
+    if not session_id:
+        return {
+            "ok": False,
+            "activated": False,
+            "message": "A Stripe Checkout Session ID is required.",
+        }
     stripe = _stripe_module()
     try:
         session = stripe.checkout.Session.retrieve(session_id)
@@ -389,7 +487,16 @@ def verify_and_activate_stripe_session(session_id: str, *, database_url: str = "
         raise StripePaymentError(
             f"Stripe session verification failed: {type(exc).__name__}: {exc}"
         ) from exc
-    return verify_and_activate_stripe_session_data(session, database_url=database_url)
+    data = _session_to_dict(session)
+    if not data:
+        return {
+            "ok": False,
+            "activated": False,
+            "message": "Stripe returned a Checkout Session that could not be normalised.",
+            "session_id": session_id,
+            "stripe_object_type": type(session).__name__,
+        }
+    return verify_and_activate_stripe_session_data(data, database_url=database_url)
 
 
 def handle_stripe_webhook(
@@ -411,6 +518,7 @@ def handle_stripe_webhook(
             "ok": False,
             "status_code": 400,
             "message": "Stripe webhook event could not be converted into a readable payload.",
+            "stripe_object_type": type(event).__name__,
         }
     event_id = str(event_dict.get("id") or "")
     event_type = str(event_dict.get("type") or "")
@@ -426,8 +534,36 @@ def handle_stripe_webhook(
         }
 
     event_data = _stripe_object_to_dict(event_dict.get("data"))
-    session = _stripe_object_to_dict(event_data.get("object"))
-    result = verify_and_activate_stripe_session_data(session, database_url=database_url)
+    embedded_session = _session_to_dict(event_data.get("object"))
+    session_id = str(embedded_session.get("id") or "").strip()
+    if not session_id:
+        return {
+            "ok": False,
+            "status_code": 400,
+            "event": event_type,
+            "message": "Stripe webhook did not include a Checkout Session ID.",
+        }
+
+    # Retrieve the latest complete Checkout Session from Stripe instead of
+    # relying on a partially materialised event object. This also makes the
+    # webhook and success-return paths use the same verification logic.
+    try:
+        session = stripe.checkout.Session.retrieve(session_id)
+        session_data = _session_to_dict(session)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "status_code": 502,
+            "event": event_type,
+            "session_id": session_id,
+            "message": f"Could not retrieve the completed Stripe Checkout Session: {type(exc).__name__}: {exc}",
+        }
+
+    if "livemode" not in session_data and "livemode" in event_dict:
+        session_data["livemode"] = bool(event_dict.get("livemode"))
+
+    result = verify_and_activate_stripe_session_data(session_data, database_url=database_url)
+    result["session_id"] = session_id
     if result.get("ok"):
         first_delivery = record_event_once(
             provider="stripe", event_id=event_id, event_type=event_type,
@@ -435,3 +571,4 @@ def handle_stripe_webhook(
         )
         result["duplicate"] = not first_delivery
     return {**result, "status_code": 200 if result.get("ok") else 400, "event": event_type}
+
