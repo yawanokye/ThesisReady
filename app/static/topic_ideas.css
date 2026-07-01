@@ -585,3 +585,16 @@ body.topic-page {
 .topic-trial-panel summary {
   color: #123f72;
 }
+
+/* Guarded Stripe test-mode checkout */
+.topic-stripe-test-panel {
+  margin: 0.8rem 0;
+  padding: 0.9rem;
+  border: 1px solid #f59e0b;
+  border-radius: 14px;
+  background: #fffbeb;
+  color: #78350f;
+}
+.topic-stripe-test-panel strong { display: block; margin-bottom: 0.25rem; }
+.topic-stripe-test-panel p { margin: 0 0 0.65rem; color: #92400e; }
+.topic-stripe-test-panel input { border-color: #f59e0b !important; }

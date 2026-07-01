@@ -6,6 +6,7 @@ const FREE_PREVIEW_IDEAS = 2;
 const PAID_MAXIMUM_IDEAS = 12;
 let paidAccessReady = false;
 let runtimeTopicCredential = null;
+let topicAccessPlan = null;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -179,12 +180,34 @@ async function checkTopicAccess({ quiet = false, allowRecovery = true } = {}) {
 async function loadTopicAccessPlan() {
   try {
     const plan = await api("/api/topic-ideas/access-plan");
+    topicAccessPlan = plan;
     const trialPanel = $("topicTrialPanel");
     if (trialPanel) trialPanel.hidden = !Boolean(plan.trial?.available);
+
+    const environment = plan.payment_environment || {};
+    const testPanel = $("topicStripeTestPanel");
+    if (testPanel) testPanel.hidden = !Boolean(environment.test_mode);
+    if ($("topicGhanaPrice")) {
+      $("topicGhanaPrice").textContent = `${plan.ghana?.display || "GHS 10"} through ${plan.ghana?.provider || "Paystack"}`;
+    }
+    if ($("topicInternationalPrice")) {
+      $("topicInternationalPrice").textContent = `${plan.international?.display || "US$1.50"} through Stripe`;
+    }
+    if ($("topicMarketNote")) {
+      $("topicMarketNote").textContent = environment.test_mode && environment.force_stripe
+        ? "Stripe test mode is forcing both market choices through Stripe in USD. No real money moves."
+        : "Choose Ghana only when Ghana is your billing country. International payments are processed in US dollars.";
+    }
+    if (environment.test_mode && environment.force_stripe) {
+      setTopicAccessState("free", "Stripe test mode is active. Enter the private test key, complete a simulated payment, and confirm that 5, 8, 10 and 12 ideas unlock.");
+    }
     return plan;
   } catch (_) {
+    topicAccessPlan = null;
     const trialPanel = $("topicTrialPanel");
     if (trialPanel) trialPanel.hidden = true;
+    const testPanel = $("topicStripeTestPanel");
+    if (testPanel) testPanel.hidden = true;
     return null;
   }
 }
@@ -273,18 +296,32 @@ async function restoreTopicAccessFromForm() {
 async function startTopicIdeasCheckout() {
   const button = $("unlockTopicIdeasBtn");
   const email = $("topicPaymentEmail").value.trim();
+  const testMode = Boolean(topicAccessPlan?.payment_environment?.test_mode);
+  const testAccessKey = $("topicStripeTestKey")?.value.trim() || "";
   if (!email || !email.includes("@")) {
     setTopicAccessState("", "Enter a valid payment email address.");
     $("topicPaymentEmail").focus();
     return;
   }
+  if (testMode && !testAccessKey) {
+    setTopicAccessState("", "Enter the private Stripe test checkout key.");
+    $("topicStripeTestKey")?.focus();
+    return;
+  }
   saveTopicFormDraft();
   button.disabled = true;
-  $("topicAccessStatus").textContent = "Creating secure checkout to unlock up to 12 ideas...";
+  $("topicAccessStatus").textContent = testMode
+    ? "Creating Stripe test checkout to verify the Topic Ideas unlock..."
+    : "Creating secure checkout to unlock up to 12 ideas...";
   try {
     const data = await api("/api/topic-ideas/checkout", {
       method: "POST",
-      body: JSON.stringify({ email, market: selectedTopicMarket(), return_path: "/topic-ideas" }),
+      body: JSON.stringify({
+        email,
+        market: selectedTopicMarket(),
+        return_path: "/topic-ideas",
+        test_access_key: testMode ? testAccessKey : "",
+      }),
     });
     saveTopicCredential(data);
     if (!data.checkout_url) throw new Error("The payment provider did not return a checkout URL.");

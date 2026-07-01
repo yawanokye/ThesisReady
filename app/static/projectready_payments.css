@@ -189,3 +189,19 @@
   .pr-access-required-actions a,
   .pr-access-required-actions button { width: 100%; text-align: center; }
 }
+
+/* Guarded Stripe test-mode checkout */
+.pr-stripe-test-panel {
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px solid #f59e0b;
+  border-radius: 12px;
+  background: #fffbeb;
+  color: #78350f;
+}
+.pr-stripe-test-panel strong { display: block; margin-bottom: 4px; }
+.pr-stripe-test-panel p { margin: 0 0 10px; line-height: 1.45; }
+.pr-stripe-test-panel input {
+  border-color: #f59e0b !important;
+  background: #fff !important;
+}

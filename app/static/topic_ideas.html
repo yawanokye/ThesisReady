@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ProjectReady AI | Thesis Topic Ideas</title>
   <link rel="stylesheet" href="/static/styles.css?v=20260618-suite-ui-verified" />
-  <link rel="stylesheet" href="/static/topic_ideas.css?v=20260630-trial-unlock-v4" />
+  <link rel="stylesheet" href="/static/topic_ideas.css?v=20260630-stripe-test-all-v5" />
   <link rel="stylesheet" href="/static/projectready-suite.css?v=20260618-suite-ui-verified" />
 </head>
 <body class="topic-page suite-page ideas-suite">
@@ -66,11 +66,18 @@
           <div class="topic-price-grid">
             <label class="topic-price-option">
               <input type="radio" name="topicMarket" value="ghana" checked />
-              <span><strong>Ghana</strong><small>GHS 10 through Paystack</small></span>
+              <span><strong>Ghana</strong><small id="topicGhanaPrice">GHS 10 through Paystack</small></span>
             </label>
             <label class="topic-price-option">
               <input type="radio" name="topicMarket" value="international" />
-              <span><strong>Outside Ghana</strong><small>US$1.50 through Stripe</small></span>
+              <span><strong>Outside Ghana</strong><small id="topicInternationalPrice">US$1.50 through Stripe</small></span>
+            </label>
+          </div>
+          <div id="topicStripeTestPanel" class="topic-stripe-test-panel" hidden>
+            <strong>Stripe test mode is active</strong>
+            <p>All Topic Ideas checkouts are routed through Stripe test mode. No real money moves.</p>
+            <label><span class="field-label">Private Stripe test checkout key</span>
+              <input id="topicStripeTestKey" type="password" autocomplete="off" placeholder="Enter private test key" />
             </label>
           </div>
           <label><span class="field-label">Payment email</span>
@@ -98,7 +105,7 @@
             </label>
             <button id="restoreTopicAccessBtn" type="button" class="secondary-action">Restore paid access</button>
           </details>
-          <p class="hint topic-market-note">Choose Ghana only when Ghana is your billing country. International payments are processed in US dollars.</p>
+          <p id="topicMarketNote" class="hint topic-market-note">Choose Ghana only when Ghana is your billing country. International payments are processed in US dollars.</p>
         </section>
 
         <h2>1. Describe the research interest</h2>
@@ -206,6 +213,6 @@
     </section>
   </main>
 
-  <script src="/static/topic_ideas.js?v=20260630-trial-unlock-v4"></script>
+  <script src="/static/topic_ideas.js?v=20260630-stripe-test-all-v5"></script>
 </body>
 </html>

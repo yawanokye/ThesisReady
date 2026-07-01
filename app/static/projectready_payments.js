@@ -138,6 +138,13 @@
             <select id="prPaymentCountry" required></select>
           </label>
           <p id="prPaymentRouting" class="pr-payment-routing">African billing countries use Paystack. Other countries use Stripe.</p>
+          <div id="prStripeTestPanel" class="pr-stripe-test-panel" hidden>
+            <strong>Stripe test mode</strong>
+            <p>No real money will move. Enter the private test checkout key to continue.</p>
+            <label>Private Stripe test checkout key
+              <input id="prStripeTestKey" type="password" autocomplete="off" />
+            </label>
+          </div>
           <button type="submit" class="pr-payment-submit">Continue to secure payment</button>
           <p id="prPaymentStatus" class="pr-payment-status" aria-live="polite"></p>
         </form>
@@ -240,6 +247,15 @@
       return;
     }
 
+    const paymentEnvironment = plans.payment_environment || {};
+    const stripeTestMode = Boolean(paymentEnvironment.test_mode);
+    const forceStripe = Boolean(paymentEnvironment.force_stripe);
+    const testPanel = modal.querySelector("#prStripeTestPanel");
+    const testKeyInput = modal.querySelector("#prStripeTestKey");
+    testPanel.hidden = !stripeTestMode;
+    testKeyInput.required = stripeTestMode;
+    submit.textContent = stripeTestMode ? "Continue to Stripe test checkout" : "Continue to secure payment";
+
     const benefits = [];
     if (Number(plan.includes?.initial_draft || 0) > 0) benefits.push("One guided chapter working draft");
     if (Number(plan.includes?.revision || 0) > 0) benefits.push("One comprehensive chapter strengthening revision");
@@ -249,12 +265,18 @@
     modal.querySelector("#prPaymentTitle").textContent = plans.purchase_mode === "revision_only" ? "Unlock chapter strengthening support" : "Unlock guided chapter development";
 
     const renderPrice = () => {
-      const paystack = AFRICAN_COUNTRIES.has(country.value);
+      const paystack = !forceStripe && AFRICAN_COUNTRIES.has(country.value);
       const price = paystack ? (plan.paystack_price_display || plan.price_display) : plan.price_display;
       modal.querySelector("#prPaymentPlan").textContent = `${plan.name} · ${price} per ${plan.per || "chapter"}`;
-      routing.textContent = paystack
-        ? "This billing country will use Paystack and charge the displayed GHS amount."
-        : "This billing country will use Stripe and charge the displayed USD amount.";
+      if (stripeTestMode && forceStripe) {
+        routing.textContent = "Stripe test mode is forcing every billing country through Stripe. This is a simulated USD payment and no real money moves.";
+      } else if (paystack) {
+        routing.textContent = "This billing country will use Paystack and charge the displayed GHS amount.";
+      } else {
+        routing.textContent = stripeTestMode
+          ? "This checkout uses Stripe test mode. No real money moves."
+          : "This billing country will use Stripe and charge the displayed USD amount.";
+      }
     };
     country.onchange = renderPrice;
     renderPrice();
@@ -275,9 +297,13 @@
         chapter_title: options.chapterTitle || `Chapter ${options.chapterNumber}`,
         plan_key: plan.plan_key,
         purchase_mode: options.purchaseMode || "chapter",
-        return_path: options.returnPath || window.location.pathname || "/workspace"
+        return_path: options.returnPath || window.location.pathname || "/workspace",
+        test_access_key: stripeTestMode ? testKeyInput.value.trim() : ""
       };
       try {
+        if (stripeTestMode && !payload.test_access_key) {
+          throw new Error("Enter the private Stripe test checkout key.");
+        }
         const response = await fetch("/api/payments/checkout", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
