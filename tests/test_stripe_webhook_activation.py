@@ -21,6 +21,21 @@ class BrokenRecursiveMapping(dict):
         raise KeyError(0)
 
 
+class StripeDataObject:
+    """Mimics Stripe SDK objects that fail with dict(obj) / index 0."""
+
+    def __init__(self, data):
+        self._data = data
+        for key, value in data.items():
+            setattr(self, key, value)
+
+    def to_dict_recursive(self):
+        raise KeyError(0)
+
+    def __getitem__(self, key):
+        raise KeyError(key)
+
+
 class StripeWebhookActivationTests(unittest.TestCase):
     def setUp(self):
         self.tempdir = tempfile.TemporaryDirectory()
@@ -35,6 +50,18 @@ class StripeWebhookActivationTests(unittest.TestCase):
         value = BrokenRecursiveMapping({"id": "evt_test", "type": "checkout.session.completed"})
         converted = _stripe_object_to_dict(value)
         self.assertEqual(converted["id"], "evt_test")
+
+    def test_stripe_sdk_data_object_uses_internal_data_mapping(self):
+        value = StripeDataObject(
+            {
+                "id": "cs_test_sdk",
+                "payment_status": "paid",
+                "metadata": StripeDataObject({"provider_reference": "PRAI-ST-sdk"}),
+            }
+        )
+        converted = _stripe_object_to_dict(value)
+        self.assertEqual(converted["id"], "cs_test_sdk")
+        self.assertEqual(converted["metadata"]["provider_reference"], "PRAI-ST-sdk")
 
     def test_signed_session_payload_activates_without_second_api_request(self):
         purchase = payment_store.create_pending_purchase(
