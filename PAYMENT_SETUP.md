@@ -125,6 +125,55 @@ checkout.session.async_payment_succeeded
 
 Copy the endpoint signing secret into `STRIPE_WEBHOOK_SECRET`.
 
+
+## Safe Stripe test mode for every paid module
+
+Use a separate Render staging service where possible. Stripe test and live objects are separate, and test payments do not move real money. The updated application keeps both sets of credentials and selects the active environment with one setting.
+
+Set these variables on the staging service:
+
+```text
+PROJECTREADY_STRIPE_MODE=test
+PROJECTREADY_FORCE_STRIPE=1
+PROJECTREADY_STRIPE_TEST_CHECKOUT_KEY=<private random key>
+STRIPE_TEST_SECRET_KEY=sk_test_...
+STRIPE_TEST_WEBHOOK_SECRET=whsec_...
+DATABASE_URL=/var/data/projectready-test.db
+APP_BASE_URL=https://<your-staging-hostname>
+```
+
+Create a Stripe test-mode webhook endpoint for:
+
+```text
+https://<your-staging-hostname>/payment/stripe/webhook
+```
+
+Subscribe to:
+
+```text
+checkout.session.completed
+checkout.session.async_payment_succeeded
+```
+
+`PROJECTREADY_FORCE_STRIPE=1` is honoured only while `PROJECTREADY_STRIPE_MODE=test`. It routes Ghana and every other country to Stripe so the following pathways can be tested without a real payment:
+
+1. Topic Ideas, which must enable 5, 8, 10 and 12 ideas after payment.
+2. Thesis Workspace chapter access, which must enable one draft, one revision, one compliance check and one DOCX export.
+3. Chapter Strengthener revision-only access, which must enable one revision, one compliance check and one DOCX export, with no draft credit.
+
+Every test checkout requires the private `PROJECTREADY_STRIPE_TEST_CHECKOUT_KEY`. The key is entered in the visible test panel and is verified only by the server. It is never embedded in JavaScript or returned by an API.
+
+Use Stripe's standard successful test card in the Stripe-hosted checkout. Any future expiry date and any CVC can be used in test mode. Test-mode payment records create real ProjectReady entitlements in the selected test database, so use a separate database file or staging database.
+
+Before returning to production, set:
+
+```text
+PROJECTREADY_STRIPE_MODE=live
+PROJECTREADY_FORCE_STRIPE=0
+```
+
+Confirm that the live webhook signing secret is stored in `STRIPE_LIVE_WEBHOOK_SECRET`. Test and live webhook signing secrets are different.
+
 ## 6. Deploy and test
 
 1. Deploy with Paystack and Stripe test keys first.
