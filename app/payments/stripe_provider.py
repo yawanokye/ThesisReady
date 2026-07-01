@@ -1,7 +1,11 @@
-"""Stripe Checkout integration for non-African ProjectReady AI customers."""
+"""Stripe Checkout integration for ProjectReady AI.
+
+The active Stripe environment is selected with PROJECTREADY_STRIPE_MODE. Test
+and live credentials are kept in separate environment variables so the user can
+switch safely without overwriting production secrets.
+"""
 from __future__ import annotations
 
-import json
 import os
 from typing import Any, Dict
 
@@ -14,6 +18,8 @@ from app.payments.store import (
     set_checkout_session,
 )
 
+# Legacy variables remain supported as fallbacks. New deployments should use
+# the mode-specific variables documented in PAYMENT_SETUP.md.
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "").strip()
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "").strip()
 APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:8000").rstrip("/")
@@ -24,14 +30,98 @@ class StripePaymentError(RuntimeError):
     pass
 
 
+def _env_true(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on", "enabled"}
+
+
+def stripe_mode() -> str:
+    value = os.environ.get("PROJECTREADY_STRIPE_MODE", "live").strip().lower()
+    if value in {"test", "sandbox"}:
+        return "test"
+    if value in {"live", "production", "prod"}:
+        return "live"
+    raise StripePaymentError("PROJECTREADY_STRIPE_MODE must be either 'test' or 'live'.")
+
+
+def stripe_test_mode() -> bool:
+    return stripe_mode() == "test"
+
+
+def force_stripe_for_testing() -> bool:
+    return stripe_test_mode() and (
+        _env_true("PROJECTREADY_FORCE_STRIPE")
+        or _env_true("PROJECTREADY_FORCE_STRIPE_TESTING")
+    )
+
+
+def configured_stripe_secret_key() -> str:
+    mode = stripe_mode()
+    if mode == "test":
+        key = os.environ.get("STRIPE_TEST_SECRET_KEY", "").strip() or STRIPE_SECRET_KEY
+        expected_prefixes = ("sk_test_", "rk_test_")
+        variable_name = "STRIPE_TEST_SECRET_KEY"
+    else:
+        key = os.environ.get("STRIPE_LIVE_SECRET_KEY", "").strip() or STRIPE_SECRET_KEY
+        expected_prefixes = ("sk_live_", "rk_live_")
+        variable_name = "STRIPE_LIVE_SECRET_KEY"
+
+    if not key:
+        raise StripePaymentError(f"{variable_name} is not configured for Stripe {mode} mode.")
+    if not key.startswith(expected_prefixes):
+        raise StripePaymentError(
+            f"The configured Stripe key does not match {mode} mode. "
+            f"Use a {'test' if mode == 'test' else 'live'} secret key."
+        )
+    return key
+
+
+def configured_stripe_webhook_secret() -> str:
+    mode = stripe_mode()
+    if mode == "test":
+        secret = os.environ.get("STRIPE_TEST_WEBHOOK_SECRET", "").strip() or STRIPE_WEBHOOK_SECRET
+        variable_name = "STRIPE_TEST_WEBHOOK_SECRET"
+    else:
+        secret = os.environ.get("STRIPE_LIVE_WEBHOOK_SECRET", "").strip() or STRIPE_WEBHOOK_SECRET
+        variable_name = "STRIPE_LIVE_WEBHOOK_SECRET"
+    if not secret:
+        raise StripePaymentError(f"{variable_name} is not configured for Stripe {mode} mode.")
+    if not secret.startswith("whsec_"):
+        raise StripePaymentError(f"{variable_name} must be a Stripe webhook signing secret beginning with whsec_.")
+    return secret
+
+
+def stripe_environment_payload() -> Dict[str, Any]:
+    mode = stripe_mode()
+    try:
+        secret_configured = bool(configured_stripe_secret_key())
+    except StripePaymentError:
+        secret_configured = False
+    try:
+        webhook_configured = bool(configured_stripe_webhook_secret())
+    except StripePaymentError:
+        webhook_configured = False
+    return {
+        "mode": mode,
+        "test_mode": mode == "test",
+        "force_stripe": force_stripe_for_testing(),
+        "test_checkout_key_required": bool(
+            mode == "test" and os.environ.get("PROJECTREADY_STRIPE_TEST_CHECKOUT_KEY", "").strip()
+        ),
+        "secret_key_configured": secret_configured,
+        "webhook_secret_configured": webhook_configured,
+    }
+
+
 def _stripe_module():
-    if not STRIPE_SECRET_KEY:
-        raise StripePaymentError("STRIPE_SECRET_KEY is not configured.")
+    key = configured_stripe_secret_key()
     try:
         import stripe
     except ImportError as exc:
         raise StripePaymentError("Install the Stripe SDK with: pip install stripe") from exc
-    stripe.api_key = STRIPE_SECRET_KEY
+    stripe.api_key = key
     return stripe
 
 
@@ -41,6 +131,7 @@ def amount_to_subunit(amount: float) -> int:
 
 def initialize_stripe_payment(purchase: Dict[str, Any], *, database_url: str = "") -> Dict[str, Any]:
     stripe = _stripe_module()
+    environment = stripe_mode()
     purchase_metadata = purchase.get("metadata_json") or {}
     if not isinstance(purchase_metadata, dict):
         purchase_metadata = {}
@@ -68,6 +159,7 @@ def initialize_stripe_payment(purchase: Dict[str, Any], *, database_url: str = "
         "academic_level": purchase["academic_level"],
         "plan_key": purchase["plan_key"],
         "purchase_mode": purchase_mode,
+        "payment_environment": environment,
     }
     try:
         session = stripe.checkout.Session.create(
@@ -100,6 +192,8 @@ def initialize_stripe_payment(purchase: Dict[str, Any], *, database_url: str = "
     return {
         "ok": True,
         "provider": "stripe",
+        "payment_environment": environment,
+        "test_mode": environment == "test",
         "checkout_url": session.url,
         "session_id": session.id,
         "provider_reference": purchase["provider_reference"],
@@ -113,12 +207,7 @@ def initialize_stripe_payment(purchase: Dict[str, Any], *, database_url: str = "
 
 
 def _stripe_object_to_dict(value: Any) -> Dict[str, Any]:
-    """Convert StripeObject, dict-like, or mapping values into a plain dict.
-
-    Stripe SDK releases and API versions can expose nested values as
-    StripeObject instances rather than ordinary dictionaries. Keeping this
-    conversion in one place avoids brittle numeric-key/index access errors.
-    """
+    """Convert StripeObject, dict-like, or mapping values into a plain dict."""
     if value is None:
         return {}
     if isinstance(value, dict):
@@ -129,9 +218,6 @@ def _stripe_object_to_dict(value: Any) -> Dict[str, Any]:
             if isinstance(converted, dict):
                 return converted
         except Exception:
-            # Some Stripe SDK/API-version combinations can fail while
-            # recursively converting newly introduced nested fields.
-            # Fall through to the mapping interface instead.
             pass
     if hasattr(value, "items"):
         try:
@@ -165,12 +251,24 @@ def _purchase_for_stripe_session(data: Dict[str, Any], *, database_url: str = ""
     return purchase
 
 
+def _payment_environment_for_purchase(purchase: Dict[str, Any], metadata: Dict[str, Any]) -> str:
+    purchase_metadata = purchase.get("metadata_json") or {}
+    if not isinstance(purchase_metadata, dict):
+        purchase_metadata = {}
+    value = str(
+        metadata.get("payment_environment")
+        or purchase_metadata.get("payment_environment")
+        or stripe_mode()
+    ).strip().lower()
+    return "test" if value in {"test", "sandbox"} else "live"
+
+
 def verify_and_activate_stripe_session_data(
     session_data: Any,
     *,
     database_url: str = "",
 ) -> Dict[str, Any]:
-    """Verify and activate using an already authenticated Stripe Session payload."""
+    """Verify and activate using an authenticated Stripe Checkout Session payload."""
     data = _session_to_dict(session_data)
     if not data:
         return {
@@ -188,11 +286,7 @@ def verify_and_activate_stripe_session_data(
             "message": "No ProjectReady purchase matches this Stripe Checkout Session.",
         }
 
-    reference = str(
-        metadata.get("provider_reference")
-        or purchase.get("provider_reference")
-        or ""
-    ).strip()
+    reference = str(metadata.get("provider_reference") or purchase.get("provider_reference") or "").strip()
     if not reference:
         return {
             "ok": False,
@@ -215,6 +309,20 @@ def verify_and_activate_stripe_session_data(
             "activated": False,
             "message": "Stripe project metadata does not match the stored ProjectReady project.",
         }
+
+    expected_environment = _payment_environment_for_purchase(purchase, metadata)
+    if "livemode" in data:
+        received_environment = "live" if bool(data.get("livemode")) else "test"
+        if received_environment != expected_environment:
+            return {
+                "ok": False,
+                "activated": False,
+                "message": "Stripe test/live environment does not match the stored ProjectReady purchase.",
+                "received_environment": received_environment,
+                "expected_environment": expected_environment,
+            }
+    else:
+        received_environment = expected_environment
 
     payment_status = str(data.get("payment_status") or "").lower()
     if payment_status != "paid":
@@ -239,7 +347,7 @@ def verify_and_activate_stripe_session_data(
         return {
             "ok": False,
             "activated": False,
-            "message": "Stripe amount or currency does not match the chapter purchase.",
+            "message": "Stripe amount or currency does not match the ProjectReady purchase.",
             "received_amount": amount_total,
             "expected_amount": expected_subunit,
             "received_currency": currency,
@@ -247,17 +355,13 @@ def verify_and_activate_stripe_session_data(
         }
 
     customer_details = _stripe_object_to_dict(data.get("customer_details"))
-    stripe_email = str(
-        customer_details.get("email")
-        or data.get("customer_email")
-        or ""
-    ).strip().lower()
+    stripe_email = str(customer_details.get("email") or data.get("customer_email") or "").strip().lower()
     purchase_email = str(purchase.get("user_email") or "").strip().lower()
     if stripe_email and purchase_email and stripe_email != purchase_email:
         return {
             "ok": False,
             "activated": False,
-            "message": "Stripe customer email does not match the chapter purchase.",
+            "message": "Stripe customer email does not match the ProjectReady purchase.",
         }
 
     activated = activate_purchase(
@@ -270,6 +374,8 @@ def verify_and_activate_stripe_session_data(
     return {
         "ok": True,
         "activated": True,
+        "payment_environment": received_environment,
+        "test_mode": received_environment == "test",
         "purchase": activated,
         "session": data,
     }
@@ -285,17 +391,17 @@ def verify_and_activate_stripe_session(session_id: str, *, database_url: str = "
         ) from exc
     return verify_and_activate_stripe_session_data(session, database_url=database_url)
 
+
 def handle_stripe_webhook(
     *,
     raw_body: bytes,
     signature: str,
     database_url: str = "",
 ) -> Dict[str, Any]:
-    if not STRIPE_WEBHOOK_SECRET:
-        raise StripePaymentError("STRIPE_WEBHOOK_SECRET is not configured.")
+    webhook_secret = configured_stripe_webhook_secret()
     stripe = _stripe_module()
     try:
-        event = stripe.Webhook.construct_event(raw_body, signature, STRIPE_WEBHOOK_SECRET)
+        event = stripe.Webhook.construct_event(raw_body, signature, webhook_secret)
     except Exception as exc:
         return {"ok": False, "status_code": 400, "message": f"Invalid Stripe webhook: {exc}"}
 
@@ -316,18 +422,12 @@ def handle_stripe_webhook(
         return {
             "ok": True, "status_code": 200, "event": event_type,
             "activated": False, "duplicate": not first_delivery,
+            "payment_environment": stripe_mode(),
         }
 
     event_data = _stripe_object_to_dict(event_dict.get("data"))
     session = _stripe_object_to_dict(event_data.get("object"))
-    # The event signature has already authenticated this Checkout Session.
-    # Activate directly from the signed payload instead of making a second
-    # Stripe API request and reconverting a version-dependent StripeObject.
-    # Activation remains idempotent and failed deliveries stay retryable.
-    result = verify_and_activate_stripe_session_data(
-        session,
-        database_url=database_url,
-    )
+    result = verify_and_activate_stripe_session_data(session, database_url=database_url)
     if result.get("ok"):
         first_delivery = record_event_once(
             provider="stripe", event_id=event_id, event_type=event_type,
