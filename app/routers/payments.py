@@ -28,7 +28,12 @@ from app.payments.paystack import (
     initialize_paystack_payment,
     verify_and_activate_purchase,
 )
-from app.payments.router import choose_payment_provider, normalise_country_code
+from app.payments.router import (
+    choose_payment_provider,
+    force_stripe_for_testing,
+    normalise_country_code,
+    stripe_payment_mode,
+)
 from app.payments.store import (
     activate_purchase,
     create_access_handoff,
@@ -48,6 +53,7 @@ from app.payments.stripe_provider import (
     StripePaymentError,
     handle_stripe_webhook,
     initialize_stripe_payment,
+    stripe_environment_payload,
     verify_and_activate_stripe_session,
 )
 from app.template_store import get_chapter
@@ -68,6 +74,7 @@ class CheckoutRequest(BaseModel):
     plan_key: Optional[str] = Field(default=None, max_length=60)
     purchase_mode: str = Field(default="chapter", max_length=40)
     return_path: str = Field(default="", max_length=500)
+    test_access_key: str = Field(default="", max_length=300)
 
     @field_validator("purchase_mode")
     @classmethod
@@ -84,6 +91,7 @@ class TopicIdeasCheckoutRequest(BaseModel):
     email: str = Field(min_length=5, max_length=254)
     market: str = Field(default="ghana", max_length=20)
     return_path: str = Field(default="/topic-ideas", max_length=500)
+    test_access_key: str = Field(default="", max_length=300)
 
     @field_validator("market")
     @classmethod
@@ -132,6 +140,24 @@ def _valid_email(email: str) -> str:
     if "@" not in value or value.startswith("@") or value.endswith("@") or "." not in value.split("@", 1)[1]:
         raise HTTPException(status_code=422, detail="Enter a valid email address.")
     return value
+
+
+def _require_stripe_test_checkout_key(provider: str, supplied_key: str) -> None:
+    """Protect public deployments while Stripe test mode is enabled."""
+    if provider != "stripe" or stripe_payment_mode() != "test":
+        return
+    expected = os.environ.get("PROJECTREADY_STRIPE_TEST_CHECKOUT_KEY", "").strip()
+    if not expected:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Stripe test mode is active, but PROJECTREADY_STRIPE_TEST_CHECKOUT_KEY is not configured. "
+                "Add a private key before starting test checkouts."
+            ),
+        )
+    supplied = str(supplied_key or "").strip()
+    if not supplied or not hmac.compare_digest(supplied, expected):
+        raise HTTPException(status_code=403, detail="Enter the correct private Stripe test checkout key.")
 
 
 def _safe_return_path(path: str, fallback: str = SUCCESS_PATH) -> str:
@@ -408,9 +434,28 @@ def redeem_payment_recovery(payload: PaymentRecoveryRedeemRequest) -> Dict[str, 
     }
 
 
+@api_router.get("/api/payments/environment")
+def payment_environment() -> Dict[str, Any]:
+    environment = stripe_environment_payload()
+    environment.update({
+        "provider_routing": (
+            "stripe_test_for_all_markets"
+            if environment.get("force_stripe")
+            else "paystack_africa_stripe_elsewhere"
+        ),
+        "warning": (
+            "Stripe test mode is active. No real money moves, and every successful test checkout can create a real ProjectReady entitlement in this database."
+            if environment.get("test_mode")
+            else "Stripe live mode is active."
+        ),
+    })
+    return environment
+
+
 @api_router.get("/api/payments/plans")
 def payment_plans(level: str = "", mode: str = "chapter") -> Dict[str, Any]:
     payload = build_plans_payload(level, mode)
+    payload["payment_environment"] = stripe_environment_payload()
     for plan in payload.get("paid_plans", []):
         try:
             charge = get_paystack_charge(str(plan.get("plan_key") or ""))
@@ -426,15 +471,28 @@ def payment_plans(level: str = "", mode: str = "chapter") -> Dict[str, Any]:
 def topic_ideas_access_plan() -> Dict[str, Any]:
     plan = get_plan("topic_ideas_access")
     paystack_charge = get_paystack_charge("topic_ideas_access")
-    return {
-        "product": "ProjectReady AI Topic Ideas",
-        "plan_key": "topic_ideas_access",
-        "ghana": {
+    environment = stripe_environment_payload()
+    force_stripe = bool(environment.get("force_stripe"))
+    ghana_plan = (
+        {
+            "provider": "stripe",
+            "amount": float(plan["amount"]),
+            "currency": "USD",
+            "display": f"{plan['price_display']} Stripe test",
+        }
+        if force_stripe
+        else {
             "provider": "paystack",
             "amount": float(paystack_charge["amount"]),
             "currency": "GHS",
             "display": paystack_charge["charged_display"],
-        },
+        }
+    )
+    return {
+        "product": "ProjectReady AI Topic Ideas",
+        "plan_key": "topic_ideas_access",
+        "payment_environment": environment,
+        "ghana": ghana_plan,
         "international": {
             "provider": "stripe",
             "amount": float(plan["amount"]),
@@ -468,7 +526,8 @@ def start_topic_ideas_checkout(payload: TopicIdeasCheckoutRequest) -> Dict[str, 
     plan_key = "topic_ideas_access"
     plan = get_plan(plan_key)
     display_price = get_price(plan_key)
-    provider = "paystack" if payload.market == "ghana" else "stripe"
+    provider = "stripe" if force_stripe_for_testing() else ("paystack" if payload.market == "ghana" else "stripe")
+    _require_stripe_test_checkout_key(provider, payload.test_access_key)
     provider_reference = make_provider_reference(provider)
     access_id = f"topic-ideas-{uuid.uuid4()}"
     return_path = _safe_return_path(payload.return_path, "/topic-ideas")
@@ -512,6 +571,7 @@ def start_topic_ideas_checkout(payload: TopicIdeasCheckoutRequest) -> Dict[str, 
             "plan_name": plan["name"],
             "product_area": "topic_ideas",
             "purchase_mode": "topic_ideas",
+            "payment_environment": stripe_payment_mode() if provider == "stripe" else "live",
             "return_path": return_path,
             "pricing": pricing_metadata,
         },
@@ -759,6 +819,7 @@ def start_checkout(payload: CheckoutRequest) -> Dict[str, Any]:
 
     plan = get_plan(plan_key)
     provider = choose_payment_provider(country)
+    _require_stripe_test_checkout_key(provider, payload.test_access_key)
     provider_reference = make_provider_reference(provider)
     display_price = get_price(plan_key)
 
@@ -805,6 +866,7 @@ def start_checkout(payload: CheckoutRequest) -> Dict[str, Any]:
             "plan_name": plan["name"],
             "project_title": project.get("title", ""),
             "purchase_mode": purchase_mode,
+            "payment_environment": stripe_payment_mode() if provider == "stripe" else "live",
             "return_path": return_path,
             "pricing": pricing_metadata,
         },
