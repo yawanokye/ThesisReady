@@ -98,6 +98,74 @@ def _lines(value: Any) -> str:
     return str(value or "").strip()
 
 
+
+
+def _previous_context_from_project(
+    payload: dict[str, Any],
+    project: dict[str, Any],
+    chapter_number: int,
+) -> str:
+    """Collect previous chapters/full work for Chapter Strengthener alignment checks."""
+    parts: list[str] = []
+    supplied = str(payload.get("previous_chapters_context") or "").strip()
+    if supplied:
+        parts.append("Uploaded or pasted previous chapters / complete work:\n" + supplied[:28000])
+
+    profile = project.get("profile") or {}
+    uploaded_alignment = profile.get("uploaded_alignment_chapters") or {}
+    if isinstance(uploaded_alignment, dict):
+        records = uploaded_alignment.values()
+    elif isinstance(uploaded_alignment, list):
+        records = uploaded_alignment
+    else:
+        records = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        source_chapter = int(record.get("source_chapter_number") or record.get("chapter_number") or 0)
+        target = int(record.get("target_chapter_number") or chapter_number)
+        if source_chapter and source_chapter >= chapter_number:
+            continue
+        if target and target not in {chapter_number, 0}:
+            continue
+        text = str(record.get("extracted_text") or record.get("text") or "").strip()
+        if text:
+            label = record.get("filename") or f"Chapter {source_chapter or 'full work'} alignment upload"
+            parts.append(f"Previous-chapter alignment upload, {label}:\n{text[:14000]}")
+
+    drafts = project.get("drafts") or {}
+    if isinstance(drafts, dict):
+        for number_text, draft in sorted(drafts.items(), key=lambda item: int(item[0]) if str(item[0]).isdigit() else 99):
+            try:
+                number = int(number_text)
+            except Exception:
+                continue
+            if number <= 0 or number >= chapter_number:
+                continue
+            text = str(draft or "").strip()
+            if text:
+                parts.append(f"Saved ProjectReady Chapter {number} draft:\n{text[:14000]}")
+
+    total = 0
+    compact: list[str] = []
+    seen: set[str] = set()
+    for part in parts:
+        text = str(part or "").strip()
+        if len(text) < 80:
+            continue
+        signature = text[:500].lower()
+        if signature in seen:
+            continue
+        seen.add(signature)
+        remaining = max(0, 52000 - total)
+        if remaining <= 0:
+            break
+        clipped = text[:remaining]
+        compact.append(clipped)
+        total += len(clipped)
+    return "\n\n---\n\n".join(compact)
+
+
 def _merge_project_profile(payload: dict[str, Any], project: dict[str, Any]) -> dict[str, Any]:
     profile = project.get("profile") or {}
     merged = dict(payload)
@@ -145,6 +213,10 @@ def _merge_project_profile(payload: dict[str, Any], project: dict[str, Any]) -> 
             or result_record.get("text")
             or ""
         )
+
+    previous_context = _previous_context_from_project(merged, project, chapter_number)
+    if previous_context:
+        merged["previous_chapters_context"] = previous_context
     return merged
 
 
@@ -207,6 +279,8 @@ def create_external_revision_project(payload: ExternalRevisionProjectCreate) -> 
         "theory_framework": payload.theory_framework,
         "contribution_claim": payload.contribution_claim,
         "data_and_results": payload.data_and_results,
+        "previous_chapters_context": payload.previous_chapters_context,
+        "allow_missing_section_insertions": payload.allow_missing_section_insertions,
         "created_for": "chapter_strengthener",
         "academic_integrity_confirmed": True,
         "user_contribution_confirmed": True,

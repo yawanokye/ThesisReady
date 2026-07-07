@@ -151,6 +151,129 @@ def _apply_profile_updates(project: dict[str, Any], payload: DraftRequest) -> No
     project["profile"] = profile
 
 
+
+
+def _clip_text(value: Any, limit: int = 12000) -> str:
+    text = _plain_text(value)
+    if not text:
+        return ""
+    return text[:limit].strip()
+
+
+def _alignment_upload_label(record: dict[str, Any]) -> str:
+    chapter = record.get("source_chapter_number") or record.get("chapter_number") or "previous"
+    filename = record.get("filename") or "uploaded chapter"
+    return f"Chapter {chapter} alignment upload, {filename}"
+
+
+def _alignment_context_from_project(project: dict[str, Any], payload: DraftRequest) -> dict[str, Any]:
+    """Build a compact cross-chapter alignment bank for Chapter 2 onward.
+
+    The model receives previous saved drafts, uploaded previous chapters/full thesis
+    extracts, and any pasted alignment notes. The context is deliberately compact so
+    it improves alignment without allowing an older chapter to overwhelm the active
+    chapter request.
+    """
+    target_chapter = int(getattr(payload, "chapter_number", 0) or 0)
+    if target_chapter <= 1:
+        return {"available": False, "items": [], "rules": []}
+
+    profile = project.get("profile") or {}
+    items: list[dict[str, Any]] = []
+
+    pasted_context = str(getattr(payload, "previous_chapters_context", "") or "").strip()
+    if pasted_context:
+        items.append({
+            "source": "pasted_alignment_context",
+            "label": "Pasted previous-chapter or full-thesis context",
+            "text": pasted_context[:18000],
+        })
+
+    uploaded_alignment = profile.get("uploaded_alignment_chapters") or {}
+    if isinstance(uploaded_alignment, dict):
+        records = list(uploaded_alignment.values())
+    elif isinstance(uploaded_alignment, list):
+        records = uploaded_alignment
+    else:
+        records = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        source_chapter = int(record.get("source_chapter_number") or record.get("chapter_number") or 0)
+        target = int(record.get("target_chapter_number") or target_chapter)
+        # Full thesis/work uploads have source_chapter_number 0 and can support any later chapter.
+        if source_chapter and source_chapter >= target_chapter:
+            continue
+        if target and target not in {target_chapter, 0}:
+            continue
+        text = str(record.get("extracted_text") or record.get("text") or "").strip()
+        if text:
+            items.append({
+                "source": "uploaded_alignment_chapter",
+                "label": _alignment_upload_label(record),
+                "text": text[:14000],
+            })
+
+    drafts = project.get("drafts") or {}
+    if isinstance(drafts, dict):
+        for number_text, draft_text in sorted(drafts.items(), key=lambda item: int(item[0]) if str(item[0]).isdigit() else 99):
+            try:
+                number = int(number_text)
+            except Exception:
+                continue
+            if number <= 0 or number >= target_chapter:
+                continue
+            text = str(draft_text or "").strip()
+            if not text:
+                continue
+            items.append({
+                "source": "saved_project_draft",
+                "label": f"Saved Chapter {number} draft",
+                "text": text[:14000],
+            })
+
+    # Deduplicate and enforce a project-level context cap.
+    compact: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    total_chars = 0
+    for item in items:
+        text = str(item.get("text") or "").strip()
+        if len(text) < 80:
+            continue
+        signature = re.sub(r"\W+", "", text[:400].lower())
+        if signature in seen:
+            continue
+        seen.add(signature)
+        remaining = max(0, 52000 - total_chars)
+        if remaining <= 0:
+            break
+        clipped = text[:remaining]
+        total_chars += len(clipped)
+        compact.append({**item, "text": clipped, "characters": len(clipped)})
+
+    return {
+        "available": bool(compact),
+        "target_chapter_number": target_chapter,
+        "items": compact,
+        "rules": [
+            "Use previous chapters only to align the active chapter with the approved title, problem, objectives, research questions, hypotheses, theory, context, methodology and terminology.",
+            "Do not copy long passages from previous chapters into the active chapter unless repetition is institutionally required.",
+            "If a conflict appears between the current chapter request and earlier chapters, preserve the current user-supplied instruction and mark the conflict with a bracketed attention placeholder.",
+            "For Chapter Two and later, check that headings, variables, constructs, theories and gaps are consistent with earlier chapters.",
+        ],
+    }
+
+
+def _attach_alignment_context(project: dict[str, Any], payload: DraftRequest) -> None:
+    context = _alignment_context_from_project(project, payload)
+    profile = project.get("profile") or {}
+    if context.get("available"):
+        profile["previous_chapters_context"] = context
+    else:
+        profile.pop("previous_chapters_context", None)
+    project["profile"] = profile
+
+
 def _readiness_error(missing: list[str]) -> HTTPException:
     return HTTPException(
         status_code=422,
@@ -231,6 +354,11 @@ def _validate_guided_development_request(
     if meaningful_categories < 2 or total_user_input < 140:
         missing.append("add meaningful context, evidence, student judgement, institutional guidance or supervisor direction")
 
+    if int(payload.chapter_number or 0) >= 2:
+        alignment_context = profile.get("previous_chapters_context") or {}
+        if not (isinstance(alignment_context, dict) and alignment_context.get("available")):
+            missing.append("upload or paste the earlier chapter(s), or save earlier ProjectReady drafts, so alignment can be checked from Chapter Two onward")
+
     if int(payload.chapter_number or 0) == 2:
         source_bank = profile.get("source_bank") or []
         has_verified_evidence = len(_plain_text(profile.get("citation_evidence_notes"))) >= 50
@@ -299,6 +427,10 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
         extra_instructions = (extra_instructions + "\n\n" + "\n\n".join(revision_parts)).strip()
 
     project["profile"] = _merge_payload_sources_into_profile(project.get("profile", {}), payload)
+
+    # Attach saved earlier chapters, uploaded previous chapters/full thesis extracts,
+    # and pasted alignment context for Chapter Two onward.
+    _attach_alignment_context(project, payload)
 
     # Merge human contribution and writing-style controls from the current draft request.
     incoming_contribution = getattr(payload, "student_contribution", None) or {}
@@ -453,6 +585,75 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
             status_code=402,
             detail=_payment_required_detail(str(exc), action=action, chapter_number=payload.chapter_number),
         ) from exc
+
+
+
+
+@router.post("/{project_id}/upload-alignment-chapter")
+async def upload_alignment_chapter(
+    project_id: str,
+    file: UploadFile = File(...),
+    source_chapter_number: int = Form(1),
+    target_chapter_number: int = Form(2),
+):
+    """Upload earlier chapters or a full existing thesis for cross-chapter alignment.
+
+    The extracted text is stored in profile["uploaded_alignment_chapters"]. Chapter Two
+    and later drafts use it to check consistency of the title, problem, gap,
+    objectives, questions, hypotheses, theory, variables, terminology and method.
+    """
+    project = _get_project_or_404(project_id)
+    filename = file.filename or "previous_chapter_alignment_upload"
+    contents = await file.read()
+    try:
+        extracted = extract_result_file(filename, contents)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Could not process uploaded alignment file: {exc}") from exc
+
+    source_number = max(0, min(int(source_chapter_number or 0), 7))
+    target_number = max(2, min(int(target_chapter_number or 2), 7))
+    if source_number and source_number >= target_number:
+        raise HTTPException(
+            status_code=400,
+            detail="For alignment checks, the uploaded source chapter must come before the chapter being drafted. Use 0 only when uploading the complete existing thesis or dissertation.",
+        )
+
+    profile = project.get("profile", {})
+    uploaded_alignment = profile.get("uploaded_alignment_chapters") or {}
+    if not isinstance(uploaded_alignment, dict):
+        uploaded_alignment = {}
+    record_id = f"{target_number}:{source_number}:{re.sub(r'[^a-zA-Z0-9_.-]+', '_', extracted['filename'])}"
+    uploaded_alignment[record_id] = {
+        **extracted,
+        "content_type": file.content_type or "",
+        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+        "source_chapter_number": source_number,
+        "target_chapter_number": target_number,
+        "alignment_purpose": "previous_chapter_or_full_work_alignment",
+    }
+    profile["uploaded_alignment_chapters"] = uploaded_alignment
+
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE projects SET profile_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (json.dumps(profile), project_id),
+        )
+        conn.commit()
+
+    source_label = "complete existing work" if source_number == 0 else f"Chapter {source_number}"
+    return {
+        "project_id": project_id,
+        "source_chapter_number": source_number,
+        "target_chapter_number": target_number,
+        "filename": extracted["filename"],
+        "file_type": extracted["file_type"],
+        "characters_extracted": extracted["characters_extracted"],
+        "truncated": extracted["truncated"],
+        "preview": extracted["preview"],
+        "message": f"{source_label} uploaded for Chapter {target_number} alignment checks.",
+    }
 
 
 @router.post("/{project_id}/upload-results")
