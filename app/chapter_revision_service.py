@@ -521,6 +521,63 @@ def _metrics(text: str) -> dict[str, Any]:
     }
 
 
+
+
+def _previous_chapters_revision_context(payload: dict[str, Any]) -> dict[str, Any]:
+    """Compact alignment context supplied to the Chapter Strengthener."""
+    raw = payload.get("previous_chapters_context") or payload.get("previous_chapters_for_alignment") or ""
+    items: list[dict[str, Any]] = []
+    if isinstance(raw, dict):
+        for item in raw.get("items") or []:
+            if not isinstance(item, dict):
+                continue
+            text = str(item.get("text") or "").strip()
+            if text:
+                items.append({
+                    "label": str(item.get("label") or "Previous chapter context"),
+                    "source": str(item.get("source") or "previous_chapter"),
+                    "text": text[:16000],
+                })
+    elif isinstance(raw, list):
+        for index, item in enumerate(raw, start=1):
+            if isinstance(item, dict):
+                text = str(item.get("text") or item.get("extracted_text") or "").strip()
+                label = str(item.get("label") or item.get("filename") or f"Previous chapter context {index}")
+            else:
+                text = str(item or "").strip()
+                label = f"Previous chapter context {index}"
+            if text:
+                items.append({"label": label, "source": "previous_chapter", "text": text[:16000]})
+    else:
+        text = str(raw or "").strip()
+        if text:
+            items.append({"label": "Uploaded or pasted previous chapters / full work", "source": "previous_chapter", "text": text[:28000]})
+
+    compact: list[dict[str, Any]] = []
+    total = 0
+    for item in items:
+        text = str(item.get("text") or "").strip()
+        if len(text) < 80:
+            continue
+        remaining = max(0, 52000 - total)
+        if remaining <= 0:
+            break
+        clipped = text[:remaining]
+        total += len(clipped)
+        compact.append({**item, "text": clipped, "characters": len(clipped)})
+
+    return {
+        "available": bool(compact),
+        "items": compact,
+        "rules": [
+            "Use this context to check cross-chapter alignment, not to copy earlier chapters into the revised chapter.",
+            "Check consistency of the thesis title, problem, gap, objectives, questions, hypotheses, theory, concepts, variables, methodology, scope and terminology.",
+            "Where the current chapter conflicts with earlier chapters, mark the issue as a bracketed attention placeholder instead of silently changing approved study logic.",
+            "For Chapter Two and later, ensure the revised chapter connects clearly to the earlier approved study direction.",
+        ],
+    }
+
+
 def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
     chapter_text = _finalise_chapter_text(str(payload.get("chapter_text") or ""))
     if len(chapter_text) < 100:
@@ -564,7 +621,9 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
                 "school_format": str(payload.get("school_guidelines") or "").strip(),
                 "target_pages": f"{page_min}-{page_max}",
                 "target_citations_per_1000_words": f"{citation_min}-{citation_max}",
+                "allow_missing_section_insertions": bool(payload.get("allow_missing_section_insertions", True)),
             },
+            "previous_chapters_for_alignment": _previous_chapters_revision_context(payload),
             "research_logic": {
                 "objectives": str(payload.get("objectives") or "").strip(),
                 "research_questions": str(payload.get("research_questions") or "").strip(),
@@ -592,7 +651,10 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
                 "Increase citation density where the chapter and academic level require it, but avoid citation padding and do not attach citations to unsupported claims.",
                 "Do not add mediation, moderation, causality, longitudinal design, multilevel structure, robustness tests or measurement validation unless they are justified by the approved study and available data.",
                 "Do not present a recommended analysis as completed. Use a concise bracketed action item such as [conduct and report the required diagnostic test] when essential evidence is missing.",
-                "Preserve chapter numbering and school-specific headings where supplied. Add a missing expected heading only when the chapter type and guidelines clearly require it.",
+                "Preserve chapter numbering and school-specific headings where supplied. Add a missing expected heading only when the chapter type, school guidelines, previous chapters or supervisor comments clearly require it.",
+                "When an important section is missing and allow_missing_section_insertions is true, insert the missing heading or section in the revised chapter but mark it for confirmation using a bracketed red-action marker, for example [confirm added section: Theoretical Framework].",
+                "If an added section requires evidence that was not supplied, include only defensible bridging prose and a precise bracketed placeholder such as [insert verified source for this added subsection] or [confirm supervisor approval for this added subsection].",
+                "Use previous_chapters_for_alignment to check consistency from Chapter Two onward. Do not copy earlier chapters, but align variables, objectives, theory, method, terminology and scope.",
                 "Strengthen paragraphs through claim, evidence, synthesis, interpretation, qualification and linkage to the study. Avoid repetitive templates and author-by-author listing.",
                 "Use formal British English, varied sentence and paragraph length, precise transitions and natural scholarly rhythm. Do not insert artificial mistakes or mention AI detection.",
                 "Do not expand the chapter merely to hit a page target. Add depth through evidence, critique, theory, methodological justification, interpretation and cross-section alignment.",
@@ -606,7 +668,8 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
                 "Assess the problem, gap, objectives, questions, hypotheses, theory, methods, results and conclusions only where relevant to this chapter.",
                 "Report the achieved word count, estimated pages and citation density, and compare them with the planning targets without claiming that page count alone proves quality.",
                 "List unresolved evidence, analysis, citation and author-action requirements.",
-                "Identify cross-chapter consistency checks required before submission.",
+                "Identify cross-chapter consistency checks required before submission, especially issues detected from previous_chapters_for_alignment.",
+                "List any added or proposed sections that were inserted for confirmation, and explain why each was needed.",
                 "Do not guarantee supervisor approval, examination success or thesis acceptance.",
             ],
             "output_format": [

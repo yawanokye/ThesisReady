@@ -59,6 +59,7 @@ class DraftRequest(BaseModel):
     revision_text: str = ""
     existing_chapter_text: str = ""
     uploaded_revision_text: str = ""
+    previous_chapters_context: str = ""
     revision_filename: str = ""
     retrieved_sources: dict[str, Any] = Field(default_factory=dict)
     source_bank: list[dict[str, Any]] = Field(default_factory=list)
@@ -170,6 +171,8 @@ class ChapterRevisionRequest(BaseModel):
     include_older_foundational: bool = True
     source_search_terms: str = ""
     source_limit: int = 45
+    previous_chapters_context: str = ""
+    allow_missing_section_insertions: bool = True
     source_bank: list[dict[str, Any]] = Field(default_factory=list)
     save_to_project: bool = True
     academic_integrity_confirmed: bool = False

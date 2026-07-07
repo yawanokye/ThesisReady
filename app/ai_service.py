@@ -540,6 +540,49 @@ def _source_relevance_counts(sources: list[dict[str, Any]]) -> dict[str, int]:
     return counts
 
 
+
+
+def _previous_chapters_for_alignment(profile: dict[str, Any], chapter_number: int) -> dict[str, Any]:
+    """Return compact previous-chapter context for cross-chapter alignment."""
+    context = profile.get("previous_chapters_context") or {}
+    if not isinstance(context, dict) or not context.get("available") or int(chapter_number or 0) <= 1:
+        return {
+            "available": False,
+            "note": "No previous-chapter alignment context was supplied for this chapter.",
+            "items": [],
+        }
+    items = []
+    total = 0
+    for item in context.get("items") or []:
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("text") or "").strip()
+        if len(text) < 80:
+            continue
+        remaining = max(0, 52000 - total)
+        if remaining <= 0:
+            break
+        clipped = text[:remaining]
+        total += len(clipped)
+        items.append({
+            "source": str(item.get("source") or "previous_chapter"),
+            "label": str(item.get("label") or "Previous chapter context"),
+            "characters": len(clipped),
+            "text": clipped,
+        })
+    return {
+        "available": bool(items),
+        "target_chapter_number": int(chapter_number or 0),
+        "items": items,
+        "rules": context.get("rules") or [
+            "Use previous chapters only for cross-chapter alignment checks.",
+            "Preserve consistency with approved objectives, questions, hypotheses, variables, theory, methodology, terminology and scope.",
+            "Do not copy large passages from previous chapters into the active chapter.",
+            "Mark conflicts or missing alignment information with bracketed attention placeholders instead of guessing.",
+        ],
+    }
+
+
 def _retrieved_sources_for_prompt(profile: dict[str, Any], chapter_number: int | None = None) -> dict[str, Any]:
     """Return source-search results in a compact prompt-friendly form."""
     retrieved = profile.get("retrieved_sources") or {}
@@ -855,7 +898,7 @@ def build_drafting_prompt(
     prompt_profile = {
         key: value
         for key, value in profile.items()
-        if key not in {"source_bank", "attached_sources", "retrieved_sources"}
+        if key not in {"source_bank", "attached_sources", "retrieved_sources", "previous_chapters_context", "uploaded_alignment_chapters"}
     }
 
     prompt = {
@@ -873,6 +916,7 @@ def build_drafting_prompt(
         "human_scholarly_style_requirements": _human_scholarly_style_requirements(seed=hash(profile.get("title", "")) & 0xFFFFFFFF),
         "student_contribution_and_style_controls": _student_contribution_requirements(profile),
         "analysis_evidence_for_this_chapter": _uploaded_results_for_chapter(profile, chapter_number),
+        "previous_chapters_for_alignment": _previous_chapters_for_alignment(profile, chapter_number),
         "retrieved_sources": _retrieved_sources_for_prompt(profile, chapter_number),
         "selected_sections": section_payload,
         "extra_instructions": extra_instructions,
@@ -897,6 +941,8 @@ def build_drafting_prompt(
             "Do not write sentences that say the work, chapter, section, depth, or argument is designed to meet the selected level of the project, thesis, or dissertation.",
             "Use the reference_currency_requirements: aim for at least 70% of substantive references within the stated recent-reference window, but where current sources do not exist, use the strongest credible available sources instead.",
             "Use the citation_and_evidence_requirements: include relevant, accurate in-text citations across all substantive write-up sections, especially literature, methodology justification, discussion, and problem framing.",
+            "For Chapter Two and every later chapter, use previous_chapters_for_alignment to check consistency with earlier chapters before writing. Align concepts, variables, theories, objectives, research questions, hypotheses, methodology and terminology with the supplied earlier chapters.",
+            "Do not copy large passages from previous_chapters_for_alignment. Use it to detect contradictions, omissions and missing links. Where alignment cannot be confirmed, insert a precise bracketed attention placeholder such as [confirm alignment with Chapter One objective wording].",
             "Use retrieved_sources as an additional evidence bank where the user has run the source finder. Do not replace the project profile, user-provided evidence, uploaded files, or placeholders; enrich the draft with relevant retrieved sources.",
             "When retrieved_sources contains sources marked highly_relevant or partly_relevant, review them carefully and integrate those that directly support the chapter argument. Do not cite not_relevant sources, and do not cite any source merely to increase citation count.",
             "Every chapter must end with a References section that includes complete reference entries for every source cited in the chapter, using available reference_entry_hint/apa_hint details from the source bank and user-supplied evidence notes. If source search results were attached, add a short Source Use Audit after the References section.",
