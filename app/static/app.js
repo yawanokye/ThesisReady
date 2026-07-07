@@ -6,11 +6,13 @@ let latestSourceSearchResult = null;
 let accumulatedSourceBank = [];
 let uploadedRevisionText = "";
 let uploadedRevisionFilename = "";
+let alignmentUploadAttached = false;
+let savedProjectDrafts = {};
 let draftRequestInFlight = false;
 
 const $ = (id) => document.getElementById(id);
 
-const APP_STATIC_VERSION = "20260629-integrity-v3";
+const APP_STATIC_VERSION = "20260707-alignment-v1";
 const CURRENT_PROJECT_STORAGE_KEY = "projectready-current-project";
 
 const levelDepthGuidance = {
@@ -256,6 +258,13 @@ async function restoreCurrentProject() {
     if ($("study_context")) $("study_context").value = profile.study_context || "";
     if ($("academicIntegrityDeclaration")) $("academicIntegrityDeclaration").checked = Boolean(profile.academic_integrity_confirmed);
     if ($("userContributionDeclaration")) $("userContributionDeclaration").checked = Boolean(profile.user_contribution_confirmed);
+    const alignmentUploads = profile.uploaded_alignment_chapters || {};
+    const alignmentCount = Array.isArray(alignmentUploads) ? alignmentUploads.length : Object.keys(alignmentUploads || {}).length;
+    savedProjectDrafts = project.drafts || {};
+    alignmentUploadAttached = alignmentCount > 0;
+    if ($("previousChapterStatus") && alignmentCount) {
+      $("previousChapterStatus").textContent = `${alignmentCount} previous-chapter/full-work alignment upload(s) are already attached to this project.`;
+    }
     if ($("saveRecoveryBtn")) $("saveRecoveryBtn").disabled = false;
     if ($("projectStatus")) $("projectStatus").textContent = project.recovery_enabled
       ? `Project restored: ${project.id}. Recovery is enabled.`
@@ -314,6 +323,15 @@ function updateChapterSpecificUi() {
   if (supplementBtn) supplementBtn.disabled = !currentProjectId;
   const otherBox = $("otherChapterBox");
   if (otherBox) otherBox.hidden = currentChapter !== 6;
+  const previousBox = $("previousChaptersBox");
+  if (previousBox) previousBox.hidden = Number(currentChapter || 1) <= 1;
+  const previousSelect = $("previousChapterNumber");
+  if (previousSelect && Number(currentChapter || 1) > 1) {
+    const selected = Number(previousSelect.value || 1);
+    if (selected !== 0 && selected >= Number(currentChapter || 1)) {
+      previousSelect.value = String(Math.max(1, Number(currentChapter || 2) - 1));
+    }
+  }
 }
 
 function selectedSectionIds() {
@@ -677,6 +695,16 @@ function currentSourcePayload() {
   };
 }
 
+
+function hasSavedEarlierDraftForAlignment() {
+  const target = Number(currentChapter || 1);
+  if (!savedProjectDrafts || target <= 1) return false;
+  return Object.entries(savedProjectDrafts).some(([numberText, draft]) => {
+    const number = Number(numberText);
+    return number > 0 && number < target && String(draft || "").trim().length >= 80;
+  });
+}
+
 function responsibleUseConfirmed() {
   return Boolean(
     $("academicIntegrityDeclaration")?.checked
@@ -717,6 +745,12 @@ function ownInputReadinessProblems({revisionMode = false} = {}) {
     problems.push("add more of your own evidence, argument, context, school guidance or supervisor direction");
   }
   if (!selectedSectionIds().length) problems.push("select at least one required chapter section");
+  if (Number(currentChapter || 1) >= 2) {
+    const pastedAlignment = $("previousChaptersContext")?.value.trim() || "";
+    if (!alignmentUploadAttached && !hasSavedEarlierDraftForAlignment() && pastedAlignment.length < 80) {
+      problems.push("upload or paste earlier chapter(s), or save the earlier ProjectReady chapter draft, for alignment checks from Chapter Two onward");
+    }
+  }
   return problems;
 }
 
@@ -868,6 +902,7 @@ async function generateDraft() {
     revision_instructions: $("revisionInstructions") ? $("revisionInstructions").value.trim() : "",
     revision_text: uploadedRevisionText,
     revision_filename: uploadedRevisionFilename,
+    previous_chapters_context: $("previousChaptersContext") ? $("previousChaptersContext").value.trim() : "",
     other_chapter_title: $("otherChapterTitle") ? $("otherChapterTitle").value.trim() : "",
     other_chapter_instructions: $("otherChapterInstructions") ? $("otherChapterInstructions").value.trim() : "",
     draft_maturity: $("draftMaturity") ? $("draftMaturity").value : "Supervisor-ready draft",
@@ -892,6 +927,7 @@ async function generateDraft() {
     const result = await api(`/api/projects/${currentProjectId}/draft`, { method: "POST", body: JSON.stringify(payload) });
     hideAccessRequiredNotice();
     $("draftOutput").value = result.draft;
+    savedProjectDrafts[String(currentChapter)] = result.draft || "";
   renderDraftPreview(result.draft);
   showDraftQualityHint(result.draft, result.generation_metrics || null);
   if (result.warning) {
@@ -906,6 +942,45 @@ async function generateDraft() {
       draftButton.textContent = originalButtonText;
     }
   }
+}
+
+
+async function uploadPreviousChapterForAlignment() {
+  if (!currentProjectId) await createProject();
+  const input = $("previousChapterFile");
+  if (!input || !input.files || input.files.length === 0) {
+    $("previousChapterStatus").textContent = "Please select an earlier chapter or complete-work file first.";
+    return;
+  }
+  if (Number(currentChapter || 1) <= 1) {
+    $("previousChapterStatus").textContent = "Previous-chapter alignment uploads are used from Chapter Two onward.";
+    return;
+  }
+
+  const sourceNumber = Number($("previousChapterNumber")?.value || 1);
+  if (sourceNumber !== 0 && sourceNumber >= Number(currentChapter || 1)) {
+    $("previousChapterStatus").textContent = "Choose an earlier source chapter, or choose complete existing work / full thesis.";
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("file", input.files[0]);
+  formData.append("source_chapter_number", String(sourceNumber));
+  formData.append("target_chapter_number", String(currentChapter || 2));
+
+  $("previousChapterStatus").textContent = "Uploading and extracting previous-chapter context for alignment checks...";
+  const response = await fetch(`/api/projects/${currentProjectId}/upload-alignment-chapter`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || response.statusText);
+  }
+  const result = await response.json();
+  alignmentUploadAttached = true;
+  $("previousChapterStatus").textContent = result.message || `Uploaded ${result.filename} for Chapter ${result.target_chapter_number} alignment checks.`;
+  $("previousChapterPreview").textContent = result.preview || "No preview available.";
 }
 
 async function uploadResults() {
@@ -1096,6 +1171,7 @@ $("createProjectBtn").addEventListener("click", () => createProject().catch(err 
 if ($("saveRecoveryBtn")) $("saveRecoveryBtn").addEventListener("click", () => saveCurrentProjectRecovery().catch(err => handleWorkspaceError(err, "projectStatus")));
 if ($("recoverProjectBtn")) $("recoverProjectBtn").addEventListener("click", () => recoverWorkspaceProjects().catch(err => handleWorkspaceError(err, "projectStatus")));
 $("draftBtn").addEventListener("click", () => generateDraft().catch(err => handleWorkspaceError(err, "draftStatus")));
+if ($("uploadPreviousChapterBtn")) $("uploadPreviousChapterBtn").addEventListener("click", () => uploadPreviousChapterForAlignment().catch(err => handleWorkspaceError(err, "previousChapterStatus")));
 if ($("uploadResultsBtn")) $("uploadResultsBtn").addEventListener("click", () => uploadResults().catch(err => handleWorkspaceError(err, "uploadStatus")));
 if ($("uploadRevisionBtn")) $("uploadRevisionBtn").addEventListener("click", () => uploadRevision().catch(err => handleWorkspaceError(err, "revisionStatus")));
 if ($("downloadInstrumentBtn")) $("downloadInstrumentBtn").addEventListener("click", () => download(`/api/projects/${currentProjectId}/export/instrument/${currentChapter}`));

@@ -3,6 +3,7 @@ const byId = (id) => document.getElementById(id);
 const form = byId('revisionForm');
 const chapterText = byId('chapterText');
 const supervisorComments = byId('supervisorComments');
+const previousChaptersContext = byId('previousChaptersContext');
 const revisedChapter = byId('revisedChapter');
 const strengtheningReport = byId('strengtheningReport');
 const supervisorMatrix = byId('supervisorMatrix');
@@ -69,6 +70,7 @@ async function extractFile(fileInput, target, label) {
 
 byId('extractChapterBtn').addEventListener('click', () => extractFile(byId('chapterFile'), chapterText, 'chapter'));
 byId('extractCommentsBtn').addEventListener('click', () => extractFile(byId('commentsFile'), supervisorComments, 'supervisor-comment'));
+byId('extractAlignmentBtn').addEventListener('click', () => extractFile(byId('alignmentFile'), previousChaptersContext, 'previous-chapter or complete-work'));
 
 async function updateTargetNote() {
   try {
@@ -122,7 +124,9 @@ function payloadFromForm() {
     revision_level: byId('revisionLevel').value,
     revision_goals: byId('revisionGoals').value.trim(),
     supervisor_comments: supervisorComments.value.trim(),
+    previous_chapters_context: previousChaptersContext ? previousChaptersContext.value.trim() : '',
     strengthen_structure: byId('strengthenStructure').checked,
+    allow_missing_section_insertions: byId('allowMissingSectionInsertions') ? byId('allowMissingSectionInsertions').checked : true,
     strengthen_problem_gap: byId('strengthenProblemGap').checked,
     strengthen_conceptualisation: byId('strengthenConceptualisation').checked,
     increase_citation_density: byId('increaseCitationDensity').checked,
@@ -238,6 +242,12 @@ function fillFromProject(project) {
   byId('theoryFramework').value = profile.theory_framework || byId('theoryFramework').value;
   byId('contributionClaim').value = profile.contribution_claim || byId('contributionClaim').value;
   byId('dataResults').value = profile.data_and_results || byId('dataResults').value;
+  if (previousChaptersContext && profile.previous_chapters_context && typeof profile.previous_chapters_context === 'string') {
+    previousChaptersContext.value = profile.previous_chapters_context;
+  }
+  if (byId('allowMissingSectionInsertions') && profile.allow_missing_section_insertions !== undefined) {
+    byId('allowMissingSectionInsertions').checked = Boolean(profile.allow_missing_section_insertions);
+  }
   if (profile.citation_style) byId('citationStyle').value = profile.citation_style;
   if (profile.external_revision_chapter_type) byId('chapterType').value = profile.external_revision_chapter_type;
   if (profile.external_revision_chapter_title) byId('chapterTitle').value = profile.external_revision_chapter_title;
@@ -519,6 +529,7 @@ byId('clearBtn').addEventListener('click', () => {
   form.reset();
   chapterText.value = '';
   supervisorComments.value = '';
+  if (previousChaptersContext) previousChaptersContext.value = '';
   revisedChapter.value = '';
   strengtheningReport.value = '';
   supervisorMatrix.value = '';

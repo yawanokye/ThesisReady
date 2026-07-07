@@ -480,3 +480,15 @@ input:focus, select:focus, textarea:focus { outline: 3px solid rgba(30,94,255,.1
 }
 .academic-integrity-panel h3 { margin-top: 0; color: #17366f; }
 .academic-integrity-panel .check { background: #fff; border: 1px solid #d7def0; border-radius: 9px; padding: 10px; }
+
+.alignment-box {
+  border: 1px dashed #b9c7de;
+  border-radius: 16px;
+  padding: 14px;
+  margin: 14px 0;
+  background: #f8fbff;
+}
+
+.alignment-box h3 {
+  margin: 0 0 6px;
+}

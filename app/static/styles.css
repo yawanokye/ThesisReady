@@ -312,3 +312,13 @@ th { background: #f2f4f7; }
 @media (max-width: 650px) {
   .workspace-topbar { align-items: flex-start; flex-direction: column; }
 }
+
+.two-col-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 900px) {
+  .two-col-form { grid-template-columns: 1fr; }
+}

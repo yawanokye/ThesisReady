@@ -248,6 +248,35 @@
         <h2>4. Develop, review and check</h2>
         <input type="checkbox" id="useAi" checked hidden />
       </div>
+
+      <div class="upload-box alignment-box" id="previousChaptersBox" hidden>
+        <h3>Previous chapters for alignment checks</h3>
+        <p class="hint">For Chapter Two and later, upload the earlier chapter(s) or the complete existing work so the draft can check alignment with the title, problem, objectives, questions, hypotheses, theory, variables, terminology and methods.</p>
+        <div class="two-col-form">
+          <label class="priority-field"><span class="field-label">Source chapter</span>
+            <select id="previousChapterNumber">
+              <option value="1">Chapter 1</option>
+              <option value="2">Chapter 2</option>
+              <option value="3">Chapter 3</option>
+              <option value="4">Chapter 4</option>
+              <option value="5">Chapter 5</option>
+              <option value="0">Complete existing work / full thesis</option>
+            </select>
+          </label>
+          <label class="priority-field"><span class="field-label">Previous chapter or full work file</span>
+            <input id="previousChapterFile" type="file" accept=".docx,.pdf,.txt,.md,.csv,.xlsx,.xlsm" />
+          </label>
+        </div>
+        <div class="actions compact-actions">
+          <button id="uploadPreviousChapterBtn" type="button">Upload for alignment</button>
+        </div>
+        <label class="priority-field"><span class="field-label">Paste previous-chapter alignment notes or extracts</span>
+          <textarea id="previousChaptersContext" rows="4" placeholder="Optional. Paste key earlier-chapter sections, approved objectives, problem statement, theory/framework, methods, or supervisor-approved wording for alignment checks."></textarea>
+        </label>
+        <p id="previousChapterStatus" class="status"></p>
+        <pre id="previousChapterPreview" class="preview-box"></pre>
+      </div>
+
       <div class="upload-box revision-box">
         <h3>Quick strengthening in the workspace</h3>
         <p class="hint"><a href="/chapter-strengthener">Open the Comprehensive Chapter Strengthener</a> for level-based depth targets, citation-density strengthening, supervisor response matrix and blue/black/red DOCX comparison.</p>
@@ -331,6 +360,6 @@
   </main>
 
   <script src="/static/projectready_payments.js?v=20260630-stripe-test-all-v3"></script>
-  <script src="/static/app.js?v=20260629-integrity-v3"></script>
+  <script src="/static/app.js?v=20260707-alignment-v1"></script>
 </body>
 </html>

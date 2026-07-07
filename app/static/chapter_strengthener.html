@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Chapter Strengthener | ProjectReady AI</title>
-  <link rel="stylesheet" href="/static/chapter_strengthener.css?v=20260629-recovery-revision-v2">
+  <link rel="stylesheet" href="/static/chapter_strengthener.css?v=20260707-alignment-v1">
   <link rel="stylesheet" href="/static/projectready_payments.css?v=20260630-stripe-test-all-v3">
 </head>
 <body class="chapter-strengthener-page">
@@ -107,6 +107,15 @@
         <label class="priority"><span class="field-label">Existing chapter text *</span><textarea id="chapterText" rows="18" required placeholder="Paste the complete existing chapter or extract it from an uploaded file."></textarea></label>
         <p id="uploadStatus" class="status"></p>
 
+        <div class="alignment-box upload-box">
+          <h3>Previous chapters or complete work for alignment</h3>
+          <p class="help">For Chapter Two and later, add earlier chapters or the full existing work so the strengthening checks the problem, objectives, questions, hypotheses, theory, variables, methods and terminology against the rest of the thesis.</p>
+          <label><span class="field-label">Upload previous chapter or complete work</span><input id="alignmentFile" type="file" accept=".docx,.pdf,.txt,.md,.rtf,.json"></label>
+          <button type="button" class="secondary compact-upload" id="extractAlignmentBtn">Extract alignment text</button>
+          <label><span class="field-label">Previous chapters / complete work alignment text</span><textarea id="previousChaptersContext" rows="8" placeholder="Paste or extract earlier chapters, approved Chapter One, full thesis text, or supervisor-approved alignment notes. This is used only for consistency checks and is not copied into the revised chapter."></textarea></label>
+        </div>
+
+
         <h2>2. Project and research logic</h2>
         <div class="two-cols">
           <label><span class="field-label">Discipline or programme</span><input id="discipline" placeholder="e.g. Finance, Education, Procurement"></label>
@@ -136,6 +145,7 @@
         <div class="revision-focus-panel">
           <h3>Strengthening focus</h3>
           <label class="check"><input type="checkbox" id="strengthenStructure" checked> Strengthen chapter structure and completeness</label>
+          <label class="check"><input type="checkbox" id="allowMissingSectionInsertions" checked> Add necessary missing sections when justified, marked in red for confirmation</label>
           <label class="check"><input type="checkbox" id="strengthenProblemGap" checked> Strengthen problem, gap and objective alignment</label>
           <label class="check"><input type="checkbox" id="strengthenConceptualisation" checked> Strengthen concepts, theory and framework</label>
           <label class="check"><input type="checkbox" id="increaseCitationDensity" checked> Increase relevant citation density and synthesis</label>
@@ -197,6 +207,6 @@
 
   <footer class="footer">ProjectReady AI, self-service academic research support with user authorship, verification and supervisor review.</footer>
   <script src="/static/projectready_payments.js?v=20260630-stripe-test-all-v3"></script>
-  <script src="/static/chapter_strengthener.js?v=20260629-recovery-revision-v2"></script>
+  <script src="/static/chapter_strengthener.js?v=20260707-alignment-v1"></script>
 </body>
 </html>
