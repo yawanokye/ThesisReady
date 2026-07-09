@@ -139,6 +139,28 @@ def _chapter_length_requirements(
         # Custom chapters and the supplementary guide remain scope-led.
         pages = (8, 18) if chapter_number == 7 else (8, 20)
 
+    custom_targets = profile.get("custom_page_targets") or {}
+    current_custom = profile.get("current_custom_page_target") or {}
+    custom_range: dict[str, Any] | None = None
+    if isinstance(custom_targets, dict):
+        raw_custom = custom_targets.get(str(chapter_number))
+        if isinstance(raw_custom, dict):
+            custom_range = raw_custom
+    if not custom_range and isinstance(current_custom, dict):
+        try:
+            if int(current_custom.get("chapter") or 0) == chapter_number and str(current_custom.get("mode") or "") == "custom":
+                custom_range = current_custom
+        except Exception:
+            custom_range = None
+    if isinstance(custom_range, dict):
+        try:
+            cmin = int(float(custom_range.get("minimum") or custom_range.get("min") or 0))
+            cmax = int(float(custom_range.get("maximum") or custom_range.get("max") or 0))
+            if cmin > 0 and cmax >= cmin and cmax <= 180:
+                pages = (cmin, cmax)
+        except Exception:
+            pass
+
     min_pages, max_pages = pages
     min_words = min_pages * WORDS_PER_PAGE_ESTIMATE
     max_words = max_pages * WORDS_PER_PAGE_ESTIMATE
