@@ -113,6 +113,11 @@ class TopicIdeasRecoveryRequest(BaseModel):
     email: str = Field(min_length=5, max_length=254)
 
 
+class PaidAccessRecoveryRequest(BaseModel):
+    purchase_id: str = Field(min_length=10, max_length=100)
+    email: str = Field(min_length=5, max_length=254)
+
+
 class TopicIdeasTrialRequest(BaseModel):
     email: str = Field(min_length=5, max_length=254)
     trial_key: str = Field(min_length=8, max_length=200)
@@ -315,21 +320,20 @@ def _successful_payment_redirect(purchase: Dict[str, Any], provider: str) -> Red
         "chapter": purchase.get("chapter_number", ""),
         "mode": metadata.get("purchase_mode", "chapter"),
     }
-    # Topic Ideas no longer depends on a pre-checkout localStorage token. The
-    # signed provider callback creates a short-lived, single-use server handoff
-    # which the returning browser redeems for a fresh opaque access credential.
-    if _is_topic_ideas_purchase(purchase):
-        try:
-            params["handoff"] = create_access_handoff(
-                str(purchase.get("id") or ""),
-                purpose=f"{provider}_payment_return",
-                database_url=DATABASE_URL,
-            )
-        except Exception:
-            # Never strand a paid customer on the provider callback. The return
-            # URL still contains the purchase id, and the recovery endpoint can
-            # verify the provider transaction and issue a fresh credential.
-            params["handoff_status"] = "recovery_required"
+    # Every paid product now receives a short-lived, single-use server handoff.
+    # This restores the browser credential after payment even if localStorage was
+    # cleared, blocked, or split across www/apex domains during the provider flow.
+    try:
+        params["handoff"] = create_access_handoff(
+            str(purchase.get("id") or ""),
+            purpose=f"{provider}_payment_return",
+            database_url=DATABASE_URL,
+        )
+    except Exception:
+        # Do not strand a paid customer on the provider callback. The return URL
+        # still contains the Purchase ID, and /api/payments/recover-access can
+        # verify the email and transaction before issuing a fresh credential.
+        params["handoff_status"] = "recovery_required"
     return _redirect(_purchase_return_path(purchase), **params)
 
 
@@ -431,6 +435,47 @@ def redeem_payment_recovery(payload: PaymentRecoveryRedeemRequest) -> Dict[str, 
         "chapter_number": purchase.get("chapter_number"),
         "chapter_title": purchase.get("chapter_title"),
         "return_path": _purchase_return_path(purchase, "/topic-ideas" if _is_topic_ideas_purchase(purchase) else SUCCESS_PATH),
+    }
+
+
+@api_router.post("/api/payments/recover-access")
+def recover_paid_access(payload: PaidAccessRecoveryRequest) -> Dict[str, Any]:
+    """Restore a paid chapter/revision credential using the payment email and Purchase ID.
+
+    This is the self-service backup for customers who completed payment but lost
+    the browser token before using the remaining entitlements. The Purchase ID is
+    shown on the payment-return URL and can also be supplied by support.
+    """
+    email = _valid_email(payload.email)
+    purchase = get_purchase(payload.purchase_id, database_url=DATABASE_URL)
+    if not purchase:
+        raise HTTPException(status_code=404, detail="No paid access record matches that Purchase ID.")
+    if str(purchase.get("user_email") or "").strip().lower() != email:
+        raise HTTPException(status_code=403, detail="The payment email does not match this Purchase ID.")
+    try:
+        purchase = _verify_pending_purchase(purchase)
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=f"The payment could not yet be verified: {exc}") from exc
+    if str(purchase.get("status") or "").lower() not in {"paid", "active"}:
+        raise HTTPException(status_code=409, detail="The payment is still pending or was not completed.")
+    refreshed = rotate_access_token(str(purchase.get("id") or ""), database_url=DATABASE_URL)
+    status = entitlement_status(
+        str(refreshed.get("id") or ""),
+        str(refreshed.get("access_token") or ""),
+        database_url=DATABASE_URL,
+    )
+    return {
+        "ok": True,
+        "purchase_id": refreshed.get("id"),
+        "access_token": refreshed.get("access_token"),
+        "provider": refreshed.get("payment_provider"),
+        "product_area": _purchase_product_area(refreshed),
+        "project_id": refreshed.get("project_id"),
+        "chapter_number": refreshed.get("chapter_number"),
+        "chapter_title": refreshed.get("chapter_title"),
+        "return_path": _purchase_return_path(refreshed, "/topic-ideas" if _is_topic_ideas_purchase(refreshed) else SUCCESS_PATH),
+        "status": status,
+        "message": "Paid access restored. Remaining entitlements are available on this device.",
     }
 
 
