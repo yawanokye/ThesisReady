@@ -136,7 +136,8 @@ def _apply_profile_updates(project: dict[str, Any], payload: DraftRequest) -> No
         "other_chapter_title", "other_chapter_instructions", "draft_maturity",
         "student_contribution", "academic_integrity_confirmed",
         "user_contribution_confirmed", "allow_provisional_drafting",
-        "draft_consideration_warnings",
+        "draft_consideration_warnings", "chapter_page_targets",
+        "current_chapter_page_target", "long_chapter_workflow_visible",
     }
     preserve_when_blank = {
         "research_area", "study_context", "citation_evidence_notes", "variables",
