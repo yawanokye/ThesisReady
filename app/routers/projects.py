@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import uuid
 from collections import defaultdict, deque
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, File, Header, HTTPException, Request, UploadFile
 
 from app.database import get_conn, row_to_dict
 from app.project_recovery import recover_projects, recovery_enabled, set_project_recovery
+from app.result_uploads import extract_result_file
 from app.payments.store import rotate_project_access_tokens
 from app.schemas import (
     ProjectCreate,
@@ -146,6 +149,145 @@ def recover_project_ids(payload: ProjectRecoveryRequest, request: Request):
             if restored_access
             else "No active paid chapter credential required renewal."
         ),
+    }
+
+
+def _normalise_lines(value: str) -> list[str]:
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for line in str(value or "").splitlines():
+        line = line.strip()
+        line = re.sub(r"^(?:\d+(?:\.\d+)*|[ivxlcdm]+|[a-z])\s*[.)-]\s*", "", line, flags=re.I).strip()
+        if len(line) < 4:
+            continue
+        key = line.lower()
+        if key not in seen:
+            seen.add(key)
+            cleaned.append(line)
+    return cleaned[:12]
+
+
+def _section_text(text: str, heading_patterns: list[str], stop_patterns: list[str] | None = None, limit: int = 2500) -> str:
+    source = str(text or "")
+    starts: list[int] = []
+    for pattern in heading_patterns:
+        match = re.search(pattern, source, flags=re.I | re.M)
+        if match:
+            starts.append(match.end())
+    if not starts:
+        return ""
+    start = min(starts)
+    end = len(source)
+    stops = stop_patterns or [
+        r"^\s*\d+(?:\.\d+)*\s+", r"^\s*CHAPTER\s+", r"^\s*References\s*$",
+    ]
+    for pattern in stops:
+        stop = re.search(pattern, source[start:], flags=re.I | re.M)
+        if stop and stop.start() > 30:
+            end = min(end, start + stop.start())
+    return source[start:end].strip()[:limit]
+
+
+def _extract_numbered_items_after_heading(text: str, heading_patterns: list[str], limit: int = 10) -> list[str]:
+    block = _section_text(text, heading_patterns, limit=5000)
+    if not block:
+        return []
+    items: list[str] = []
+    current: list[str] = []
+    for line in block.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if re.match(r"^(?:\d+(?:\.\d+)*|[ivxlcdm]+|[a-z])\s*[.)-]\s+", stripped, flags=re.I):
+            if current:
+                items.append(" ".join(current).strip())
+            current = [re.sub(r"^(?:\d+(?:\.\d+)*|[ivxlcdm]+|[a-z])\s*[.)-]\s+", "", stripped, flags=re.I).strip()]
+        elif current and not re.match(r"^\s*\d+(?:\.\d+)*\s+", stripped):
+            current.append(stripped)
+    if current:
+        items.append(" ".join(current).strip())
+    return _normalise_lines("\n".join(items))[:limit]
+
+
+def _guess_title(text: str, filename: str) -> str:
+    lines = [line.strip() for line in str(text or "").splitlines() if line.strip()]
+    skip = re.compile(r"^(chapter\s+one|introduction|references|source use audit|responsible-use notice|chapter\s+1\b)", re.I)
+    for line in lines[:20]:
+        if skip.search(line):
+            continue
+        if 8 <= len(line) <= 180 and not line.endswith("."):
+            return line.strip().title() if line.islower() else line.strip()
+    return Path(filename or "").stem.replace("_", " ").replace("-", " ").strip().title()
+
+
+def _profile_suggestions_from_chapter_one(text: str, filename: str) -> dict[str, Any]:
+    title = _guess_title(text, filename)
+    objectives = _extract_numbered_items_after_heading(
+        text,
+        [r"^\s*(?:\d+(?:\.\d+)*\s*)?(?:specific\s+)?research\s+objectives\s*$", r"^\s*(?:\d+(?:\.\d+)*\s*)?specific\s+objectives\s*$"],
+        limit=10,
+    )
+    questions = _extract_numbered_items_after_heading(
+        text,
+        [r"^\s*(?:\d+(?:\.\d+)*\s*)?research\s+questions\s*$"],
+        limit=10,
+    )
+    background = _section_text(
+        text,
+        [r"^\s*(?:\d+(?:\.\d+)*\s*)?background\s+to\s+the\s+study\s*$", r"^\s*(?:\d+(?:\.\d+)*\s*)?background\s*$"],
+        limit=1200,
+    )
+    problem = _section_text(
+        text,
+        [r"^\s*(?:\d+(?:\.\d+)*\s*)?statement\s+of\s+the\s+problem\s*$", r"^\s*(?:\d+(?:\.\d+)*\s*)?problem\s+statement\s*$"],
+        limit=1200,
+    )
+    context = "\n\n".join(part for part in [background, problem] if part).strip()
+    if not context:
+        context = " ".join(str(text or "").split()[:180])
+
+    research_area = ""
+    lower_title = title.lower()
+    if " among " in lower_title:
+        research_area = title[: lower_title.index(" among ")].strip()
+    elif " in " in lower_title:
+        research_area = title[: lower_title.index(" in ")].strip()
+    else:
+        research_area = title[:90].strip()
+
+    variable_candidates: list[str] = []
+    for phrase in re.split(r"\s+(?:and|among|in|within|of|on)\s+", title, flags=re.I):
+        phrase = phrase.strip(" ,.;:-")
+        if 3 <= len(phrase) <= 80 and not re.search(r"ghana|cape coast|university|workers|students|sector", phrase, re.I):
+            variable_candidates.append(phrase)
+
+    return {
+        "title": title,
+        "research_area": research_area,
+        "study_context": context,
+        "objectives": objectives,
+        "research_questions": questions,
+        "variables": _normalise_lines("\n".join(variable_candidates))[:8],
+    }
+
+
+@router.post("/extract-introduction-profile")
+async def extract_introduction_profile(file: UploadFile = File(...)):
+    filename = file.filename or "chapter_one_upload"
+    contents = await file.read()
+    try:
+        extracted = extract_result_file(filename, contents)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    text = str(extracted.get("extracted_text") or "")
+    suggestions = _profile_suggestions_from_chapter_one(text, filename)
+    return {
+        "filename": extracted.get("filename") or filename,
+        "characters_extracted": extracted.get("characters_extracted", len(text)),
+        "truncated": extracted.get("truncated", False),
+        "profile_suggestions": suggestions,
+        "preview": extracted.get("preview") or text[:1800],
+        "message": "Introduction/Chapter One extracted. Review all autofilled fields before drafting.",
     }
 
 
