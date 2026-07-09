@@ -102,6 +102,17 @@ function selectedTopicMarket() {
   return document.querySelector('input[name="topicMarket"]:checked')?.value || "ghana";
 }
 
+function ghanaTopicPriceDisplay(plan = null) {
+  const display = String(plan?.ghana?.display || "").trim();
+  if (/^GHS\s*10(?:\.00)?$/i.test(display)) return "GHS 10";
+  return display && /^GHS/i.test(display) ? display : "GHS 10";
+}
+
+function internationalTopicPriceDisplay(plan = null) {
+  const display = String(plan?.international?.display || "").trim();
+  return display && /^US\$/i.test(display) ? display : "US$1.50";
+}
+
 function updateGenerationControls(unlocked) {
   paidAccessReady = Boolean(unlocked);
   const select = $("maxIdeas");
@@ -181,72 +192,20 @@ async function loadTopicAccessPlan() {
   try {
     const plan = await api("/api/topic-ideas/access-plan");
     topicAccessPlan = plan;
-    const trialPanel = $("topicTrialPanel");
-    if (trialPanel) trialPanel.hidden = !Boolean(plan.trial?.available);
-
     const environment = plan.payment_environment || {};
-    const testPanel = $("topicStripeTestPanel");
-    if (testPanel) testPanel.hidden = !Boolean(environment.test_mode);
     if ($("topicGhanaPrice")) {
-      $("topicGhanaPrice").textContent = `${plan.ghana?.display || "GHS 10"} through ${plan.ghana?.provider || "Paystack"}`;
+      $("topicGhanaPrice").textContent = `${ghanaTopicPriceDisplay(plan)} through ${plan.ghana?.provider || "Paystack"}`;
     }
     if ($("topicInternationalPrice")) {
-      $("topicInternationalPrice").textContent = `${plan.international?.display || "US$1.50"} through Stripe`;
+      $("topicInternationalPrice").textContent = `${internationalTopicPriceDisplay(plan)} through Stripe`;
     }
     if ($("topicMarketNote")) {
-      $("topicMarketNote").textContent = environment.test_mode && environment.force_stripe
-        ? "Stripe test mode is forcing both market choices through Stripe in USD. No real money moves."
-        : "Choose Ghana only when Ghana is your billing country. International payments are processed in US dollars.";
-    }
-    if (environment.test_mode && environment.force_stripe) {
-      setTopicAccessState("free", "Stripe test mode is active. Enter the private test key, complete a simulated payment, and confirm that 5, 8, 10 and 12 ideas unlock.");
+      $("topicMarketNote").textContent = "Choose Ghana only when Ghana is your billing country. International payments are processed in US dollars.";
     }
     return plan;
   } catch (_) {
     topicAccessPlan = null;
-    const trialPanel = $("topicTrialPanel");
-    if (trialPanel) trialPanel.hidden = true;
-    const testPanel = $("topicStripeTestPanel");
-    if (testPanel) testPanel.hidden = true;
     return null;
-  }
-}
-
-async function activateTopicTrial() {
-  const button = $("activateTopicTrialBtn");
-  const email = $("topicPaymentEmail")?.value.trim() || "";
-  const trialKey = $("topicTrialKey")?.value.trim() || "";
-  if (!email || !email.includes("@")) {
-    setTopicAccessState("", "Enter a valid email address before activating trial access.");
-    $("topicPaymentEmail")?.focus();
-    return;
-  }
-  if (!trialKey) {
-    setTopicAccessState("", "Enter the private Topic Ideas trial key.");
-    $("topicTrialKey")?.focus();
-    return;
-  }
-  button.disabled = true;
-  $("topicAccessStatus").textContent = "Activating trial access through the normal entitlement system...";
-  try {
-    const data = await api("/api/topic-ideas/activate-trial", {
-      method: "POST",
-      body: JSON.stringify({ email, trial_key: trialKey }),
-    });
-    saveTopicCredential(data);
-    $("topicTrialKey").value = "";
-    const ready = await checkTopicAccess({ quiet: true, allowRecovery: false });
-    if (!ready) throw new Error("The trial record was created but the entitlement did not become active.");
-    setTopicAccessState("ready", data.recovered
-      ? "Trial credential restored. Choose 5, 8, 10 or 12 ideas."
-      : "Trial access activated. Choose 5, 8, 10 or 12 ideas.");
-    $("ideaStatus").textContent = "Trial unlock confirmed. The options are enabled without a payment or an existing Purchase ID.";
-    $("maxIdeas")?.scrollIntoView({ behavior: "smooth", block: "center" });
-  } catch (error) {
-    updateGenerationControls(false);
-    setTopicAccessState("free", error.message || "Trial access could not be activated.");
-  } finally {
-    button.disabled = false;
   }
 }
 
@@ -296,23 +255,14 @@ async function restoreTopicAccessFromForm() {
 async function startTopicIdeasCheckout() {
   const button = $("unlockTopicIdeasBtn");
   const email = $("topicPaymentEmail").value.trim();
-  const testMode = Boolean(topicAccessPlan?.payment_environment?.test_mode);
-  const testAccessKey = $("topicStripeTestKey")?.value.trim() || "";
   if (!email || !email.includes("@")) {
     setTopicAccessState("", "Enter a valid payment email address.");
     $("topicPaymentEmail").focus();
     return;
   }
-  if (testMode && !testAccessKey) {
-    setTopicAccessState("", "Enter the private Stripe test checkout key.");
-    $("topicStripeTestKey")?.focus();
-    return;
-  }
   saveTopicFormDraft();
   button.disabled = true;
-  $("topicAccessStatus").textContent = testMode
-    ? "Creating Stripe test checkout to verify the Topic Ideas unlock..."
-    : "Creating secure checkout to unlock up to 12 ideas...";
+  $("topicAccessStatus").textContent = "Creating secure checkout to unlock up to 12 ideas...";
   try {
     const data = await api("/api/topic-ideas/checkout", {
       method: "POST",
@@ -320,7 +270,6 @@ async function startTopicIdeasCheckout() {
         email,
         market: selectedTopicMarket(),
         return_path: "/topic-ideas",
-        test_access_key: testMode ? testAccessKey : "",
       }),
     });
     saveTopicCredential(data);
@@ -681,7 +630,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   $("unlockFromPreviewBtn").addEventListener("click", startTopicIdeasCheckout);
   $("checkTopicAccessBtn").addEventListener("click", () => checkTopicAccess());
   $("restoreTopicAccessBtn").addEventListener("click", restoreTopicAccessFromForm);
-  $("activateTopicTrialBtn").addEventListener("click", activateTopicTrial);
 
   restoreTopicFormDraft();
   await loadTopicAccessPlan();

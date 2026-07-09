@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ProjectReady AI | Guided Thesis and Dissertation Development Workspace</title>
   <link rel="stylesheet" href="/static/styles.css?v=20260629-integrity-v3" />
-  <link rel="stylesheet" href="/static/workspace-ui-clarity.css?v=20260629-integrity-v3" />
+  <link rel="stylesheet" href="/static/workspace-ui-clarity.css?v=20260709-ui-restore-v1" />
   <link rel="stylesheet" href="/static/projectready-suite.css?v=20260618-suite-ui-verified" />
-  <link rel="stylesheet" href="/static/projectready_payments.css?v=20260709-entitlement-recovery-v1" />
+  <link rel="stylesheet" href="/static/projectready_payments.css?v=20260709-live-payments-v2" />
 </head>
 <body class="workspace-clarity-theme suite-page thesis-suite">
   <header class="workspace-topbar">
@@ -70,6 +70,27 @@
         <span class="field-help">This controls working-draft depth, target page range, citation density and model quality. Research Masters and doctoral levels receive deeper section development.</span>
       </label>
       <p id="levelDepthHint" class="hint level-hint" hidden></p>
+
+      <div class="page-target-panel" id="pageTargetPanel">
+        <div class="cluster-title">Chapter depth and page target</div>
+        <p class="hint">Use the default level-based target, or set a custom page range for the active chapter. Very long chapters, especially PhD literature reviews, are developed in staged section batches instead of one shallow pass.</p>
+        <div class="two-col-form">
+          <label><span class="field-label">Page target mode</span>
+            <select id="pageTargetMode">
+              <option value="default" selected>Use default target for the selected level and chapter</option>
+              <option value="custom">Set a custom page range for this chapter</option>
+            </select>
+          </label>
+          <label><span class="field-label">Custom page range</span>
+            <span class="page-range-inputs">
+              <input id="customPageMin" type="number" min="1" max="150" placeholder="Min" disabled />
+              <input id="customPageMax" type="number" min="1" max="180" placeholder="Max" disabled />
+            </span>
+          </label>
+        </div>
+        <p id="pageTargetStatus" class="hint">Default target will be used unless you set a custom range.</p>
+      </div>
+
       <label class="priority-field"><span class="field-label">Thesis/dissertation/project format</span>
         <select id="thesis_format">
           <option value="Standard five-chapter thesis/dissertation">Standard five-chapter thesis/dissertation</option>
@@ -108,6 +129,27 @@
       <label>Verified references, facts and statistics for the study
         <textarea id="citation_evidence_notes" rows="4" placeholder="Paste verified sources, statistics, report details, DOI links, policy evidence, institutional records, or key citation notes. The app will use these to support claims and the problem statement."></textarea>
       </label>
+
+      <div class="autofill-panel" id="chapterOneAutofillPanel">
+        <h3>Autofill from Introduction or Chapter One</h3>
+        <p class="hint">Upload an existing Introduction or Chapter One to extract likely title, research area, context, objectives, questions and variables. Review every field after autofill.</p>
+        <div class="two-col-form">
+          <label><span class="field-label">Introduction / Chapter One file</span>
+            <input id="chapterOneAutofillFile" type="file" accept=".docx,.pdf,.txt,.md" />
+          </label>
+          <label><span class="field-label">Autofill behaviour</span>
+            <select id="chapterOneAutofillMode">
+              <option value="fill_empty" selected>Fill empty fields only</option>
+              <option value="replace">Replace matching fields after extraction</option>
+            </select>
+          </label>
+        </div>
+        <div class="actions compact-actions">
+          <button id="chapterOneAutofillBtn" type="button" class="secondary-action">Autofill project fields</button>
+        </div>
+        <p id="chapterOneAutofillStatus" class="status"></p>
+        <pre id="chapterOneAutofillPreview" class="preview-box"></pre>
+      </div>
       </div>
 
       <div class="source-box human-input-box">
@@ -360,7 +402,7 @@
     </section>
   </main>
 
-  <script src="/static/projectready_payments.js?v=20260709-entitlement-recovery-v1"></script>
-  <script src="/static/app.js?v=20260709-objective-numbering-entitlement-v1"></script>
+  <script src="/static/projectready_payments.js?v=20260709-live-payments-v2"></script>
+  <script src="/static/app.js?v=20260709-ui-restore-v1"></script>
 </body>
 </html>

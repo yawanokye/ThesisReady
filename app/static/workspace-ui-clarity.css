@@ -428,3 +428,26 @@ button:disabled {
 }
 .integrity-check input { margin-top: 3px; width: 18px; height: 18px; flex: 0 0 auto; }
 .working-draft-notice { background: #fff8e8; border-color: #e7c66d; color: #664b00; }
+
+/* Restored UI controls for page targets and Chapter One autofill */
+.page-target-panel,
+.autofill-panel {
+  border: 1.5px solid #b7ccff;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+  border-radius: 16px;
+  padding: 16px;
+  margin: 14px 0;
+}
+.page-range-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.page-range-inputs input:disabled {
+  background: #eef2f7;
+  color: #64748b;
+}
+.autofill-panel h3 {
+  margin: 0 0 8px;
+  color: #10233f;
+}

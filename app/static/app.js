@@ -9,10 +9,11 @@ let uploadedRevisionFilename = "";
 let alignmentUploadAttached = false;
 let savedProjectDrafts = {};
 let draftRequestInFlight = false;
+let customPageTargets = {};
 
 const $ = (id) => document.getElementById(id);
 
-const APP_STATIC_VERSION = "20260709-objective-numbering-entitlement-v1";
+const APP_STATIC_VERSION = "20260709-ui-restore-v1";
 const CURRENT_PROJECT_STORAGE_KEY = "projectready-current-project";
 
 const levelDepthGuidance = {
@@ -36,13 +37,70 @@ function updateLevelHint() {
   if (!hint) return;
   const level = $("level")?.value || "Bachelors";
   const chapter = Number(currentChapter || 1);
-  const pages = chapterPageTargets[level]?.[chapter];
+  const custom = customPageTargets[String(chapter)];
+  const pages = custom ? `${custom.minimum}-${custom.maximum}` : chapterPageTargets[level]?.[chapter];
   if (!pages || chapter > 5) {
     hint.textContent = "Depth for this output is based on the selected scope and sections.";
+  } else if (custom) {
+    hint.textContent = `Custom target depth for Chapter ${chapter}: about ${pages} pages. Very long chapters will be developed through staged section batches where needed.`;
   } else {
     hint.textContent = `Target depth for Chapter ${chapter}: about ${pages} pages, with citations distributed across substantive paragraphs. Final pagination depends on tables, figures, equations and references.`;
   }
   hint.hidden = false;
+}
+
+function currentPageTargetInput() {
+  const mode = $("pageTargetMode")?.value || "default";
+  const min = Number($("customPageMin")?.value || 0);
+  const max = Number($("customPageMax")?.value || 0);
+  const chapter = Number(currentChapter || 1);
+  if (mode !== "custom") return { mode: "default", chapter };
+  if (!Number.isFinite(min) || !Number.isFinite(max) || min < 1 || max < min) {
+    return { mode: "invalid", chapter, minimum: min, maximum: max };
+  }
+  return { mode: "custom", chapter, minimum: Math.round(min), maximum: Math.round(max) };
+}
+
+function updateCustomPageTargetFromInputs() {
+  const mode = $("pageTargetMode")?.value || "default";
+  const minInput = $("customPageMin");
+  const maxInput = $("customPageMax");
+  const status = $("pageTargetStatus");
+  const chapter = Number(currentChapter || 1);
+  const customEnabled = mode === "custom";
+  if (minInput) minInput.disabled = !customEnabled;
+  if (maxInput) maxInput.disabled = !customEnabled;
+  if (!customEnabled) {
+    delete customPageTargets[String(chapter)];
+    if (status) status.textContent = "Default target will be used unless you set a custom range.";
+    updateLevelHint();
+    return;
+  }
+  const target = currentPageTargetInput();
+  if (target.mode === "custom") {
+    customPageTargets[String(chapter)] = { minimum: target.minimum, maximum: target.maximum };
+    if (status) status.textContent = `Custom target saved for Chapter ${chapter}: ${target.minimum}-${target.maximum} pages.`;
+  } else if (status) {
+    status.textContent = "Enter a valid custom range. The maximum page value must be greater than or equal to the minimum.";
+  }
+  updateLevelHint();
+}
+
+function syncPageTargetControlsForChapter() {
+  const chapter = Number(currentChapter || 1);
+  const custom = customPageTargets[String(chapter)];
+  if ($("pageTargetMode")) $("pageTargetMode").value = custom ? "custom" : "default";
+  if ($("customPageMin")) $("customPageMin").value = custom?.minimum || "";
+  if ($("customPageMax")) $("customPageMax").value = custom?.maximum || "";
+  updateCustomPageTargetFromInputs();
+}
+
+function collectCustomPageTargetsForProfile() {
+  const target = currentPageTargetInput();
+  if (target.mode === "custom") {
+    customPageTargets[String(target.chapter)] = { minimum: target.minimum, maximum: target.maximum };
+  }
+  return { ...customPageTargets };
 }
 
 async function api(path, options = {}) {
@@ -258,6 +316,8 @@ async function restoreCurrentProject() {
     if ($("study_context")) $("study_context").value = profile.study_context || "";
     if ($("academicIntegrityDeclaration")) $("academicIntegrityDeclaration").checked = Boolean(profile.academic_integrity_confirmed);
     if ($("userContributionDeclaration")) $("userContributionDeclaration").checked = Boolean(profile.user_contribution_confirmed);
+    customPageTargets = profile.custom_page_targets || {};
+    syncPageTargetControlsForChapter();
     const alignmentUploads = profile.uploaded_alignment_chapters || {};
     const alignmentCount = Array.isArray(alignmentUploads) ? alignmentUploads.length : Object.keys(alignmentUploads || {}).length;
     savedProjectDrafts = project.drafts || {};
@@ -544,10 +604,13 @@ async function loadTemplate() {
     currentChapter = Number(chapterSelect.value);
     renderSections();
     updateChapterSpecificUi();
+    syncPageTargetControlsForChapter();
     updateLevelHint();
     updatePaymentPanel();
   });
   renderSections();
+  syncPageTargetControlsForChapter();
+  updateLevelHint();
 }
 
 function getChapter(number) {
@@ -611,6 +674,8 @@ function collectProfile() {
     academic_integrity_confirmed: $("academicIntegrityDeclaration") ? $("academicIntegrityDeclaration").checked : false,
     user_contribution_confirmed: $("userContributionDeclaration") ? $("userContributionDeclaration").checked : false,
     allow_provisional_drafting: true,
+    custom_page_targets: collectCustomPageTargetsForProfile(),
+    current_custom_page_target: currentPageTargetInput(),
     programme: "",
     department: "",
     institution: "",
@@ -959,6 +1024,56 @@ async function generateDraft() {
 }
 
 
+function fillFieldFromSuggestion(fieldId, value, mode = "fill_empty") {
+  const field = $(fieldId);
+  const text = String(value || "").trim();
+  if (!field || !text) return false;
+  if (mode === "fill_empty" && String(field.value || "").trim()) return false;
+  field.value = text;
+  field.dispatchEvent(new Event("input", { bubbles: true }));
+  field.dispatchEvent(new Event("change", { bubbles: true }));
+  return true;
+}
+
+async function autofillFromChapterOneUpload() {
+  const input = $("chapterOneAutofillFile");
+  const status = $("chapterOneAutofillStatus");
+  const preview = $("chapterOneAutofillPreview");
+  if (!input || !input.files || input.files.length === 0) {
+    if (status) status.textContent = "Please select an Introduction or Chapter One file first.";
+    return;
+  }
+  const formData = new FormData();
+  formData.append("file", input.files[0]);
+  if (status) status.textContent = "Extracting Chapter One and preparing autofill suggestions...";
+  const response = await fetch("/api/projects/extract-introduction-profile", {
+    method: "POST",
+    body: formData,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.detail || "The Introduction/Chapter One file could not be extracted.");
+  const suggestions = data.profile_suggestions || {};
+  const mode = $("chapterOneAutofillMode")?.value || "fill_empty";
+  let filled = 0;
+  if (fillFieldFromSuggestion("title", suggestions.title, mode)) filled += 1;
+  if (fillFieldFromSuggestion("research_area", suggestions.research_area, mode)) filled += 1;
+  if (fillFieldFromSuggestion("study_context", suggestions.study_context, mode)) filled += 1;
+  if (fillFieldFromSuggestion("objectives", (suggestions.objectives || []).join("\n"), mode)) filled += 1;
+  if (fillFieldFromSuggestion("variables_constructs", (suggestions.variables || []).join("\n"), mode)) filled += 1;
+  const questionText = (suggestions.research_questions || []).join("\n");
+  if (questionText) {
+    const notes = $("format_notes");
+    if (notes && (mode === "replace" || !notes.value.trim())) {
+      notes.value = `${notes.value.trim() ? `${notes.value.trim()}\n\n` : ""}Research questions extracted from Chapter One:\n${questionText}`.trim();
+      filled += 1;
+    }
+  }
+  if (preview) preview.textContent = data.preview || "No preview available.";
+  if (status) status.textContent = filled
+    ? `Autofill completed. ${filled} field(s) were updated. Review all extracted content before creating or drafting the project.`
+    : "Extraction completed, but no empty matching fields were updated. Choose Replace matching fields to overwrite existing values.";
+}
+
 async function uploadPreviousChapterForAlignment() {
   if (!currentProjectId) await createProject();
   const input = $("previousChapterFile");
@@ -1185,6 +1300,10 @@ $("createProjectBtn").addEventListener("click", () => createProject().catch(err 
 if ($("saveRecoveryBtn")) $("saveRecoveryBtn").addEventListener("click", () => saveCurrentProjectRecovery().catch(err => handleWorkspaceError(err, "projectStatus")));
 if ($("recoverProjectBtn")) $("recoverProjectBtn").addEventListener("click", () => recoverWorkspaceProjects().catch(err => handleWorkspaceError(err, "projectStatus")));
 $("draftBtn").addEventListener("click", () => generateDraft().catch(err => handleWorkspaceError(err, "draftStatus")));
+if ($("pageTargetMode")) $("pageTargetMode").addEventListener("change", updateCustomPageTargetFromInputs);
+if ($("customPageMin")) $("customPageMin").addEventListener("input", updateCustomPageTargetFromInputs);
+if ($("customPageMax")) $("customPageMax").addEventListener("input", updateCustomPageTargetFromInputs);
+if ($("chapterOneAutofillBtn")) $("chapterOneAutofillBtn").addEventListener("click", () => autofillFromChapterOneUpload().catch(err => handleWorkspaceError(err, "chapterOneAutofillStatus")));
 if ($("uploadPreviousChapterBtn")) $("uploadPreviousChapterBtn").addEventListener("click", () => uploadPreviousChapterForAlignment().catch(err => handleWorkspaceError(err, "previousChapterStatus")));
 if ($("uploadResultsBtn")) $("uploadResultsBtn").addEventListener("click", () => uploadResults().catch(err => handleWorkspaceError(err, "uploadStatus")));
 if ($("uploadRevisionBtn")) $("uploadRevisionBtn").addEventListener("click", () => uploadRevision().catch(err => handleWorkspaceError(err, "revisionStatus")));

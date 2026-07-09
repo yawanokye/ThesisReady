@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ProjectReady AI | Thesis Topic Ideas</title>
   <link rel="stylesheet" href="/static/styles.css?v=20260618-suite-ui-verified" />
-  <link rel="stylesheet" href="/static/topic_ideas.css?v=20260630-stripe-test-all-v5" />
+  <link rel="stylesheet" href="/static/topic_ideas.css?v=20260709-ui-restore-v1" />
   <link rel="stylesheet" href="/static/projectready-suite.css?v=20260618-suite-ui-verified" />
 </head>
 <body class="topic-page suite-page ideas-suite">
@@ -73,13 +73,6 @@
               <span><strong>Outside Ghana</strong><small id="topicInternationalPrice">US$1.50 through Stripe</small></span>
             </label>
           </div>
-          <div id="topicStripeTestPanel" class="topic-stripe-test-panel" hidden>
-            <strong>Stripe test mode is active</strong>
-            <p>All Topic Ideas checkouts are routed through Stripe test mode. No real money moves.</p>
-            <label><span class="field-label">Private Stripe test checkout key</span>
-              <input id="topicStripeTestKey" type="password" autocomplete="off" placeholder="Enter private test key" />
-            </label>
-          </div>
           <label><span class="field-label">Payment email</span>
             <input id="topicPaymentEmail" type="email" autocomplete="email" placeholder="name@example.com" />
           </label>
@@ -88,15 +81,6 @@
             <button id="checkTopicAccessBtn" type="button" class="secondary-action">Check access</button>
           </div>
           <p id="topicAccessStatus" class="status" aria-live="polite">Generate 2 ideas free. Unlock up to 12 for GHS 10 in Ghana or US$1.50 outside Ghana.</p>
-          <details id="topicTrialPanel" class="topic-access-recovery topic-trial-panel" hidden>
-            <summary>Administrator trial access</summary>
-            <p>Use the private trial key to test the same one-generation entitlement and unlock process without making another payment. A Purchase ID is created automatically.</p>
-            <label><span class="field-label">Trial key</span>
-              <input id="topicTrialKey" type="password" autocomplete="off" placeholder="Enter the private trial key" />
-            </label>
-            <button id="activateTopicTrialBtn" type="button" class="secondary-action">Activate trial access</button>
-            <p class="hint">This tests ProjectReady AI's internal unlock and generation entitlement. It does not test the external Paystack or Stripe callback.</p>
-          </details>
           <details id="topicRecoveryPanel" class="topic-access-recovery">
             <summary>Paid but the options are still locked?</summary>
             <p>Enter the same payment email and the Purchase ID returned after checkout. ProjectReady AI will verify the transaction directly with Paystack or Stripe and issue a fresh access credential.</p>
@@ -213,6 +197,6 @@
     </section>
   </main>
 
-  <script src="/static/topic_ideas.js?v=20260630-stripe-test-all-v5"></script>
+  <script src="/static/topic_ideas.js?v=20260709-ui-restore-v1"></script>
 </body>
 </html>
