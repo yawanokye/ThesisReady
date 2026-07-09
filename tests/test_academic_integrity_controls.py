@@ -59,17 +59,14 @@ def test_meaningful_user_inputs_pass_the_readiness_gate():
     )
 
 
-def test_chapter_four_requires_user_supplied_results():
+def test_chapter_four_without_results_becomes_provisional_advisory():
     payload = _payload(chapter_number=4, selected_section_ids=["ch4_results"])
-    try:
-        _validate_guided_development_request(
-            _project(), payload, revision_mode=False, revision_text=""
-        )
-    except HTTPException as exc:
-        assert exc.status_code == 422
-        assert any("actual results" in item for item in exc.detail["missing"])
-    else:
-        raise AssertionError("Expected Chapter Four to require uploaded results")
+    project = _project()
+    _validate_guided_development_request(project, payload, revision_mode=False, revision_text="")
+
+    advisories = project["profile"].get("draft_consideration_warnings", [])
+    assert any("actual results" in item for item in advisories)
+    assert project["profile"].get("allow_provisional_drafting") is True
 
 
 def test_project_creation_schema_defaults_to_unconfirmed_responsible_use():

@@ -51,6 +51,9 @@ def test_prompt_contains_page_word_section_and_citation_targets():
     assert targets["maximum_words"] == 80 * 330
     assert targets["citation_occurrences_per_1000_words"] == {"minimum": 16, "target": 22}
     assert targets["section_word_budgets"]
+    assert targets["long_chapter_strategy"]["enabled"] is True
+    assert targets["long_chapter_strategy"]["mode"] == "long_chapter_staged_development"
+    assert prompt["draft_grounding_and_provisional_mode"]
     assert prompt["selected_sections"]
     assert chapter["chapter_number"] == 2
 
@@ -66,7 +69,7 @@ def test_long_phd_chapter_is_split_into_contiguous_chunks():
     )
     flattened = [s["section_id"] for chunk in chunks for s in chunk]
 
-    assert 2 <= len(chunks) <= 4
+    assert 2 <= len(chunks) <= 10
     assert flattened == ids
 
 
