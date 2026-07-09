@@ -523,6 +523,35 @@ def _metrics(text: str) -> dict[str, Any]:
 
 
 
+def _revision_long_chapter_strategy(level: str, chapter_type: str, page_min: int, page_max: int) -> dict[str, Any]:
+    level_key = _level_key(level)
+    chapter_key = _chapter_key(chapter_type)
+    target_words = int(round(((page_min + page_max) / 2) * 330))
+    enabled = target_words >= int(os.getenv("PROJECTREADY_LONG_CHAPTER_THRESHOLD_WORDS", "12000") or 12000) or (level_key in {"phd", "professional_doctorate"} and chapter_key == "literature_review")
+    if not enabled:
+        return {"enabled": False, "mode": "standard_strengthening"}
+    workflow = [
+        "diagnose the current chapter map against the expected doctoral chapter architecture",
+        "strengthen the chapter in section batches rather than compressing the whole chapter into a short overview",
+        "for literature reviews, check conceptual, theoretical, empirical, methodological, contextual, contradiction, gap and framework coverage separately",
+        "insert missing but necessary sections only when justified, and mark them with bracketed confirmation placeholders",
+        "merge the strengthened sections for coherence while preserving confirmed student content and citations",
+    ]
+    return {
+        "enabled": True,
+        "mode": "long_chapter_staged_strengthening",
+        "target_words_estimate": target_words,
+        "target_pages": f"{page_min}-{page_max}",
+        "workflow": workflow,
+        "rules": [
+            "Do not rewrite a very long chapter as one compressed summary.",
+            "Treat underdeveloped sections as separate strengthening units.",
+            "Use bracketed red-action placeholders for missing evidence, sources or supervisor confirmation.",
+            "Preserve confirmed content and only deepen it through evidence, synthesis, comparison and alignment checks.",
+        ],
+    }
+
+
 def _previous_chapters_revision_context(payload: dict[str, Any]) -> dict[str, Any]:
     """Compact alignment context supplied to the Chapter Strengthener."""
     raw = payload.get("previous_chapters_context") or payload.get("previous_chapters_for_alignment") or ""
@@ -623,6 +652,7 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
                 "target_citations_per_1000_words": f"{citation_min}-{citation_max}",
                 "allow_missing_section_insertions": bool(payload.get("allow_missing_section_insertions", True)),
             },
+            "long_chapter_strengthening_strategy": _revision_long_chapter_strategy(level, chapter_type, page_min, page_max),
             "previous_chapters_for_alignment": _previous_chapters_revision_context(payload),
             "research_logic": {
                 "objectives": str(payload.get("objectives") or "").strip(),
@@ -658,6 +688,7 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
                 "Strengthen paragraphs through claim, evidence, synthesis, interpretation, qualification and linkage to the study. Avoid repetitive templates and author-by-author listing.",
                 "Use formal British English, varied sentence and paragraph length, precise transitions and natural scholarly rhythm. Do not insert artificial mistakes or mention AI detection.",
                 "Do not expand the chapter merely to hit a page target. Add depth through evidence, critique, theory, methodological justification, interpretation and cross-section alignment.",
+                "When long_chapter_strengthening_strategy is enabled, treat the chapter as staged section strengthening. Do not compress a doctoral literature review into a short summary; diagnose and deepen conceptual, theoretical, empirical, methodological, contextual, gap and framework coverage separately.",
                 "Use Markdown headings and tables where useful. Keep equations intact.",
                 "Mark only genuine student or supervisor action items in square brackets so they appear red in the DOCX.",
             ],

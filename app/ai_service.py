@@ -66,33 +66,43 @@ CITATION_DENSITY_TARGETS: dict[str, dict[int, tuple[int, int]]] = {
 # Only selected sections are included, and their weights are re-normalised.
 SECTION_DEPTH_WEIGHTS: dict[int, dict[str, float]] = {
     1: {
-        "ch1_background": 0.27, "ch1_problem": 0.20, "ch1_purpose": 0.03,
-        "ch1_objectives": 0.05, "ch1_questions": 0.05, "ch1_hypotheses": 0.05,
-        "ch1_significance": 0.10, "ch1_scope": 0.06, "ch1_limitations": 0.05,
-        "ch1_delimitations": 0.05, "ch1_definitions": 0.05, "ch1_organisation": 0.04,
+        "ch1_chapter_intro": 0.03, "ch1_background": 0.28, "ch1_problem": 0.22,
+        "ch1_purpose": 0.04, "ch1_objectives": 0.06, "ch1_questions": 0.06,
+        "ch1_significance": 0.12, "ch1_delimitations": 0.05, "ch1_limitations": 0.05,
+        "ch1_structure": 0.04,
     },
     2: {
-        "ch2_intro": 0.04, "ch2_conceptual": 0.20, "ch2_theoretical": 0.20,
-        "ch2_empirical_objectives": 0.34, "ch2_framework": 0.08,
-        "ch2_hyp_dev": 0.07, "ch2_gap_table": 0.04, "ch2_summary": 0.03,
+        "ch2_intro": 0.04, "ch2_concepts": 0.12, "ch2_conceptual_review": 0.19,
+        "ch2_theoretical": 0.21, "ch2_empirical_objectives": 0.34,
+        "ch2_framework": 0.07, "ch2_summary": 0.03,
     },
     3: {
-        "ch3_intro": 0.03, "ch3_philosophy": 0.07, "ch3_design": 0.08,
-        "ch3_setting_population": 0.08, "ch3_sampling": 0.10, "ch3_instrument": 0.10,
-        "ch3_measurement": 0.10, "ch3_pilot": 0.05, "ch3_validity_reliability": 0.09,
-        "ch3_collection": 0.07, "ch3_preparation": 0.06, "ch3_analysis": 0.11,
-        "ch3_ethics": 0.04, "ch3_summary": 0.02,
+        "ch3_intro": 0.03, "ch3_philosophy": 0.07, "ch3_approach": 0.06,
+        "ch3_design": 0.08, "ch3_population": 0.07, "ch3_sampling": 0.09,
+        "ch3_data_source": 0.06, "ch3_instrument": 0.09, "ch3_measurement": 0.09,
+        "ch3_validity": 0.08, "ch3_collection": 0.07, "ch3_preparation": 0.06,
+        "ch3_analysis": 0.11, "ch3_ethics": 0.04, "ch3_chapter_summary": 0.02,
     },
     4: {
-        "ch4_intro": 0.03, "ch4_uploaded_results": 0.05, "ch4_profile": 0.10,
-        "ch4_results_objectives": 0.34, "ch4_hypotheses": 0.14,
-        "ch4_discussion": 0.29, "ch4_summary": 0.05,
+        "ch4_intro": 0.03, "ch4_response_rate": 0.05, "ch4_profile": 0.10,
+        "ch4_descriptive": 0.10, "ch4_objective_results": 0.35,
+        "ch4_discussion": 0.32, "ch4_summary": 0.05,
     },
     5: {
-        "ch5_intro": 0.03, "ch5_summary_findings": 0.30, "ch5_conclusions": 0.22,
-        "ch5_recommendations": 0.25, "ch5_contribution": 0.12, "ch5_future": 0.08,
+        "ch5_intro": 0.03, "ch5_summary_study": 0.10, "ch5_summary_findings": 0.30,
+        "ch5_conclusions": 0.22, "ch5_recommendations": 0.25, "ch5_future": 0.10,
     },
 }
+
+
+def _plain_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, dict):
+        return " ".join(_plain_text(item) for item in value.values())
+    if isinstance(value, (list, tuple, set)):
+        return " ".join(_plain_text(item) for item in value)
+    return re.sub(r"\s+", " ", str(value)).strip()
 
 
 def _length_level(profile: dict[str, Any]) -> str:
@@ -147,7 +157,7 @@ def _chapter_length_requirements(
         for sid, weight in selected_weights.items()
     }
 
-    return {
+    requirements = {
         "length_level": level,
         "target_page_range": f"{min_pages}-{max_pages}",
         "minimum_pages": min_pages,
@@ -169,6 +179,7 @@ def _chapter_length_requirements(
             "Tables, equations, figures, headings and references affect final pagination, so word counts are planning estimates rather than exact page guarantees.",
             "Where evidence is insufficient, use a precise bracketed attention placeholder instead of inventing facts or padding the chapter with generic prose.",
             "Do not compress a doctoral chapter into a short overview. Do not inflate a lower-level chapter with doctoral complexity that is not required.",
+            "When a chapter is very long, develop it as linked section batches and then merge for coherence instead of compressing the whole chapter into one shallow pass.",
         ],
         "citation_density_rules": [
             "Use the citation-density range as a planning guide, never as a mechanical quota.",
@@ -179,6 +190,8 @@ def _chapter_length_requirements(
             "Use a bracketed source placeholder when the evidence bank is insufficient. Never fabricate a source to meet the density target.",
         ],
     }
+    requirements["long_chapter_strategy"] = _long_chapter_strategy(profile, chapter_number, selected_section_ids, requirements)
+    return requirements
 
 
 def _chapter_word_count(text: str) -> int:
@@ -193,6 +206,127 @@ def _chapter_word_count(text: str) -> int:
     cleaned = re.sub(r"```.*?```", " ", cleaned, flags=re.DOTALL)
     cleaned = re.sub(r"[#|*_`$<>]", " ", cleaned)
     return len(re.findall(r"\b[\w’'-]+\b", cleaned))
+
+
+def _has_meaningful_user_inputs(profile: dict[str, Any], answers: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Assess whether the user supplied enough material for a grounded draft.
+
+    The result does not block drafting. It tells the model when to write a
+    provisional working draft and where to insert attention placeholders.
+    """
+    answers = answers or {}
+    flat_answers = _plain_text(answers)
+    contribution = profile.get("student_contribution") or {}
+    profile_values = [
+        profile.get("research_area", ""),
+        profile.get("study_context", ""),
+        profile.get("citation_evidence_notes", ""),
+        profile.get("format_notes", ""),
+        profile.get("objectives", []),
+        profile.get("research_questions", []),
+        profile.get("hypotheses", []),
+        profile.get("variables", {}),
+        contribution.get("central_argument", "") if isinstance(contribution, dict) else "",
+        contribution.get("local_context_notes", "") if isinstance(contribution, dict) else "",
+        contribution.get("evidence_anchors", "") if isinstance(contribution, dict) else "",
+        contribution.get("supervisor_comments", "") if isinstance(contribution, dict) else "",
+        flat_answers,
+    ]
+    total_chars = len(_plain_text(profile_values))
+    supplied = {
+        "research_area": bool(str(profile.get("research_area") or "").strip()),
+        "study_context": len(str(profile.get("study_context") or "").strip()) >= 30,
+        "objectives": bool(profile.get("objectives")),
+        "evidence_notes": len(str(profile.get("citation_evidence_notes") or "").strip()) >= 40,
+        "guided_answers": len(flat_answers) >= 80,
+    }
+    missing = []
+    if not supplied["research_area"]:
+        missing.append("research area")
+    if not supplied["study_context"]:
+        missing.append("study context")
+    if not supplied["objectives"] and not supplied["guided_answers"]:
+        missing.append("objectives, questions or section answers")
+    if not supplied["evidence_notes"]:
+        missing.append("verified evidence, statistics or source notes")
+    mode = "grounded_draft" if total_chars >= 450 and sum(supplied.values()) >= 3 else "provisional_draft_for_user_consideration"
+    return {
+        "mode": mode,
+        "input_character_count": total_chars,
+        "supplied_signals": supplied,
+        "missing_inputs": missing,
+        "rules": [
+            "Encourage the student to provide topic-specific information, but do not refuse to prepare a working draft when information is limited.",
+            "When information is limited, prepare a provisional draft for the user's consideration using the available title, level, broad topic and chapter requirements.",
+            "Do not claim that the provisional text is final, verified or submission-ready.",
+            "Use bracketed attention placeholders for missing facts, context, data, citations, objective wording, theory decisions, methods and institutional details.",
+            "Avoid fabricating references, statistics, sample sizes, results, ethical approvals or school requirements.",
+            "Make the draft useful enough for the user to edit, confirm, reject, replace or enrich with their own information.",
+        ],
+    }
+
+
+def _long_chapter_strategy(
+    profile: dict[str, Any],
+    chapter_number: int,
+    selected_section_ids: list[str],
+    length_requirements: dict[str, Any],
+) -> dict[str, Any]:
+    """Describe how the app should handle very long chapters.
+
+    This is especially important for doctoral literature reviews, where one
+    whole-chapter generation pass tends to produce shallow coverage.
+    """
+    target_words = int(length_requirements.get("target_words") or 0)
+    level = str(length_requirements.get("length_level") or _length_level(profile))
+    chapter_number = int(chapter_number or 0)
+    long_threshold = int(os.getenv("PROJECTREADY_LONG_CHAPTER_THRESHOLD_WORDS", "12000") or 12000)
+    doctoral = level in {"phd", "professional_doctorate"}
+    is_literature = chapter_number == 2
+    if target_words < long_threshold and not (doctoral and is_literature):
+        return {"enabled": False, "mode": "standard_chapter_generation"}
+
+    units: list[dict[str, Any]] = []
+    if is_literature:
+        units = [
+            {"unit": "chapter_map", "purpose": "Build the Chapter Two argument map from Chapter One, objectives, constructs and study context before drafting."},
+            {"unit": "concept_definition_bank", "purpose": "Define and distinguish the major constructs, concepts, dimensions and operational meanings."},
+            {"unit": "conceptual_review", "purpose": "Develop construct-by-construct conceptual debates, mechanisms, relationships and contextual relevance."},
+            {"unit": "theory_review", "purpose": "Explain, compare and justify the selected theories, including limitations and fit to the current study."},
+            {"unit": "empirical_review_by_objective", "purpose": "Review empirical studies in objective-led clusters rather than a one-study-per-paragraph listing."},
+            {"unit": "methodological_review", "purpose": "Synthesize methods, samples, measures, contexts and analytical techniques used in prior studies."},
+            {"unit": "contextual_review", "purpose": "Compare Ghanaian, African, developing-economy and wider international evidence where relevant."},
+            {"unit": "contradictions_and_debates", "purpose": "Identify inconsistent findings, theoretical disagreements, measurement problems and unresolved debates."},
+            {"unit": "gap_development", "purpose": "Translate reviewed evidence into conceptual, empirical, theoretical, contextual and methodological gaps."},
+            {"unit": "conceptual_framework", "purpose": "Derive the framework from the review, objectives, theories and expected relationships."},
+            {"unit": "coherence_pass", "purpose": "Merge units into one chapter, remove repetition, harmonise citations and ensure cross-chapter alignment."},
+        ]
+    else:
+        units = [
+            {"unit": "chapter_map", "purpose": "Confirm section order, evidence needs and alignment with previous chapters before writing."},
+            {"unit": "section_batching", "purpose": "Develop the chapter section by section or in small contiguous groups."},
+            {"unit": "evidence_and_placeholder_pass", "purpose": "Use supplied evidence where available and mark missing facts or data with bracketed placeholders."},
+            {"unit": "coherence_pass", "purpose": "Merge generated sections into a coherent chapter without compressing the depth."},
+        ]
+
+    max_unit_words = int(os.getenv("PROJECTREADY_LONG_CHAPTER_UNIT_TARGET_WORDS", "2500") or 2500)
+    suggested_units = max(2, min(18, (max(1, target_words) + max_unit_words - 1) // max_unit_words))
+    return {
+        "enabled": True,
+        "mode": "long_chapter_staged_development",
+        "reason": "Very long chapters should be developed in smaller evidence-led units rather than one compressed pass.",
+        "target_words": target_words,
+        "suggested_development_units": suggested_units,
+        "unit_target_words": max_unit_words,
+        "recommended_workflow": units,
+        "rules": [
+            "Prepare a chapter map before drafting long chapters.",
+            "Generate long chapters in smaller units of about 1,500 to 2,500 words where possible.",
+            "For doctoral literature reviews, develop conceptual, theoretical, empirical, methodological, contextual and gap sections separately.",
+            "After all units are drafted, run a coherence pass that connects arguments and removes repetition without shortening the chapter.",
+            "Where student information or source evidence is missing, keep the section useful but insert bracketed attention placeholders instead of inventing material.",
+        ],
+    }
 
 
 def _max_output_tokens_for_length(length_requirements: dict[str, Any], *, revision: bool = False) -> int:
@@ -915,6 +1049,7 @@ def build_drafting_prompt(
         "citation_and_evidence_requirements": _citation_and_evidence_requirements(chapter_number),
         "human_scholarly_style_requirements": _human_scholarly_style_requirements(seed=hash(profile.get("title", "")) & 0xFFFFFFFF),
         "student_contribution_and_style_controls": _student_contribution_requirements(profile),
+        "draft_grounding_and_provisional_mode": _has_meaningful_user_inputs(profile, answers),
         "analysis_evidence_for_this_chapter": _uploaded_results_for_chapter(profile, chapter_number),
         "previous_chapters_for_alignment": _previous_chapters_for_alignment(profile, chapter_number),
         "retrieved_sources": _retrieved_sources_for_prompt(profile, chapter_number),
@@ -935,7 +1070,9 @@ def build_drafting_prompt(
             "Use an evidence-to-paragraph method: each substantive paragraph should have a purpose, a claim grounded in supplied evidence or source-bank material, interpretation, and a clear link to the objective or chapter argument.",
             "Before producing a long paragraph, ask internally whether the user supplied enough context, evidence or source support for that paragraph. If not, write a shorter defensible paragraph and insert a precise bracketed attention placeholder for the missing evidence.",
             "Make the writing high-quality and human-supervised by adding discipline-specific reasoning, careful qualifications, context-specific transitions and clear links between evidence and the student's own objectives.",
-            "Where the user has supplied limited information, avoid creating long polished generic prose. Write a focused working draft with bracketed attention placeholders asking for the exact missing facts, data, citations, institutional details, result tables, or supervisor decisions.",
+            "Where the user has supplied limited information, still prepare a draft for the user's consideration, but label uncertainty through bracketed attention placeholders and avoid pretending the draft is fully grounded.",
+            "In provisional drafting, write a useful structure and sample scholarly paragraphs from the available title, level, chapter type and broad topic, then mark every unsupported claim, source, statistic, context detail, method decision or result with a precise bracketed confirmation placeholder.",
+            "Do not block chapter development merely because student inputs are limited. Encourage completion through placeholders and action notes inside the draft, not through refusal.",
             "Respect the selected draft maturity: a structured draft can be more schematic; a supervisor-ready or revised academic draft must be more developed, but still grounded in user-supplied evidence and sources.",
             "Avoid very short sentences except where they are necessary for emphasis, transition, or clarity.",
             "Do not write sentences that say the work, chapter, section, depth, or argument is designed to meet the selected level of the project, thesis, or dissertation.",
@@ -1721,9 +1858,9 @@ def _group_sections_for_chunks(
     """Group adjacent sections into a small number of manageable generation chunks."""
     if not selected_sections:
         return []
-    chunk_target = max(4500, int(os.getenv("PROJECTREADY_CHUNK_TARGET_WORDS", "8000") or 8000))
-    max_chunks = max(2, int(os.getenv("PROJECTREADY_MAX_CHAPTER_CHUNKS", "4") or 4))
-    desired_chunks = max(1, min(max_chunks, (max(1, total_target_words) + chunk_target - 1) // chunk_target))
+    chunk_target = max(1500, int(os.getenv("PROJECTREADY_CHUNK_TARGET_WORDS", "3000") or 3000))
+    max_chunks = max(2, int(os.getenv("PROJECTREADY_MAX_CHAPTER_CHUNKS", "10") or 10))
+    desired_chunks = max(1, min(max_chunks, len(selected_sections), (max(1, total_target_words) + chunk_target - 1) // chunk_target))
     if desired_chunks <= 1:
         return [selected_sections]
 
@@ -1735,8 +1872,10 @@ def _group_sections_for_chunks(
         sid = str(section.get("section_id") or "")
         budget = int((section_budgets.get(sid) or {}).get("target_words") or 500)
         remaining_sections = len(selected_sections) - idx
-        remaining_chunks = desired_chunks - len(chunks)
-        if current and current_words >= target_per_chunk and remaining_sections >= remaining_chunks:
+        remaining_chunks_after_closing = desired_chunks - len(chunks) - 1
+        must_split_to_reach_count = current and remaining_sections == remaining_chunks_after_closing
+        budget_split_allowed = current and current_words >= target_per_chunk and remaining_sections >= remaining_chunks_after_closing
+        if current and (must_split_to_reach_count or budget_split_allowed):
             chunks.append(current)
             current = []
             current_words = 0
@@ -1745,6 +1884,77 @@ def _group_sections_for_chunks(
     if current:
         chunks.append(current)
     return chunks
+
+
+def _long_chapter_plan_fallback(base_prompt: dict[str, Any], chunks: list[list[dict[str, Any]]], full_req: dict[str, Any]) -> str:
+    """Create a compact local plan if the planning model is unavailable."""
+    chapter = base_prompt.get("chapter") or {}
+    lines = [
+        f"Long-chapter development plan for Chapter {chapter.get('chapter_number')}: {chapter.get('chapter_title')}",
+        f"Target range: {full_req.get('target_page_range')} pages, target words: {full_req.get('target_words')}",
+        "Use each chunk as a development unit, then merge for coherence without compressing arguments.",
+    ]
+    strategy = (full_req.get("long_chapter_strategy") or {}).get("recommended_workflow") or []
+    if strategy:
+        lines.append("Recommended workflow units:")
+        for item in strategy:
+            if isinstance(item, dict):
+                lines.append(f"- {item.get('unit')}: {item.get('purpose')}")
+    lines.append("Chunk map:")
+    for index, chunk in enumerate(chunks, start=1):
+        names = "; ".join(str(section.get("section_title") or section.get("section_id")) for section in chunk)
+        lines.append(f"- Chunk {index}: {names}")
+    return "\n".join(lines)
+
+
+def _build_long_chapter_plan(
+    client: Any,
+    model: str,
+    instructions: str,
+    base_prompt: dict[str, Any],
+    full_req: dict[str, Any],
+    chunks: list[list[dict[str, Any]]],
+) -> str:
+    """Ask the model for a compact plan before generating a very long chapter."""
+    fallback = _long_chapter_plan_fallback(base_prompt, chunks, full_req)
+    if not client:
+        return fallback
+    chapter = base_prompt.get("chapter") or {}
+    plan_payload = {
+        "task": "Prepare a compact chapter-development plan before drafting a very long academic chapter.",
+        "chapter": chapter,
+        "project_profile": base_prompt.get("project_profile") or {},
+        "draft_grounding_and_provisional_mode": base_prompt.get("draft_grounding_and_provisional_mode") or {},
+        "previous_chapters_for_alignment": base_prompt.get("previous_chapters_for_alignment") or {},
+        "retrieved_sources": base_prompt.get("retrieved_sources") or {},
+        "chapter_page_word_and_citation_targets": full_req,
+        "selected_sections": base_prompt.get("selected_sections") or [],
+        "chunk_map": [
+            {
+                "chunk_number": idx,
+                "sections": [section.get("section_title") or section.get("section_id") for section in chunk],
+            }
+            for idx, chunk in enumerate(chunks, start=1)
+        ],
+        "plan_rules": [
+            "Return a concise development plan, not the chapter itself.",
+            "For Chapter Two doctoral literature reviews, include conceptual, theoretical, empirical, methodological, contextual, contradiction, gap and framework development logic.",
+            "Indicate which objectives, constructs, theories, methods and context points each chunk should protect.",
+            "State where missing student inputs should be marked with bracketed placeholders.",
+            "Do not invent source details, facts, findings, statistics or institutional decisions.",
+        ],
+    }
+    try:
+        plan = _call_openai_response_safely(
+            client,
+            model,
+            instructions + " Create the long-chapter plan only. Do not draft the chapter yet.",
+            json.dumps(plan_payload, ensure_ascii=False, indent=2),
+            max_output_tokens=6000,
+        )
+    except Exception:
+        plan = ""
+    return _polish_generated_text(plan).strip() if plan else fallback
 
 
 def _generate_chapter_in_chunks(
@@ -1773,6 +1983,15 @@ def _generate_chapter_in_chunks(
     if len(chunks) <= 1:
         return ""
 
+    long_chapter_plan = _build_long_chapter_plan(
+        client=client,
+        model=model,
+        instructions=instructions,
+        base_prompt=base_prompt,
+        full_req=full_req,
+        chunks=chunks,
+    )
+
     bodies: list[str] = []
     references: list[str] = []
     citation_density = full_req.get("citation_occurrences_per_1000_words") or {}
@@ -1795,9 +2014,12 @@ def _generate_chapter_in_chunks(
         chunk_prompt["task"] = f"Develop contiguous section chunk {chunk_index} of {len(chunks)} for one coherent academic working draft."
         chunk_prompt["selected_sections"] = chunk_sections
         chunk_prompt["chapter_page_word_and_citation_targets"] = chunk_req
+        chunk_prompt["long_chapter_development_plan"] = long_chapter_plan
         chunk_prompt["output_requirements"] = list(base_prompt.get("output_requirements") or []) + [
             "Return only the selected sections in this chunk, in their approved order, with their correct numbered headings.",
             "Do not repeat the overall chapter heading or sections assigned to another chunk.",
+            "Use long_chapter_development_plan to keep the chunk connected to the full chapter argument, objectives, constructs, theories and gaps.",
+            "Where a broad section is assigned a large word budget, subdivide it with meaningful lower-level headings such as conceptual dimensions, theoretical comparison, empirical clusters by objective, methodological patterns, contextual evidence, contradictions and gaps.",
             f"Develop this chunk to approximately {chunk_target_words:,} words and at least {chunk_min_words:,} words, subject to evidence availability.",
             f"Plan for about {citation_density.get('minimum', 3)}-{citation_density.get('target', 6)} accurate citation occurrences per 1,000 substantive words, without forcing irrelevant sources.",
             "At the end, add a heading exactly named '## References Used in This Chunk' and list complete APA 7 entries only for sources cited in this chunk.",

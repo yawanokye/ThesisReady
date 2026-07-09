@@ -39,6 +39,8 @@ class ProjectCreate(BaseModel):
     recovery_pin: str = ""
     academic_integrity_confirmed: bool = False
     user_contribution_confirmed: bool = False
+    allow_provisional_drafting: bool = True
+    draft_consideration_warnings: list[str] = Field(default_factory=list)
 
 
 class SectionSelection(BaseModel):
@@ -71,6 +73,8 @@ class DraftRequest(BaseModel):
     human_revision_pass: bool = True
     academic_integrity_confirmed: bool = False
     user_contribution_confirmed: bool = False
+    allow_provisional_drafting: bool = True
+    draft_consideration_warnings: list[str] = Field(default_factory=list)
     profile_updates: dict[str, Any] = Field(default_factory=dict)
 
 
