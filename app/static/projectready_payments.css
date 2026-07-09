@@ -205,3 +205,25 @@
   border-color: #f59e0b !important;
   background: #fff !important;
 }
+
+/* Paid entitlement recovery inside checkout/access prompts */
+.pr-access-recovery {
+  margin: 16px 0 8px;
+  padding: 14px;
+  border: 1px solid #dbe4f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+.pr-access-recovery summary {
+  cursor: pointer;
+  font-weight: 800;
+  color: #1e3a8a;
+}
+.pr-access-recovery p {
+  margin: 8px 0 10px;
+  color: #475569;
+  line-height: 1.45;
+}
+.pr-access-recovery button {
+  margin-top: 6px;
+}

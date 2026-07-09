@@ -57,6 +57,61 @@
     return value;
   }
 
+  function storeReturnedCredential(data) {
+    const value = {
+      purchase_id: data.purchase_id,
+      access_token: data.access_token,
+      provider: data.provider || "",
+      saved_at: new Date().toISOString()
+    };
+    if (data.product_area === "topic_ideas") {
+      const topicValue = {...value, access_id: data.project_id || ""};
+      sessionStorage.setItem("projectready-topic-ideas-access-v1", JSON.stringify(topicValue));
+      localStorage.setItem("projectready-topic-ideas-access-v1", JSON.stringify(topicValue));
+      return value;
+    }
+    const projectId = String(data.project_id || "");
+    const chapterNumber = Number(data.chapter_number || 0);
+    if (projectId && chapterNumber) {
+      localStorage.setItem(entitlementKey(projectId, chapterNumber), JSON.stringify(value));
+    }
+    if (data.purchase_id) {
+      localStorage.setItem(`${STORAGE_PREFIX}purchase:${data.purchase_id}`, JSON.stringify(value));
+    }
+    return value;
+  }
+
+  async function redeemPaymentHandoff(handoff) {
+    const response = await fetch("/api/payments/redeem-recovery", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({handoff})
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const detail = typeof data.detail === "string" ? data.detail : (data.detail?.message || "The payment return code could not be redeemed.");
+      throw new Error(detail);
+    }
+    storeReturnedCredential(data);
+    return data;
+  }
+
+  async function recoverAccessByPurchase(email, purchaseId) {
+    if (!email || !purchaseId) throw new Error("Enter the payment email and Purchase ID.");
+    const response = await fetch("/api/payments/recover-access", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({email, purchase_id: purchaseId})
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const detail = typeof data.detail === "string" ? data.detail : (data.detail?.message || "Paid access could not be restored.");
+      throw new Error(detail);
+    }
+    storeReturnedCredential(data);
+    return data;
+  }
+
   function getCredential(projectId, chapterNumber) {
     try {
       return JSON.parse(localStorage.getItem(entitlementKey(projectId, chapterNumber)) || "null");
@@ -104,11 +159,36 @@
           <a id="prRegisterLink" class="pr-access-secondary" href="/register">Register / create profile</a>
           <button id="prContinuePayment" type="button" class="pr-payment-submit">Continue to payment</button>
         </div>
+        <details class="pr-access-recovery">
+          <summary>Already paid? Restore access</summary>
+          <p>Use the payment email and Purchase ID to restore the remaining draft, revision, compliance or download entitlement on this device.</p>
+          <label>Payment email
+            <input id="prRecoverEmail" type="email" autocomplete="email" />
+          </label>
+          <label>Purchase ID
+            <input id="prRecoverPurchaseId" type="text" autocomplete="off" placeholder="Paste the Purchase ID from the payment return page or receipt" />
+          </label>
+          <button id="prRecoverAccessBtn" type="button" class="pr-access-secondary">Restore paid access</button>
+          <p id="prRecoverStatus" class="pr-payment-status" aria-live="polite"></p>
+        </details>
         <p class="pr-payment-routing" id="prAccessBenefits">Paid chapter access includes one guided working draft, one strengthening revision, one compliance review and one editable DOCX export.</p>
       </section>`;
     document.body.appendChild(modal);
 
     modal.querySelectorAll("[data-pr-access-close]").forEach(el => el.addEventListener("click", () => closeModal(modal)));
+    modal.querySelector("#prRecoverAccessBtn")?.addEventListener("click", async () => {
+      const status = modal.querySelector("#prRecoverStatus");
+      const email = modal.querySelector("#prRecoverEmail")?.value.trim() || "";
+      const purchaseId = modal.querySelector("#prRecoverPurchaseId")?.value.trim() || "";
+      try {
+        status.textContent = "Restoring paid access...";
+        const restored = await recoverAccessByPurchase(email, purchaseId);
+        status.textContent = restored.message || "Paid access restored. You may continue.";
+        window.setTimeout(() => closeModal(modal), 900);
+      } catch (error) {
+        status.textContent = error.message || "Access could not be restored.";
+      }
+    });
     return modal;
   }
 
@@ -200,6 +280,8 @@
     modal.querySelector("#prRegistrationState").textContent = profile?.email
       ? `Registration profile found for ${profile.email}. You may continue to payment.`
       : "No registration profile was found on this device. Register first to save your details, or continue directly to payment.";
+    const recoverEmail = modal.querySelector("#prRecoverEmail");
+    if (recoverEmail && profile?.email && !recoverEmail.value) recoverEmail.value = profile.email;
 
     const continueButton = modal.querySelector("#prContinuePayment");
     continueButton.onclick = async () => {
@@ -288,7 +370,6 @@
       event.preventDefault();
       submit.disabled = true;
       status.textContent = "Creating secure checkout...";
-      window.ProjectReadyWorkspace?.saveSnapshot?.({reason: "payment_form_submit"});
       const payload = {
         email: modal.querySelector("#prPaymentEmail").value.trim(),
         billing_country: country.value,
@@ -316,7 +397,6 @@
           throw new Error(detail);
         }
         saveCredential(payload.project_id, payload.chapter_number, data);
-        window.ProjectReadyWorkspace?.saveSnapshot?.({reason: "before_payment_redirect"});
         if (!data.checkout_url) throw new Error("The payment provider did not return a checkout URL.");
         window.location.assign(data.checkout_url);
       } catch (error) {
@@ -362,6 +442,9 @@
     openAccessGate,
     openCheckout,
     saveCredential,
+    storeReturnedCredential,
+    redeemPaymentHandoff,
+    recoverAccessByPurchase,
     getCredential,
     paymentHeaders,
     checkEntitlement,
