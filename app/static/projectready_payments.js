@@ -288,6 +288,7 @@
       event.preventDefault();
       submit.disabled = true;
       status.textContent = "Creating secure checkout...";
+      window.ProjectReadyWorkspace?.saveSnapshot?.({reason: "payment_form_submit"});
       const payload = {
         email: modal.querySelector("#prPaymentEmail").value.trim(),
         billing_country: country.value,
@@ -315,6 +316,7 @@
           throw new Error(detail);
         }
         saveCredential(payload.project_id, payload.chapter_number, data);
+        window.ProjectReadyWorkspace?.saveSnapshot?.({reason: "before_payment_redirect"});
         if (!data.checkout_url) throw new Error("The payment provider did not return a checkout URL.");
         window.location.assign(data.checkout_url);
       } catch (error) {

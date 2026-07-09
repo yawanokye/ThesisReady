@@ -254,11 +254,34 @@
     </section>
 
     <section class="card">
-      <h2>3. Select chapter and sections</h2>
+      <h2>3. Select chapter, page target and sections</h2>
       <label class="priority-field"><span class="field-label">Chapter</span>
         <select id="chapterSelect"></select>
         <span class="field-help">Choose the exact chapter before selecting sections. Results and Supplementary Methods show special tools.</span>
       </label>
+
+      <div class="target-plan-box" id="chapterTargetBox">
+        <h3>Target pages and long-chapter plan</h3>
+        <p id="chapterTargetSummary" class="hint">Select the chapter and level to view the recommended page range.</p>
+        <div class="target-controls-grid">
+          <label><span class="field-label">Page target mode</span>
+            <select id="targetPageMode">
+              <option value="default" selected>Use level default</option>
+              <option value="custom">Use custom school/supervisor target</option>
+            </select>
+          </label>
+          <label><span class="field-label">Minimum pages</span>
+            <input id="targetPageMin" type="number" min="1" max="150" step="1" />
+          </label>
+          <label><span class="field-label">Maximum pages</span>
+            <input id="targetPageMax" type="number" min="1" max="150" step="1" />
+          </label>
+        </div>
+        <label><span class="field-label">Page target note</span>
+          <textarea id="targetPageNote" rows="2" placeholder="Optional. Add school, supervisor or departmental instructions on chapter length, page limits, required depth, tables or appendices."></textarea>
+        </label>
+        <div id="longChapterPlanPreview" class="long-chapter-plan-preview" aria-live="polite"></div>
+      </div>
       <div id="otherChapterBox" class="other-chapter-box" hidden>
         <label>Others chapter title
           <input id="otherChapterTitle" placeholder="e.g. Policy Implications, Intervention Design, Case Study Analysis, Technical Appendix" />
@@ -366,7 +389,7 @@
     </section>
   </main>
 
-  <script src="/static/projectready_payments.js?v=20260630-stripe-test-all-v3"></script>
-  <script src="/static/app.js?v=20260709-friendly-alignment-v2"></script>
+  <script src="/static/projectready_payments.js?v=20260709-payment-resume-target-pages-v1"></script>
+  <script src="/static/app.js?v=20260709-payment-resume-target-pages-v1"></script>
 </body>
 </html>

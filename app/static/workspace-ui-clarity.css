@@ -482,3 +482,67 @@ button:disabled {
 @media (max-width: 900px) {
   .workspace-guidance-grid { grid-template-columns: 1fr; }
 }
+
+/* Target-page and long-chapter workflow visibility */
+.target-plan-box {
+  border: 1px solid #c4b5fd;
+  border-left: 6px solid var(--pr-purple);
+  border-radius: 16px;
+  padding: 1rem;
+  margin: 1rem 0;
+  background: #faf5ff;
+}
+
+.target-plan-box h3 {
+  margin: 0 0 0.75rem 0;
+  color: #3b0764;
+  font-size: 1rem;
+}
+
+.target-controls-grid {
+  display: grid;
+  grid-template-columns: minmax(190px, 1.2fr) repeat(2, minmax(120px, 0.8fr));
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.target-controls-grid label,
+.target-plan-box > label {
+  background: #fff;
+  border: 1px solid #e9d5ff;
+  border-radius: 12px;
+  padding: 0.7rem;
+}
+
+.long-chapter-plan-preview {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.8rem;
+  background: #fff;
+  border: 1px solid #ddd6fe;
+  border-radius: 14px;
+  padding: 0.8rem;
+  color: #312e81;
+}
+
+.long-chapter-plan-preview strong,
+.long-chapter-plan-preview span {
+  display: block;
+}
+
+.long-chapter-plan-preview strong {
+  color: #4c1d95;
+  font-size: 0.96rem;
+}
+
+.long-plan-flow {
+  background: #f5f3ff;
+  border: 1px dashed #a78bfa;
+  border-radius: 10px;
+  padding: 0.55rem 0.65rem;
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  .target-controls-grid { grid-template-columns: 1fr; }
+}
