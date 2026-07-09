@@ -127,6 +127,7 @@ def test_topic_page_disables_stale_html_cache_and_loads_new_unlock_script(tmp_pa
     response = client.get("/topic-ideas")
     assert response.status_code == 200
     assert "no-store" in response.headers.get("cache-control", "")
-    assert "20260630-stripe-test-all-v5" in response.text
+    assert "20260709-ui-restore-v1" in response.text
     assert "Restore paid access" in response.text
-    assert "Administrator trial access" in response.text
+    assert "Administrator trial access" not in response.text
+    assert "Stripe test mode" not in response.text
