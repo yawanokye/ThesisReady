@@ -126,43 +126,6 @@ def _length_level(profile: dict[str, Any]) -> str:
     return "bachelors"
 
 
-def _profile_page_target_override(profile: dict[str, Any], chapter_number: int) -> dict[str, Any] | None:
-    """Return a safe user-selected page target for the active chapter, if one was supplied.
-
-    The frontend lets students use the default page matrix or a supervisor/school
-    custom target. Only explicit custom targets override the approved defaults.
-    """
-    if not isinstance(profile, dict):
-        return None
-    chapter_number = int(chapter_number or 0)
-    targets = profile.get("chapter_page_targets") or {}
-    if not isinstance(targets, dict):
-        targets = {}
-    raw = targets.get(str(chapter_number)) or targets.get(chapter_number) or {}
-    current = profile.get("current_chapter_page_target") or {}
-    if isinstance(current, dict) and int(current.get("chapter_number") or chapter_number) == chapter_number:
-        raw = {**raw, **current}
-    if not isinstance(raw, dict):
-        return None
-    mode = str(raw.get("mode") or "").strip().lower()
-    is_custom = bool(raw.get("is_custom")) or mode == "custom"
-    if not is_custom:
-        return None
-    try:
-        minimum = int(float(raw.get("minimum_pages")))
-        maximum = int(float(raw.get("maximum_pages")))
-    except Exception:
-        return None
-    minimum = max(1, min(minimum, 150))
-    maximum = max(minimum, min(maximum, 150))
-    return {
-        "minimum_pages": minimum,
-        "maximum_pages": maximum,
-        "note": str(raw.get("note") or "").strip()[:1200],
-        "source": "user_custom_page_target",
-    }
-
-
 def _chapter_length_requirements(
     profile: dict[str, Any],
     chapter_number: int,
@@ -171,13 +134,10 @@ def _chapter_length_requirements(
     """Return page, word, section and citation-density targets for a chapter."""
     level = _length_level(profile)
     chapter_number = int(chapter_number or 0)
-    page_override = _profile_page_target_override(profile, chapter_number)
     pages = CHAPTER_PAGE_TARGETS.get(level, {}).get(chapter_number)
     if not pages:
         # Custom chapters and the supplementary guide remain scope-led.
         pages = (8, 18) if chapter_number == 7 else (8, 20)
-    if page_override:
-        pages = (int(page_override["minimum_pages"]), int(page_override["maximum_pages"]))
 
     min_pages, max_pages = pages
     min_words = min_pages * WORDS_PER_PAGE_ESTIMATE
@@ -202,8 +162,6 @@ def _chapter_length_requirements(
         "target_page_range": f"{min_pages}-{max_pages}",
         "minimum_pages": min_pages,
         "maximum_pages": max_pages,
-        "page_target_source": page_override.get("source") if page_override else "default_level_matrix",
-        "page_target_note": page_override.get("note", "") if page_override else "",
         "words_per_page_estimate": WORDS_PER_PAGE_ESTIMATE,
         "minimum_words": min_words,
         "target_words": target_words,
@@ -1104,7 +1062,6 @@ def build_drafting_prompt(
             "Use the selected academic level internally to determine depth and sophistication, but never mention the selected level in the generated chapter text.",
             "Follow the level_based_model_quality_route: the user is paying for guided working-draft development, so the main prose must be academically strong at the selected level; do not produce low-tier, shallow or mechanical writing.",
             "Follow chapter_page_word_and_citation_targets. Aim to finish within its minimum and maximum word range, distribute the target across selected sections using section_word_budgets, and do not stop after a brief overview.",
-            "If chapter_page_word_and_citation_targets.page_target_source is user_custom_page_target, treat the custom range and page_target_note as the school/supervisor planning target while still avoiding filler, repetition and unsupported claims.",
             "Meet the depth target through evidence, synthesis, comparison, critique, methodological explanation, interpretation and study-specific application. Never meet it through repetition, generic padding, duplicated definitions or inflated wording.",
             "Use the stated citation-occurrences-per-1,000-words range as a planning guide. Increase citation density across substantive paragraphs while preserving strict relevance and source integrity.",
             "Follow the human_scholarly_style_requirements and student_contribution_and_style_controls so the writing sounds natural, rigorous, context-specific, evidence-led and carefully supervised rather than generic or mechanical.",
@@ -1131,6 +1088,8 @@ def build_drafting_prompt(
             "For Chapter One, make the Background and Statement of the Problem factual and evidence-led. Use relevant accurate statistics, policy evidence, institutional evidence, or empirical findings to support the problem where supplied or confidently known.",
             "Do not fabricate citations, statistics, or reference-list entries. Use verified/supplied citations and facts where available. Where a required source, statistic, or fact is not supplied or cannot be stated confidently, insert a bracketed placeholder rather than inventing it.",
             "Use clear numbered headings matching the selected sections.",
+            "For Research Objectives and Research Questions sections, restart the ordered list at 1 within each section. Do not continue numbering from a previous section.",
+            "Do not attach explanatory commentary after the last research objective, research question, hypothesis, or list item. Keep each item as a clean standalone item. If guidance is essential, place it after the list as a bracketed attention placeholder beginning with [confirm ...] so the DOCX exporter marks it red.",
             "Use a thesis-style hierarchy: Chapter title, major sections such as 1.1, 1.2 and 1.3, and lower-level subheadings such as 1.2.1 only where they genuinely improve clarity.",
             "Do not merge selected sections. Present each selected section and subsection in the same logical order as the approved guideline/template.",
             "Do not use raw HTML colour tags such as <span style=...>. Do not colour normal academic prose; only attention placeholders should be highlighted by the DOCX exporter. The only text requiring user attention should appear as bracketed placeholders such as [insert current statistic], [verify citation], [confirm sample size], or [provide supervisor-approved wording].",
@@ -1530,9 +1489,139 @@ def _protect_thesis_structure(text: str) -> str:
     if not text:
         return text
     text = text.replace("\r\n", "\n")
-    text = re.sub(r"(?<!\n)(#{1,4}\s+)", r"\n\1", text)
+    text = re.sub(r"(?<![\n#])(#{1,4}\s+)", r"\n\1", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
+
+
+
+def _split_list_item_guidance(item_text: str, section_kind: str) -> tuple[str, str]:
+    """Keep objectives/questions clean and move explanatory guidance to attention text."""
+    text = re.sub(r"\s+", " ", str(item_text or "")).strip()
+    if not text:
+        return "", ""
+
+    guidance_patterns = [
+        r"\bThese objectives\b",
+        r"\bThese questions\b",
+        r"\bThe questions correspond\b",
+        r"\bThe first objective\b",
+        r"\bThe first question\b",
+        r"\bThe second objective\b",
+        r"\bThe second question\b",
+        r"\bThe third objective\b",
+        r"\bThe third question\b",
+        r"\bThe fourth objective\b",
+        r"\bThe fourth question\b",
+        r"\bThe fifth objective\b",
+        r"\bThe fifth question\b",
+        r"\bThis objective\b",
+        r"\bThis question\b",
+        r"\bThis alignment\b",
+        r"\bThis allowed\b",
+        r"\bThis ensured\b",
+    ]
+    starts = [m.start() for pat in guidance_patterns for m in [re.search(pat, text, flags=re.I)] if m]
+    if starts:
+        pos = min(starts)
+        main = text[:pos].strip()
+        guidance = text[pos:].strip()
+        return main.rstrip(), guidance
+
+    # Research questions should end at the first question mark. Any prose after
+    # that is usually explanation, not another question item.
+    if section_kind == "questions":
+        q = text.find("?")
+        if q >= 0 and q + 1 < len(text):
+            return text[: q + 1].strip(), text[q + 1 :].strip()
+
+    # Objectives are usually one verb-led statement. If a second sentence is an
+    # explanation rather than part of the objective, move it to guidance.
+    if section_kind == "objectives":
+        m = re.search(r"(\.(?:\s+|$))(The|These|This)\b", text)
+        if m and m.start() > 20:
+            return text[: m.start() + 1].strip(), text[m.start() + 1 :].strip()
+
+    return text, ""
+
+
+def _normalise_numbered_items_in_section(section_text: str, section_kind: str) -> str:
+    """Restart numbered items at 1 and keep guidance outside the list."""
+    lines = section_text.split("\n")
+    output: list[str] = []
+    counter = 1
+    guidance_notes: list[str] = []
+    in_ordered_list = False
+
+    for line in lines:
+        original = line
+        stripped = line.strip()
+        match = re.match(r"^(\s*)(\d+)[\.)]\s+(.+)$", line)
+        if match:
+            indent, _old_number, body = match.groups()
+            main, guidance = _split_list_item_guidance(body, section_kind)
+            if main:
+                output.append(f"{indent}{counter}. {main}")
+                counter += 1
+                in_ordered_list = True
+            if guidance:
+                guidance_notes.append(guidance)
+            continue
+
+        if in_ordered_list and stripped and re.match(r"^(These|The first|The second|The third|The fourth|The fifth|This alignment|This objective|This question)\b", stripped, flags=re.I):
+            guidance_notes.append(stripped)
+            continue
+        output.append(original)
+
+    if guidance_notes:
+        # Keep it as attention text so DOCX export colours it red. Cap overly long
+        # notes to avoid turning the chapter into a commentary document.
+        compact = " ".join(re.sub(r"\s+", " ", note).strip() for note in guidance_notes if note.strip())
+        compact = compact[:900].rstrip()
+        output.extend(["", f"[confirm whether to retain this guidance note for students: {compact}]"])
+
+    return "\n".join(output).strip()
+
+
+def _normalise_objectives_and_questions(text: str) -> str:
+    """Fix common AI list-numbering drift in Chapter One objectives/questions."""
+    if not text:
+        return text
+    heading_re = re.compile(r"(?im)^(#{1,4}\s*)?(?:\d+(?:\.\d+){0,3}\s+)?(Research Objectives|Specific Objectives|Research Questions|Research Question|Hypotheses)\s*$")
+    matches = list(heading_re.finditer(text))
+    if not matches:
+        return text
+
+    parts: list[str] = []
+    last = 0
+    for idx, match in enumerate(matches):
+        section_start = match.start()
+        body_start = match.end()
+        next_start = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
+        # Stop at the next numbered or markdown heading if it occurs before the
+        # next target section.
+        next_heading = re.search(r"(?im)^\s*(?:#{1,4}\s+[^\n]{2,120}|\d+\.\d+(?:\.\d+)*\s+[A-Z][^\n]{2,120})$", text[body_start:next_start])
+        if next_heading:
+            body_end = body_start + next_heading.start()
+            tail_start = body_end
+        else:
+            body_end = next_start
+            tail_start = next_start
+
+        heading = text[section_start:body_start]
+        body = text[body_start:body_end]
+        title = match.group(2).lower()
+        kind = "questions" if "question" in title else "objectives"
+        if "hypoth" in title:
+            kind = "questions"
+        parts.append(text[last:section_start])
+        parts.append(heading)
+        parts.append("\n" + _normalise_numbered_items_in_section(body.strip("\n"), kind) + "\n")
+        last = tail_start
+    parts.append(text[last:])
+    result = "".join(parts)
+    result = re.sub(r"\n{3,}", "\n\n", result)
+    return result.strip()
 
 
 
@@ -1555,6 +1644,8 @@ def _finalise_output_controls(text: str) -> str:
     text = _normalise_attention_language(text)
     text = _minimise_em_en_dashes(text)
     text = _remove_stray_transition_prefixes(text)
+    text = _protect_thesis_structure(text)
+    text = _normalise_objectives_and_questions(text)
     text = _protect_thesis_structure(text)
     return text.strip()
 
@@ -2217,9 +2308,6 @@ def chapter_output_metrics(
         "minimum_words": requirements.get("minimum_words"),
         "target_words": requirements.get("target_words"),
         "maximum_words": requirements.get("maximum_words"),
-        "page_target_source": requirements.get("page_target_source"),
-        "page_target_note": requirements.get("page_target_note"),
-        "long_chapter_strategy": requirements.get("long_chapter_strategy") or {},
         "depth_target_reached": words >= int((requirements.get("minimum_words") or 0) * 0.90),
     }
 
