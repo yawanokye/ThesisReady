@@ -126,6 +126,43 @@ def _length_level(profile: dict[str, Any]) -> str:
     return "bachelors"
 
 
+def _profile_page_target_override(profile: dict[str, Any], chapter_number: int) -> dict[str, Any] | None:
+    """Return a safe user-selected page target for the active chapter, if one was supplied.
+
+    The frontend lets students use the default page matrix or a supervisor/school
+    custom target. Only explicit custom targets override the approved defaults.
+    """
+    if not isinstance(profile, dict):
+        return None
+    chapter_number = int(chapter_number or 0)
+    targets = profile.get("chapter_page_targets") or {}
+    if not isinstance(targets, dict):
+        targets = {}
+    raw = targets.get(str(chapter_number)) or targets.get(chapter_number) or {}
+    current = profile.get("current_chapter_page_target") or {}
+    if isinstance(current, dict) and int(current.get("chapter_number") or chapter_number) == chapter_number:
+        raw = {**raw, **current}
+    if not isinstance(raw, dict):
+        return None
+    mode = str(raw.get("mode") or "").strip().lower()
+    is_custom = bool(raw.get("is_custom")) or mode == "custom"
+    if not is_custom:
+        return None
+    try:
+        minimum = int(float(raw.get("minimum_pages")))
+        maximum = int(float(raw.get("maximum_pages")))
+    except Exception:
+        return None
+    minimum = max(1, min(minimum, 150))
+    maximum = max(minimum, min(maximum, 150))
+    return {
+        "minimum_pages": minimum,
+        "maximum_pages": maximum,
+        "note": str(raw.get("note") or "").strip()[:1200],
+        "source": "user_custom_page_target",
+    }
+
+
 def _chapter_length_requirements(
     profile: dict[str, Any],
     chapter_number: int,
@@ -134,10 +171,13 @@ def _chapter_length_requirements(
     """Return page, word, section and citation-density targets for a chapter."""
     level = _length_level(profile)
     chapter_number = int(chapter_number or 0)
+    page_override = _profile_page_target_override(profile, chapter_number)
     pages = CHAPTER_PAGE_TARGETS.get(level, {}).get(chapter_number)
     if not pages:
         # Custom chapters and the supplementary guide remain scope-led.
         pages = (8, 18) if chapter_number == 7 else (8, 20)
+    if page_override:
+        pages = (int(page_override["minimum_pages"]), int(page_override["maximum_pages"]))
 
     min_pages, max_pages = pages
     min_words = min_pages * WORDS_PER_PAGE_ESTIMATE
@@ -162,6 +202,8 @@ def _chapter_length_requirements(
         "target_page_range": f"{min_pages}-{max_pages}",
         "minimum_pages": min_pages,
         "maximum_pages": max_pages,
+        "page_target_source": page_override.get("source") if page_override else "default_level_matrix",
+        "page_target_note": page_override.get("note", "") if page_override else "",
         "words_per_page_estimate": WORDS_PER_PAGE_ESTIMATE,
         "minimum_words": min_words,
         "target_words": target_words,
@@ -1062,6 +1104,7 @@ def build_drafting_prompt(
             "Use the selected academic level internally to determine depth and sophistication, but never mention the selected level in the generated chapter text.",
             "Follow the level_based_model_quality_route: the user is paying for guided working-draft development, so the main prose must be academically strong at the selected level; do not produce low-tier, shallow or mechanical writing.",
             "Follow chapter_page_word_and_citation_targets. Aim to finish within its minimum and maximum word range, distribute the target across selected sections using section_word_budgets, and do not stop after a brief overview.",
+            "If chapter_page_word_and_citation_targets.page_target_source is user_custom_page_target, treat the custom range and page_target_note as the school/supervisor planning target while still avoiding filler, repetition and unsupported claims.",
             "Meet the depth target through evidence, synthesis, comparison, critique, methodological explanation, interpretation and study-specific application. Never meet it through repetition, generic padding, duplicated definitions or inflated wording.",
             "Use the stated citation-occurrences-per-1,000-words range as a planning guide. Increase citation density across substantive paragraphs while preserving strict relevance and source integrity.",
             "Follow the human_scholarly_style_requirements and student_contribution_and_style_controls so the writing sounds natural, rigorous, context-specific, evidence-led and carefully supervised rather than generic or mechanical.",
@@ -2174,6 +2217,9 @@ def chapter_output_metrics(
         "minimum_words": requirements.get("minimum_words"),
         "target_words": requirements.get("target_words"),
         "maximum_words": requirements.get("maximum_words"),
+        "page_target_source": requirements.get("page_target_source"),
+        "page_target_note": requirements.get("page_target_note"),
+        "long_chapter_strategy": requirements.get("long_chapter_strategy") or {},
         "depth_target_reached": words >= int((requirements.get("minimum_words") or 0) * 0.90),
     }
 
