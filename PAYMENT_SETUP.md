@@ -68,8 +68,8 @@ PROJECTREADY_PAYMENT_SUCCESS_PATH=/workspace
 PROJECTREADY_PAYMENT_CANCEL_PATH=/workspace
 
 PAYSTACK_SECRET_KEY=<Paystack live secret key>
-STRIPE_SECRET_KEY=<Stripe live secret key>
-STRIPE_WEBHOOK_SECRET=<Stripe webhook signing secret>
+STRIPE_LIVE_SECRET_KEY=<Stripe live secret key>
+STRIPE_LIVE_WEBHOOK_SECRET=<Stripe webhook signing secret>
 ```
 
 Choose one Paystack pricing method.
@@ -123,66 +123,25 @@ checkout.session.completed
 checkout.session.async_payment_succeeded
 ```
 
-Copy the endpoint signing secret into `STRIPE_WEBHOOK_SECRET`.
+Copy the endpoint signing secret into `STRIPE_LIVE_WEBHOOK_SECRET`.
 
 
-## Safe Stripe test mode for every paid module
+## Live payment routing
 
-Use a separate Render staging service where possible. Stripe test and live objects are separate, and test payments do not move real money. The updated application keeps both sets of credentials and selects the active environment with one setting.
+The production package uses live payment routing only. African billing countries are routed to Paystack and non-African billing countries are routed to Stripe. There is no administrator trial-payment endpoint and no forced Stripe test checkout panel in the public interface.
 
-Set these variables on the staging service:
+Use a separate staging branch or service for provider sandbox tests. Do not deploy test keys, forced-provider switches or internal trial-payment keys on the production service.
 
-```text
-PROJECTREADY_STRIPE_MODE=test
-PROJECTREADY_FORCE_STRIPE=1
-PROJECTREADY_STRIPE_TEST_CHECKOUT_KEY=<private random key>
-STRIPE_TEST_SECRET_KEY=sk_test_...
-STRIPE_TEST_WEBHOOK_SECRET=whsec_...
-DATABASE_URL=/var/data/projectready-test.db
-APP_BASE_URL=https://<your-staging-hostname>
-```
-
-Create a Stripe test-mode webhook endpoint for:
-
-```text
-https://<your-staging-hostname>/payment/stripe/webhook
-```
-
-Subscribe to:
-
-```text
-checkout.session.completed
-checkout.session.async_payment_succeeded
-```
-
-`PROJECTREADY_FORCE_STRIPE=1` is honoured only while `PROJECTREADY_STRIPE_MODE=test`. It routes Ghana and every other country to Stripe so the following pathways can be tested without a real payment:
-
-1. Topic Ideas, which must enable 5, 8, 10 and 12 ideas after payment.
-2. Thesis Workspace chapter access, which must enable one draft, one revision, one compliance check and one DOCX export.
-3. Chapter Strengthener revision-only access, which must enable one revision, one compliance check and one DOCX export, with no draft credit.
-
-Every test checkout requires the private `PROJECTREADY_STRIPE_TEST_CHECKOUT_KEY`. The key is entered in the visible test panel and is verified only by the server. It is never embedded in JavaScript or returned by an API.
-
-Use Stripe's standard successful test card in the Stripe-hosted checkout. Any future expiry date and any CVC can be used in test mode. Test-mode payment records create real ProjectReady entitlements in the selected test database, so use a separate database file or staging database.
-
-Before returning to production, set:
-
-```text
-PROJECTREADY_STRIPE_MODE=live
-PROJECTREADY_FORCE_STRIPE=0
-```
-
-Confirm that the live webhook signing secret is stored in `STRIPE_LIVE_WEBHOOK_SECRET`. Test and live webhook signing secrets are different.
 
 ## 6. Deploy and test
 
-1. Deploy with Paystack and Stripe test keys first.
-2. Create a test project and confirm that one free Chapter One draft works with five or fewer selected sections.
+1. Deploy with live Paystack and live Stripe credentials in the Render environment.
+2. Create a project and confirm that one free Chapter One preview works with five or fewer selected sections.
 3. Confirm that Chapter Two returns the checkout prompt before payment.
-4. Complete a Paystack test payment using an African billing country.
-5. Complete a Stripe test payment using a non-African billing country.
-6. Confirm that the purchased chapter allows exactly one guided working draft, one strengthening revision, one compliance review, and one editable DOCX export.
-7. Switch to live provider keys only after both test flows pass.
+4. Complete a low-value live Paystack payment using Ghana or another African billing country.
+5. Complete a low-value live Stripe payment using a non-African billing country.
+6. Confirm that the purchased chapter allows exactly one guided working draft, one strengthening revision, one compliance review and one editable DOCX export.
+7. Confirm that the Purchase ID recovery option restores remaining entitlement after returning from payment.
 
 Do not place secret keys in JavaScript, HTML, GitHub, or the public Render environment preview. Keep them in Render's secret environment variables.
 
@@ -224,17 +183,9 @@ No additional environment variable is required. The payment and handoff tables m
 DATABASE_URL=/var/data/projectready.db
 ```
 
-## Topic Ideas administrator trial key
+## Topic Ideas payment rule
 
-To test the internal Topic Ideas unlock before making another payment, temporarily set:
-
-```env
-PROJECTREADY_TOPIC_IDEAS_TRIAL_KEY=your-private-random-trial-key
-```
-
-The Topic Ideas page will show an **Administrator trial access** panel. The key creates a Purchase ID automatically and issues the same one-generation entitlement used by a paid purchase. The key is assigned to the first email that activates it. The same email may reuse it to restore a lost browser credential, but it does not reset a consumed generation. Remove or rotate the environment variable after the test.
-
-This test bypasses the payment provider. It confirms the application unlock and entitlement path, not the Paystack or Stripe callback.
+Topic Ideas keeps the two-idea free preview. After that, users must unlock the full up-to-12 idea generation through Paystack for Ghana or Stripe for international billing. The administrator trial-payment key and `/api/topic-ideas/activate-trial` endpoint have been removed from the live package.
 
 
 ## Support recovery for all payments
