@@ -43,17 +43,22 @@
 
   <section class="workflow-strip" aria-label="Workspace workflow guide">
     <div><strong>1</strong><span>Profile</span></div>
-    <div><strong>2</strong><span>Sources</span></div>
-    <div><strong>3</strong><span>Chapter</span></div>
-    <div><strong>4</strong><span>Guided details</span></div>
-    <div><strong>5</strong><span>Develop draft</span></div>
+    <div><strong>2</strong><span>Upload Chapter One</span></div>
+    <div><strong>3</strong><span>Sources</span></div>
+    <div><strong>4</strong><span>Chapter plan</span></div>
+    <div><strong>5</strong><span>Develop</span></div>
     <div><strong>6</strong><span>Review & export</span></div>
   </section>
 
   <main class="layout">
     <section class="card">
       <h2>1. Set up your research project</h2>
-      <p class="section-kicker">Complete the blue-highlighted fields with your own project information. The platform uses them to guide chapter depth, structure and evidence requirements.</p>
+      <p class="section-kicker">Start with a title and level. Where Chapter One or the introduction chapter already exists, upload it once and the workspace will reuse it for profile extraction and alignment checks instead of asking the student to repeat the same information.</p>
+      <div class="workspace-guidance-grid" aria-label="Recommended setup path">
+        <div><strong>Existing Chapter One?</strong><span>Upload it after creating the project. The system extracts context, objectives and questions where possible.</span></div>
+        <div><strong>Limited inputs?</strong><span>The system may still prepare a provisional draft, but uncertain areas are marked for confirmation.</span></div>
+        <div><strong>Long doctoral chapter?</strong><span>The chapter is treated in staged sections with a final coherence pass.</span></div>
+      </div>
       <div class="form-cluster core-cluster">
         <div class="cluster-title">Core profile and routing</div>
       <label class="priority-field"><span class="field-label">Project title</span>
@@ -94,6 +99,34 @@
       </label>
       </div>
 
+      <div class="upload-box alignment-box" id="previousChaptersBox">
+        <h3 id="previousChaptersTitle">Upload Chapter One or earlier chapters for auto-fill and alignment</h3>
+        <p class="hint" id="previousChaptersHint">Upload the approved Chapter One/introduction once. The workspace will extract the study context, objectives, questions, variables and problem background where possible, then use the file for Chapter Two alignment. Add extra notes only when the uploaded chapter does not contain enough detail.</p>
+        <div class="two-col-form">
+          <label class="priority-field"><span class="field-label">Source chapter</span>
+            <select id="previousChapterNumber">
+              <option value="1">Chapter 1</option>
+              <option value="2">Chapter 2</option>
+              <option value="3">Chapter 3</option>
+              <option value="4">Chapter 4</option>
+              <option value="5">Chapter 5</option>
+              <option value="0">Complete existing work / full thesis</option>
+            </select>
+          </label>
+          <label class="priority-field"><span class="field-label">Previous chapter or full work file</span>
+            <input id="previousChapterFile" type="file" accept=".docx,.pdf,.txt,.md,.csv,.xlsx,.xlsm" />
+          </label>
+        </div>
+        <div class="actions compact-actions">
+          <button id="uploadPreviousChapterBtn" type="button">Upload for alignment</button>
+        </div>
+        <label class="priority-field"><span class="field-label">Paste previous-chapter alignment notes or extracts</span>
+          <textarea id="previousChaptersContext" rows="4" placeholder="Optional. Paste key earlier-chapter sections, approved objectives, problem statement, theory/framework, methods, or supervisor-approved wording for alignment checks."></textarea>
+        </label>
+        <p id="previousChapterStatus" class="status"></p>
+        <pre id="previousChapterPreview" class="preview-box"></pre>
+      </div>
+
       <div class="form-cluster evidence-cluster">
         <div class="cluster-title">Format, evidence and study context</div>
       <label>School-specific format notes
@@ -112,7 +145,7 @@
 
       <div class="source-box human-input-box">
         <h3>Researcher contribution and writing direction</h3>
-        <p class="hint">These fields make the working draft reflect the researcher's own context, evidence, argument and supervisor direction. They are required for meaningful guided development and are not a detector-evasion tool.</p>
+        <p class="hint">These fields make the working draft reflect the researcher's own context, evidence, argument and supervisor direction. The platform encourages the student to provide as much information as possible, but it can also prepare a provisional draft for consideration, with missing evidence and decisions clearly marked for confirmation.</p>
         <label>Working-draft stage
           <select id="draftMaturity">
             <option value="Structured first draft">Structured development draft</option>
@@ -139,6 +172,7 @@
           <textarea id="writingSample" rows="3" placeholder="Paste a short paragraph written by the student. The app will use it only as tone guidance and will not copy it verbatim."></textarea>
         </label>
         <label class="inline"><input type="checkbox" id="humanRevisionPass" checked /> Run academic quality improvement pass after initial development</label>
+        <p class="hint">For very long chapters, especially PhD and doctoral literature reviews, the system develops the chapter in staged section batches, then merges the output for coherence. This protects depth better than one whole-chapter pass.</p>
       </div>
 
       <div class="source-box literature-source-box" id="integrity-tools">
@@ -220,7 +254,7 @@
     </section>
 
     <section class="card">
-      <h2>2. Select chapter and sections</h2>
+      <h2>3. Select chapter and sections</h2>
       <label class="priority-field"><span class="field-label">Chapter</span>
         <select id="chapterSelect"></select>
         <span class="field-help">Choose the exact chapter before selecting sections. Results and Supplementary Methods show special tools.</span>
@@ -238,44 +272,17 @@
     </section>
 
     <section class="card wide">
-      <h2>3. Add your chapter-specific research details</h2>
-      <p class="hint">Answer the selected section prompts using your own study decisions, evidence and notes. The app develops the working draft from these details. Leave unknown facts blank so the system can mark them for action rather than inventing them.</p>
+      <h2>4. Add only the details not already covered by uploaded chapters</h2>
+      <p class="hint">Answer only what is not already captured in the uploaded Chapter One, earlier chapters, source bank or project profile. Leave unknown facts blank so the system can mark them for action rather than inventing them.</p>
       <div id="answersBox"></div>
     </section>
 
     <section class="card wide">
       <div class="row-between">
-        <h2>4. Develop, review and check</h2>
+        <h2>5. Develop, review and check</h2>
         <input type="checkbox" id="useAi" checked hidden />
       </div>
 
-      <div class="upload-box alignment-box" id="previousChaptersBox" hidden>
-        <h3>Previous chapters for alignment checks</h3>
-        <p class="hint">For Chapter Two and later, upload the earlier chapter(s) or the complete existing work so the draft can check alignment with the title, problem, objectives, questions, hypotheses, theory, variables, terminology and methods.</p>
-        <div class="two-col-form">
-          <label class="priority-field"><span class="field-label">Source chapter</span>
-            <select id="previousChapterNumber">
-              <option value="1">Chapter 1</option>
-              <option value="2">Chapter 2</option>
-              <option value="3">Chapter 3</option>
-              <option value="4">Chapter 4</option>
-              <option value="5">Chapter 5</option>
-              <option value="0">Complete existing work / full thesis</option>
-            </select>
-          </label>
-          <label class="priority-field"><span class="field-label">Previous chapter or full work file</span>
-            <input id="previousChapterFile" type="file" accept=".docx,.pdf,.txt,.md,.csv,.xlsx,.xlsm" />
-          </label>
-        </div>
-        <div class="actions compact-actions">
-          <button id="uploadPreviousChapterBtn" type="button">Upload for alignment</button>
-        </div>
-        <label class="priority-field"><span class="field-label">Paste previous-chapter alignment notes or extracts</span>
-          <textarea id="previousChaptersContext" rows="4" placeholder="Optional. Paste key earlier-chapter sections, approved objectives, problem statement, theory/framework, methods, or supervisor-approved wording for alignment checks."></textarea>
-        </label>
-        <p id="previousChapterStatus" class="status"></p>
-        <pre id="previousChapterPreview" class="preview-box"></pre>
-      </div>
 
       <div class="upload-box revision-box">
         <h3>Quick strengthening in the workspace</h3>
@@ -340,7 +347,7 @@
     </section>
 
     <section class="card wide">
-      <h2>5. Compliance report</h2>
+      <h2>6. Compliance report</h2>
       <div id="scoreBox" class="score"></div>
       <div class="table-wrap">
         <table id="checkTable">
@@ -360,6 +367,6 @@
   </main>
 
   <script src="/static/projectready_payments.js?v=20260630-stripe-test-all-v3"></script>
-  <script src="/static/app.js?v=20260707-alignment-v1"></script>
+  <script src="/static/app.js?v=20260709-friendly-alignment-v2"></script>
 </body>
 </html>

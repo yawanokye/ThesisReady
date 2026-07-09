@@ -12,7 +12,7 @@ let draftRequestInFlight = false;
 
 const $ = (id) => document.getElementById(id);
 
-const APP_STATIC_VERSION = "20260707-alignment-v1";
+const APP_STATIC_VERSION = "20260709-friendly-alignment-v2";
 const CURRENT_PROJECT_STORAGE_KEY = "projectready-current-project";
 
 const levelDepthGuidance = {
@@ -256,6 +256,13 @@ async function restoreCurrentProject() {
     if ($("thesis_format") && profile.thesis_format) $("thesis_format").value = profile.thesis_format;
     if ($("research_area")) $("research_area").value = profile.research_area || "";
     if ($("study_context")) $("study_context").value = profile.study_context || "";
+    if ($("format_notes")) $("format_notes").value = profile.format_notes || "";
+    if ($("citation_evidence_notes")) $("citation_evidence_notes").value = profile.citation_evidence_notes || "";
+    if ($("research_approach") && profile.research_approach) $("research_approach").value = profile.research_approach;
+    if ($("data_type") && profile.data_type) $("data_type").value = profile.data_type;
+    if ($("objectives") && Array.isArray(profile.objectives)) $("objectives").value = profile.objectives.join("\n");
+    if ($("variables_constructs") && profile.variables?.raw_variables) $("variables_constructs").value = profile.variables.raw_variables.join("\n");
+    applyAlignmentProfile(profile.chapter_one_alignment_profile || {});
     if ($("academicIntegrityDeclaration")) $("academicIntegrityDeclaration").checked = Boolean(profile.academic_integrity_confirmed);
     if ($("userContributionDeclaration")) $("userContributionDeclaration").checked = Boolean(profile.user_contribution_confirmed);
     const alignmentUploads = profile.uploaded_alignment_chapters || {};
@@ -278,6 +285,39 @@ async function restoreCurrentProject() {
 
 function lines(value) {
   return (value || "").split("\n").map(v => v.trim()).filter(Boolean);
+}
+
+function fillIfBlank(id, value) {
+  const el = $(id);
+  if (!el || el.value.trim() || value === undefined || value === null) return false;
+  if (Array.isArray(value)) {
+    if (!value.length) return false;
+    el.value = value.join("\n");
+  } else {
+    const text = String(value || "").trim();
+    if (!text) return false;
+    el.value = text;
+  }
+  return true;
+}
+
+function applyAlignmentProfile(profile = {}) {
+  if (!profile || typeof profile !== "object") return 0;
+  let applied = 0;
+  if (fillIfBlank("study_context", profile.study_context)) applied += 1;
+  if (fillIfBlank("objectives", profile.objectives)) applied += 1;
+  if (fillIfBlank("variables_constructs", profile.variables_constructs)) applied += 1;
+  if (fillIfBlank("centralArgument", profile.problem_extract || profile.theory_framework_extract)) applied += 1;
+  const rqBox = document.querySelector("#answersBox textarea");
+  if (rqBox && !rqBox.value.trim() && Array.isArray(profile.research_questions) && profile.research_questions.length) {
+    rqBox.value = profile.research_questions.join("\n");
+    applied += 1;
+  }
+  return applied;
+}
+
+function chapterOneContextAvailable() {
+  return Boolean(alignmentUploadAttached || hasSavedEarlierDraftForAlignment() || ($("previousChaptersContext")?.value.trim().length || 0) >= 80);
 }
 
 function chapterDisplayName(ch) {
@@ -324,14 +364,23 @@ function updateChapterSpecificUi() {
   const otherBox = $("otherChapterBox");
   if (otherBox) otherBox.hidden = currentChapter !== 6;
   const previousBox = $("previousChaptersBox");
-  if (previousBox) previousBox.hidden = Number(currentChapter || 1) <= 1;
+  if (previousBox) previousBox.hidden = false;
   const previousSelect = $("previousChapterNumber");
-  if (previousSelect && Number(currentChapter || 1) > 1) {
+  const target = Math.max(2, Number(currentChapter || 1));
+  if (previousSelect) {
     const selected = Number(previousSelect.value || 1);
-    if (selected !== 0 && selected >= Number(currentChapter || 1)) {
-      previousSelect.value = String(Math.max(1, Number(currentChapter || 2) - 1));
+    if (target > 1 && selected !== 0 && selected >= target) {
+      previousSelect.value = String(Math.max(1, target - 1));
     }
   }
+  const uploadTitle = $("previousChaptersTitle");
+  if (uploadTitle) uploadTitle.textContent = target <= 2
+    ? "Upload Chapter One or introduction for auto-fill and alignment"
+    : "Upload earlier chapters or full work for alignment checks";
+  const uploadHint = $("previousChaptersHint");
+  if (uploadHint) uploadHint.textContent = target <= 2
+    ? "Upload the approved Chapter One/introduction once. The workspace will extract the study context, objectives, questions, variables and problem background where possible, then use the file for Chapter Two alignment. Add extra notes only when the uploaded chapter does not contain enough detail."
+    : "Upload the earlier chapter(s) or the complete existing work so the active chapter can stay aligned with the title, problem, objectives, questions, hypotheses, theory, variables, terminology and methods.";
 }
 
 function selectedSectionIds() {
@@ -610,6 +659,7 @@ function collectProfile() {
     recovery_pin: $("recoveryPin") ? $("recoveryPin").value.trim() : "",
     academic_integrity_confirmed: $("academicIntegrityDeclaration") ? $("academicIntegrityDeclaration").checked : false,
     user_contribution_confirmed: $("userContributionDeclaration") ? $("userContributionDeclaration").checked : false,
+    allow_provisional_drafting: true,
     programme: "",
     department: "",
     institution: "",
@@ -718,41 +768,44 @@ function ownInputReadinessProblems({revisionMode = false} = {}) {
     problems.push("confirm both academic-integrity and user-contribution declarations");
   }
   if (revisionMode) {
-    if (!uploadedRevisionText.trim() && !$("draftOutput")?.value.trim()) {
+    if (!uploadedRevisionText.trim() && !$('draftOutput')?.value.trim()) {
       problems.push("upload or load the existing chapter that you want to strengthen");
     }
     return problems;
   }
+  if (!selectedSectionIds().length) problems.push("select at least one required chapter section");
+  return problems;
+}
 
-  const context = $("study_context")?.value.trim() || "";
-  const area = $("research_area")?.value.trim() || "";
-  const objectives = lines($("objectives")?.value || "");
+function draftConsiderationWarnings({revisionMode = false} = {}) {
+  if (revisionMode) return [];
+  const warnings = [];
+  const context = $('study_context')?.value.trim() || "";
+  const area = $('research_area')?.value.trim() || "";
+  const objectives = lines($('objectives')?.value || "");
   const answers = collectAnswers();
   const answerText = Object.values(answers).flatMap(section => Object.values(section || {})).join(" ");
   const contributionValues = [
-    $("centralArgument")?.value.trim() || "",
-    $("localContextNotes")?.value.trim() || "",
-    $("evidenceAnchors")?.value.trim() || "",
-    $("citation_evidence_notes")?.value.trim() || "",
-    $("format_notes")?.value.trim() || "",
-    $("supervisorComments")?.value.trim() || "",
+    $('centralArgument')?.value.trim() || "",
+    $('localContextNotes')?.value.trim() || "",
+    $('evidenceAnchors')?.value.trim() || "",
+    $('citation_evidence_notes')?.value.trim() || "",
+    $('format_notes')?.value.trim() || "",
+    $('supervisorComments')?.value.trim() || "",
   ];
-  const meaningfulContributions = contributionValues.filter(value => value.length >= 35).length;
-
-  if (!area && context.length < 30) problems.push("describe the research area and study context");
-  if (!objectives.length && answerText.length < 60) problems.push("add objectives, research questions or detailed guided-section answers");
-  if (meaningfulContributions < 2 && contributionValues.join(" ").length < 140) {
-    problems.push("add more of your own evidence, argument, context, school guidance or supervisor direction");
+  const contributionText = contributionValues.join(" ").trim();
+  const hasChapterOneContext = chapterOneContextAvailable();
+  if (!hasChapterOneContext) {
+    if (!area && context.length < 30) warnings.push("research area and study context are limited");
+    if (!objectives.length && answerText.length < 60) warnings.push("objectives, research questions or guided-section answers are limited");
+    if (contributionText.length < 140) warnings.push("evidence, argument, context or supervisor direction is limited");
   }
-  if (!selectedSectionIds().length) problems.push("select at least one required chapter section");
-  if (Number(currentChapter || 1) >= 2) {
-    const pastedAlignment = $("previousChaptersContext")?.value.trim() || "";
-    if (!alignmentUploadAttached && !hasSavedEarlierDraftForAlignment() && pastedAlignment.length < 80) {
-      problems.push("upload or paste earlier chapter(s), or save the earlier ProjectReady chapter draft, for alignment checks from Chapter Two onward");
-    }
+  if (Number(currentChapter || 1) >= 2 && !hasChapterOneContext) {
+    warnings.push("earlier chapter alignment context has not been supplied, so the draft will include alignment-confirmation placeholders");
   }
-  return problems;
+  return warnings;
 }
+
 
 async function createProject() {
   const profile = collectProfile();
@@ -886,10 +939,12 @@ async function generateDraft() {
     const revisionMode = $("revisionMode") ? $("revisionMode").checked : false;
     const readinessProblems = ownInputReadinessProblems({revisionMode});
     if (readinessProblems.length) {
-      $("draftStatus").textContent = `Add your own research inputs before continuing: ${readinessProblems.join("; ")}.`;
+      $("draftStatus").textContent = `Complete the required responsibility checks before continuing: ${readinessProblems.join("; ")}.`;
       return;
     }
+    const considerationWarnings = draftConsiderationWarnings({revisionMode});
     const profileSnapshot = collectProfile();
+    profileSnapshot.draft_consideration_warnings = considerationWarnings;
     delete profileSnapshot.recovery_pin;
     delete profileSnapshot.recovery_email;
     const payload = {
@@ -920,10 +975,20 @@ async function generateDraft() {
     human_revision_pass: $("humanRevisionPass") ? $("humanRevisionPass").checked : true,
     academic_integrity_confirmed: $("academicIntegrityDeclaration") ? $("academicIntegrityDeclaration").checked : false,
     user_contribution_confirmed: $("userContributionDeclaration") ? $("userContributionDeclaration").checked : false,
+    draft_consideration_warnings: considerationWarnings,
+    allow_provisional_drafting: true,
     profile_updates: profileSnapshot,
     ...currentSourcePayload()
   };
-  $("draftStatus").textContent = revisionMode ? "Strengthening your existing chapter..." : "Developing the working draft from your research inputs...";
+  if (revisionMode) {
+    $("draftStatus").textContent = "Strengthening your existing chapter...";
+  } else if (considerationWarnings.length) {
+    $("draftStatus").textContent = `Developing a provisional working draft for consideration. Missing or limited inputs will be marked with placeholders: ${considerationWarnings.join("; ")}.`;
+  } else if (chapterOneContextAvailable() && Number(currentChapter || 1) >= 2) {
+    $("draftStatus").textContent = "Developing the working draft using the uploaded Chapter One or earlier-chapter alignment profile...";
+  } else {
+    $("draftStatus").textContent = "Developing the working draft from your research inputs...";
+  }
     const result = await api(`/api/projects/${currentProjectId}/draft`, { method: "POST", body: JSON.stringify(payload) });
     hideAccessRequiredNotice();
     $("draftOutput").value = result.draft;
@@ -952,13 +1017,9 @@ async function uploadPreviousChapterForAlignment() {
     $("previousChapterStatus").textContent = "Please select an earlier chapter or complete-work file first.";
     return;
   }
-  if (Number(currentChapter || 1) <= 1) {
-    $("previousChapterStatus").textContent = "Previous-chapter alignment uploads are used from Chapter Two onward.";
-    return;
-  }
-
+  const targetChapter = Math.max(2, Number(currentChapter || 1));
   const sourceNumber = Number($("previousChapterNumber")?.value || 1);
-  if (sourceNumber !== 0 && sourceNumber >= Number(currentChapter || 1)) {
+  if (sourceNumber !== 0 && sourceNumber >= targetChapter) {
     $("previousChapterStatus").textContent = "Choose an earlier source chapter, or choose complete existing work / full thesis.";
     return;
   }
@@ -966,9 +1027,9 @@ async function uploadPreviousChapterForAlignment() {
   const formData = new FormData();
   formData.append("file", input.files[0]);
   formData.append("source_chapter_number", String(sourceNumber));
-  formData.append("target_chapter_number", String(currentChapter || 2));
+  formData.append("target_chapter_number", String(targetChapter));
 
-  $("previousChapterStatus").textContent = "Uploading and extracting previous-chapter context for alignment checks...";
+  $("previousChapterStatus").textContent = "Uploading, extracting and preparing the alignment profile...";
   const response = await fetch(`/api/projects/${currentProjectId}/upload-alignment-chapter`, {
     method: "POST",
     body: formData,
@@ -979,7 +1040,9 @@ async function uploadPreviousChapterForAlignment() {
   }
   const result = await response.json();
   alignmentUploadAttached = true;
-  $("previousChapterStatus").textContent = result.message || `Uploaded ${result.filename} for Chapter ${result.target_chapter_number} alignment checks.`;
+  const appliedCount = applyAlignmentProfile(result.alignment_profile || {});
+  const appliedNote = appliedCount ? ` Auto-filled ${appliedCount} project field(s) from the upload. Review and edit them where needed.` : " The upload will be used for alignment checks.";
+  $("previousChapterStatus").textContent = (result.message || `Uploaded ${result.filename} for Chapter ${result.target_chapter_number} alignment checks.`) + appliedNote;
   $("previousChapterPreview").textContent = result.preview || "No preview available.";
 }
 

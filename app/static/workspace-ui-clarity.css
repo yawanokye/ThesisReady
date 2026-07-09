@@ -428,3 +428,57 @@ button:disabled {
 }
 .integrity-check input { margin-top: 3px; width: 18px; height: 18px; flex: 0 0 auto; }
 .working-draft-notice { background: #fff8e8; border-color: #e7c66d; color: #664b00; }
+
+/* Friendlier workspace grouping added for Chapter One auto-fill and long-chapter drafting. */
+.workspace-guidance-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.workspace-guidance-grid div {
+  background: #fff;
+  border: 1px solid #dbeafe;
+  border-radius: 16px;
+  padding: 0.85rem;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
+}
+
+.workspace-guidance-grid strong,
+.workspace-guidance-grid span {
+  display: block;
+}
+
+.workspace-guidance-grid strong {
+  color: #0f172a;
+  font-size: 0.95rem;
+  margin-bottom: 0.25rem;
+}
+
+.workspace-guidance-grid span {
+  color: var(--pr-muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.alignment-box {
+  background: #eef6ff;
+  border: 1px solid #bfdbfe;
+  border-left: 6px solid var(--pr-blue);
+}
+
+.alignment-box h3::before { background: var(--pr-blue); }
+
+.form-cluster label:not(.priority-field),
+.source-box label:not(.priority-field),
+.upload-box label:not(.priority-field) {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 0.7rem;
+}
+
+@media (max-width: 900px) {
+  .workspace-guidance-grid { grid-template-columns: 1fr; }
+}
