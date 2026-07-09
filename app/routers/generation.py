@@ -135,7 +135,8 @@ def _apply_profile_updates(project: dict[str, Any], payload: DraftRequest) -> No
         "objectives", "research_questions", "hypotheses", "notes",
         "other_chapter_title", "other_chapter_instructions", "draft_maturity",
         "student_contribution", "academic_integrity_confirmed",
-        "user_contribution_confirmed",
+        "user_contribution_confirmed", "allow_provisional_drafting",
+        "draft_consideration_warnings",
     }
     for key in allowed:
         if key not in updates:
@@ -302,7 +303,7 @@ def _validate_guided_development_request(
         ])
     if not bool(getattr(payload, "user_contribution_confirmed", False)):
         raise _readiness_error([
-            "confirm that you have supplied your own research direction, materials, evidence or existing writing"
+            "confirm that you have supplied or will supply your own research direction, materials, evidence or existing writing"
         ])
     if not payload.selected_section_ids:
         raise _readiness_error(["select at least one required chapter section"])
@@ -327,53 +328,65 @@ def _validate_guided_development_request(
         "context": _plain_text(profile.get("study_context")),
         "research_logic": research_logic,
         "student_position": " ".join([
-            _plain_text(contribution.get("central_argument")),
-            _plain_text(contribution.get("local_context_notes")),
+            _plain_text(contribution.get("central_argument")) if isinstance(contribution, dict) else "",
+            _plain_text(contribution.get("local_context_notes")) if isinstance(contribution, dict) else "",
         ]).strip(),
         "evidence": " ".join([
             _plain_text(profile.get("citation_evidence_notes")),
-            _plain_text(contribution.get("evidence_anchors")),
+            _plain_text(contribution.get("evidence_anchors")) if isinstance(contribution, dict) else "",
             _plain_text(profile.get("source_bank")),
         ]).strip(),
         "institutional_direction": " ".join([
             _plain_text(profile.get("format_notes")),
-            _plain_text(contribution.get("supervisor_comments")),
+            _plain_text(contribution.get("supervisor_comments")) if isinstance(contribution, dict) else "",
             _plain_text(payload.extra_instructions),
         ]).strip(),
     }
-    missing: list[str] = []
+
+    advisory: list[str] = list(getattr(payload, "draft_consideration_warnings", None) or [])
     if len(_plain_text(project.get("title") or profile.get("title"))) < 3:
-        missing.append("enter the approved or provisional research title")
+        raise _readiness_error(["enter the approved or provisional research title"])
     if len(_plain_text(profile.get("research_area"))) < 3 and len(categories["context"]) < 30:
-        missing.append("describe the research area and study context")
+        advisory.append("research area and study context are limited")
     if len(research_logic) < 60:
-        missing.append("provide research objectives, questions or detailed answers to the selected section prompts")
+        advisory.append("objectives, questions or selected-section answers are limited")
 
     meaningful_categories = sum(1 for value in categories.values() if len(value) >= 35)
     total_user_input = sum(len(value) for value in categories.values())
     if meaningful_categories < 2 or total_user_input < 140:
-        missing.append("add meaningful context, evidence, student judgement, institutional guidance or supervisor direction")
+        advisory.append("student evidence, argument, context, institutional guidance or supervisor direction is limited")
 
     if int(payload.chapter_number or 0) >= 2:
         alignment_context = profile.get("previous_chapters_context") or {}
         if not (isinstance(alignment_context, dict) and alignment_context.get("available")):
-            missing.append("upload or paste the earlier chapter(s), or save earlier ProjectReady drafts, so alignment can be checked from Chapter Two onward")
+            advisory.append("earlier chapter alignment context is missing or too limited")
 
     if int(payload.chapter_number or 0) == 2:
         source_bank = profile.get("source_bank") or []
         has_verified_evidence = len(_plain_text(profile.get("citation_evidence_notes"))) >= 50
         if not source_bank and not has_verified_evidence and len(answers_text) < 500:
-            missing.append("attach relevant literature sources or provide verified reference notes for the literature review")
+            advisory.append("literature source evidence is limited, so citation and reference placeholders will be required")
 
     if int(payload.chapter_number or 0) == 4:
         uploaded_results = profile.get("uploaded_results") or {}
         result_record = uploaded_results.get(str(payload.chapter_number)) or {}
         result_text = _plain_text(result_record.get("extracted_text") or result_record.get("text"))
         if len(result_text) < 50:
-            missing.append("upload the actual results or findings for Chapter Four")
+            advisory.append("actual results or findings are missing, so Chapter Four must use placeholder tables and action notes rather than invented results")
 
-    if missing:
-        raise _readiness_error(missing)
+    # Do not block provisional drafting for missing research information. Store the
+    # advisories so the generation prompt and UI can mark missing decisions clearly.
+    cleaned = []
+    seen = set()
+    for item in advisory:
+        text = str(item or "").strip()
+        key = text.lower()
+        if text and key not in seen:
+            seen.add(key)
+            cleaned.append(text)
+    profile["allow_provisional_drafting"] = True
+    profile["draft_consideration_warnings"] = cleaned
+    project["profile"] = profile
 
 
 @router.post("/{project_id}/draft")
@@ -474,6 +487,15 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
         revision_text=revision_text,
     )
 
+    advisory_warnings = project.get("profile", {}).get("draft_consideration_warnings") or []
+    if advisory_warnings and not revision_mode:
+        extra_instructions = (
+            extra_instructions
+            + "\n\nProvisional drafting advisories: "
+            + "; ".join(str(item) for item in advisory_warnings)
+            + ". Prepare a useful draft for consideration and mark these gaps with bracketed placeholders for confirmation."
+        ).strip()
+
     other_title = getattr(payload, "other_chapter_title", "") or project["profile"].get("other_chapter_title", "")
     other_instructions = getattr(payload, "other_chapter_instructions", "") or project["profile"].get("other_chapter_instructions", "")
     if payload.chapter_number == 6 and (other_title or other_instructions):
@@ -556,6 +578,13 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
             generation_warning = (
                 "The AI provider did not return a full chapter, so ProjectReady AI produced an expanded local thesis draft. "
                 "For the strongest supervisor-ready output, confirm the API key/model, add project-specific evidence, and regenerate with AI enabled."
+            )
+        advisory = project.get("profile", {}).get("draft_consideration_warnings") or []
+        if advisory and not generation_warning:
+            generation_warning = (
+                "A provisional working draft was developed for consideration because some inputs are limited: "
+                + "; ".join(str(item) for item in advisory)
+                + ". Review all bracketed placeholders before academic use."
             )
 
         metrics = chapter_output_metrics(
