@@ -138,6 +138,20 @@ def _apply_profile_updates(project: dict[str, Any], payload: DraftRequest) -> No
         "user_contribution_confirmed", "allow_provisional_drafting",
         "draft_consideration_warnings",
     }
+    preserve_when_blank = {
+        "research_area", "study_context", "citation_evidence_notes", "variables",
+        "objectives", "research_questions", "hypotheses", "format_notes", "notes"
+    }
+
+    def _empty_update(value: Any) -> bool:
+        if value is None:
+            return True
+        if isinstance(value, str):
+            return not value.strip()
+        if isinstance(value, (list, tuple, set, dict)):
+            return len(value) == 0
+        return False
+
     for key in allowed:
         if key not in updates:
             continue
@@ -147,6 +161,10 @@ def _apply_profile_updates(project: dict[str, Any], payload: DraftRequest) -> No
             if title:
                 project["title"] = title
                 profile["title"] = title
+            continue
+        if key in preserve_when_blank and _empty_update(value) and not _empty_update(profile.get(key)):
+            # Do not let a blank frontend field erase information extracted from
+            # an uploaded Chapter One/introduction chapter or full existing work.
             continue
         profile[key] = value
     project["profile"] = profile
@@ -281,13 +299,128 @@ def _readiness_error(missing: list[str]) -> HTTPException:
         detail={
             "code": "guided_development_input_required",
             "message": (
-                "ProjectReady AI develops working drafts from the researcher's own "
-                "materials. Complete the listed research inputs before continuing: "
+                "ProjectReady AI can use uploaded Chapter One or earlier chapters to prepare a working draft. "
+                "Please complete only the required responsibility checks or upload/add the missing item(s): "
                 + "; ".join(missing)
             ),
             "missing": missing,
         },
     )
+
+
+def _extract_list_items(block: str, *, limit: int = 12) -> list[str]:
+    items: list[str] = []
+    for raw in str(block or "").splitlines():
+        line = re.sub(r"^[\s\-•*]+", "", raw.strip())
+        line = re.sub(r"^(?:\(?[ivxlcdm]+\)|\(?\d+\)|[a-zA-Z]\)|\d+(?:\.\d+)*[.)]?)\s+", "", line, flags=re.I)
+        line = line.strip(" :-–—")
+        if len(line) < 10:
+            continue
+        if re.search(r"\b(chapter|section|background|introduction)\b", line, flags=re.I) and len(line.split()) < 8:
+            continue
+        if line not in items:
+            items.append(line[:500])
+        if len(items) >= limit:
+            break
+    return items
+
+
+def _heading_block(text: str, patterns: list[str], *, max_chars: int = 3500) -> str:
+    text = str(text or "")
+    if not text:
+        return ""
+    heading_re = re.compile(r"(?im)^\s*(?:\d+(?:\.\d+)*\s*)?(" + "|".join(patterns) + r")\s*[:\-–—]?\s*$")
+    next_heading_re = re.compile(r"(?im)^\s*(?:\d+(?:\.\d+)*\s+)?[A-Z][A-Za-z0-9, /&()'\-–—]{2,90}\s*$")
+    match = heading_re.search(text)
+    if not match:
+        return ""
+    start = match.end()
+    end = min(len(text), start + max_chars)
+    next_match = next_heading_re.search(text, start + 20)
+    if next_match:
+        end = min(end, next_match.start())
+    return text[start:end].strip()
+
+
+def _derive_alignment_profile_from_text(text: str, *, filename: str = "") -> dict[str, Any]:
+    """Create a conservative alignment profile from an uploaded Chapter One/full work.
+
+    This is deliberately heuristic. It does not replace student judgement. It prevents
+    the workspace from asking students to retype objectives, context and questions
+    that are already present in the uploaded introduction chapter.
+    """
+    clean = re.sub(r"\r\n?", "\n", str(text or ""))
+    clean = re.sub(r"[ \t]+", " ", clean)
+    if not clean.strip():
+        return {}
+
+    objectives_block = _heading_block(clean, [
+        r"research objectives?", r"objectives? of the study", r"specific objectives?", r"main objective", r"general objective"
+    ], max_chars=4500)
+    questions_block = _heading_block(clean, [
+        r"research questions?", r"questions? of the study"
+    ], max_chars=3500)
+    hypotheses_block = _heading_block(clean, [
+        r"research hypotheses", r"hypotheses", r"hypothesis"
+    ], max_chars=3000)
+    context_block = _heading_block(clean, [
+        r"background(?: to| of)? the study", r"study background", r"context of the study", r"research context", r"background"
+    ], max_chars=4500)
+    problem_block = _heading_block(clean, [
+        r"statement of the problem", r"problem statement", r"research problem"
+    ], max_chars=3500)
+    significance_block = _heading_block(clean, [
+        r"significance of the study", r"justification of the study", r"rationale of the study"
+    ], max_chars=2500)
+    theory_block = _heading_block(clean, [
+        r"theoretical framework", r"conceptual framework", r"theory", r"theoretical review"
+    ], max_chars=3000)
+    variables_block = _heading_block(clean, [
+        r"variables?", r"constructs?", r"operational definitions?", r"definition of terms", r"scope of the study"
+    ], max_chars=2500)
+
+    title = ""
+    for line in clean.splitlines()[:40]:
+        candidate = line.strip()
+        if 12 <= len(candidate) <= 220 and not re.search(r"^(university|college|department|chapter|introduction|by |student)", candidate, flags=re.I):
+            if len(candidate.split()) >= 4:
+                title = candidate
+                break
+
+    objectives = _extract_list_items(objectives_block)
+    questions = _extract_list_items(questions_block)
+    hypotheses = _extract_list_items(hypotheses_block)
+    variables = _extract_list_items(variables_block, limit=15)
+
+    context_parts = [part for part in [context_block[:2200], problem_block[:1800], significance_block[:900]] if part]
+    study_context = "\n\n".join(context_parts).strip()
+
+    profile = {
+        "source_filename": filename,
+        "title": title,
+        "study_context": study_context[:5000],
+        "objectives": objectives,
+        "research_questions": questions,
+        "hypotheses": hypotheses,
+        "variables_constructs": variables,
+        "theory_framework_extract": theory_block[:2500],
+        "problem_extract": problem_block[:2200],
+        "profile_basis": "auto-extracted from uploaded Chapter One or complete existing work",
+    }
+    return {key: value for key, value in profile.items() if value}
+
+
+def _alignment_profile_text(profile: dict[str, Any]) -> str:
+    parts: list[str] = []
+    chapter_one_profile = profile.get("chapter_one_alignment_profile") or {}
+    if isinstance(chapter_one_profile, dict):
+        parts.append(_plain_text(chapter_one_profile))
+    alignment_context = profile.get("previous_chapters_context") or {}
+    if isinstance(alignment_context, dict):
+        for item in alignment_context.get("items") or []:
+            if isinstance(item, dict):
+                parts.append(_plain_text(item.get("text")))
+    return " ".join(part for part in parts if part).strip()[:60000]
 
 
 def _validate_guided_development_request(
@@ -316,16 +449,25 @@ def _validate_guided_development_request(
     profile = project.get("profile") or {}
     contribution = profile.get("student_contribution") or {}
     answers_text = _plain_text(payload.answers)
-    objectives_text = _plain_text(profile.get("objectives"))
+    alignment_text = _alignment_profile_text(profile)
+    chapter_one_profile = profile.get("chapter_one_alignment_profile") or {}
+    if not isinstance(chapter_one_profile, dict):
+        chapter_one_profile = {}
+    objectives_text = " ".join([
+        _plain_text(profile.get("objectives")),
+        _plain_text(chapter_one_profile.get("objectives")),
+    ]).strip()
     research_logic = " ".join([
         objectives_text,
         _plain_text(profile.get("research_questions")),
         _plain_text(profile.get("hypotheses")),
+        _plain_text(chapter_one_profile.get("research_questions")),
+        _plain_text(chapter_one_profile.get("hypotheses")),
         answers_text,
     ]).strip()
 
     categories = {
-        "context": _plain_text(profile.get("study_context")),
+        "context": " ".join([_plain_text(profile.get("study_context")), _plain_text(chapter_one_profile.get("study_context")), alignment_text[:12000]]).strip(),
         "research_logic": research_logic,
         "student_position": " ".join([
             _plain_text(contribution.get("central_argument")) if isinstance(contribution, dict) else "",
@@ -346,14 +488,16 @@ def _validate_guided_development_request(
     advisory: list[str] = list(getattr(payload, "draft_consideration_warnings", None) or [])
     if len(_plain_text(project.get("title") or profile.get("title"))) < 3:
         raise _readiness_error(["enter the approved or provisional research title"])
-    if len(_plain_text(profile.get("research_area"))) < 3 and len(categories["context"]) < 30:
-        advisory.append("research area and study context are limited")
-    if len(research_logic) < 60:
-        advisory.append("objectives, questions or selected-section answers are limited")
+    has_uploaded_intro_profile = bool(alignment_text) or bool(chapter_one_profile)
+    if not has_uploaded_intro_profile:
+        if len(_plain_text(profile.get("research_area"))) < 3 and len(categories["context"]) < 30:
+            advisory.append("research area and study context are limited")
+        if len(research_logic) < 60:
+            advisory.append("objectives, questions or selected-section answers are limited")
 
     meaningful_categories = sum(1 for value in categories.values() if len(value) >= 35)
     total_user_input = sum(len(value) for value in categories.values())
-    if meaningful_categories < 2 or total_user_input < 140:
+    if not has_uploaded_intro_profile and (meaningful_categories < 2 or total_user_input < 140):
         advisory.append("student evidence, argument, context, institutional guidance or supervisor direction is limited")
 
     if int(payload.chapter_number or 0) >= 2:
@@ -654,6 +798,8 @@ async def upload_alignment_chapter(
     if not isinstance(uploaded_alignment, dict):
         uploaded_alignment = {}
     record_id = f"{target_number}:{source_number}:{re.sub(r'[^a-zA-Z0-9_.-]+', '_', extracted['filename'])}"
+    extracted_text = extracted.get("extracted_text") or extracted.get("text") or ""
+    alignment_profile = _derive_alignment_profile_from_text(extracted_text, filename=extracted.get("filename", filename))
     uploaded_alignment[record_id] = {
         **extracted,
         "content_type": file.content_type or "",
@@ -661,8 +807,27 @@ async def upload_alignment_chapter(
         "source_chapter_number": source_number,
         "target_chapter_number": target_number,
         "alignment_purpose": "previous_chapter_or_full_work_alignment",
+        "alignment_profile": alignment_profile,
     }
     profile["uploaded_alignment_chapters"] = uploaded_alignment
+
+    # Chapter One or a complete-work upload becomes the project alignment profile.
+    # Fill only blank profile fields. User-entered values remain authoritative.
+    if source_number in {0, 1} and alignment_profile:
+        profile["chapter_one_alignment_profile"] = {
+            **(profile.get("chapter_one_alignment_profile") if isinstance(profile.get("chapter_one_alignment_profile"), dict) else {}),
+            **alignment_profile,
+        }
+        if not _plain_text(profile.get("study_context")) and alignment_profile.get("study_context"):
+            profile["study_context"] = alignment_profile["study_context"]
+        if not _plain_text(profile.get("objectives")) and alignment_profile.get("objectives"):
+            profile["objectives"] = alignment_profile["objectives"]
+        if not _plain_text(profile.get("research_questions")) and alignment_profile.get("research_questions"):
+            profile["research_questions"] = alignment_profile["research_questions"]
+        if not _plain_text(profile.get("hypotheses")) and alignment_profile.get("hypotheses"):
+            profile["hypotheses"] = alignment_profile["hypotheses"]
+        if not _plain_text((profile.get("variables") or {}).get("raw_variables") if isinstance(profile.get("variables"), dict) else profile.get("variables")) and alignment_profile.get("variables_constructs"):
+            profile["variables"] = {"raw_variables": alignment_profile["variables_constructs"]}
 
     with get_conn() as conn:
         conn.execute(
@@ -681,7 +846,8 @@ async def upload_alignment_chapter(
         "characters_extracted": extracted["characters_extracted"],
         "truncated": extracted["truncated"],
         "preview": extracted["preview"],
-        "message": f"{source_label} uploaded for Chapter {target_number} alignment checks.",
+        "alignment_profile": alignment_profile,
+        "message": f"{source_label} uploaded for Chapter {target_number} alignment checks and project auto-fill.",
     }
 
 
