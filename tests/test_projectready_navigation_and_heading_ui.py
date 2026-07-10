@@ -54,3 +54,16 @@ def test_workspace_and_topic_use_strengthener_heading_rhythm():
     for css in [workspace_css, topic_css]:
         assert "line-height: 1.02" in css
         assert "letter-spacing: -0.045em" in css
+
+
+def test_homepage_hero_heading_matches_strengthener_rhythm():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    landing_css = (root / "app/static/landing.css").read_text()
+    suite_css = (root / "app/static/projectready-suite.css").read_text()
+    assert ".landing-suite .hero-copy h1" in landing_css
+    assert ".landing-suite .hero-copy h1" in suite_css
+    assert "line-height: 1.02" in landing_css
+    assert "letter-spacing: -0.045em" in landing_css
+    assert "line-height: 1.02 !important" in suite_css
+    assert "letter-spacing: -0.045em !important" in suite_css
