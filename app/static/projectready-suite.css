@@ -337,3 +337,14 @@ input::placeholder, textarea::placeholder, .article-output::placeholder {
     padding-bottom: .2rem;
   }
 }
+
+/* 2026-07-10: match Chapter Strengthener's tight hero heading rhythm on the home page. */
+.landing-suite .hero-copy h1,
+.landing-suite .hero-section h1 {
+  margin: 0 0 16px !important;
+  max-width: 1040px;
+  font-size: clamp(2.1rem, 4.8vw, 4.8rem) !important;
+  line-height: 1.02 !important;
+  letter-spacing: -0.045em !important;
+  text-wrap: balance;
+}

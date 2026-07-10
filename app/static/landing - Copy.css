@@ -90,8 +90,18 @@ h1 {
   margin: 0;
   max-width: 980px;
   font-size: clamp(36px, 5vw, 66px);
-  line-height: 1.04;
-  letter-spacing: -0.04em;
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+}
+
+.landing-suite .hero-copy h1,
+.landing-suite .hero-section h1 {
+  margin: 0 0 16px;
+  max-width: 1040px;
+  font-size: clamp(2.1rem, 4.8vw, 4.8rem);
+  line-height: 1.02 !important;
+  letter-spacing: -0.045em !important;
+  text-wrap: balance;
 }
 .hero-lead {
   max-width: 760px;
