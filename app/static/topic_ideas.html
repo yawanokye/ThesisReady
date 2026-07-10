@@ -92,6 +92,17 @@
             </label>
             <button id="restoreTopicAccessBtn" type="button" class="secondary-action">Restore paid access</button>
           </details>
+          <details id="topicInternalPanel" class="topic-access-recovery internal-access-panel">
+            <summary>Developer access</summary>
+            <p>For authorised developers only. Requires an allow-listed email and the six-digit internal key. This does not create a public trial or payment record.</p>
+            <label><span class="field-label">Developer email</span>
+              <input id="topicInternalEmail" type="email" autocomplete="email" placeholder="name@example.com" />
+            </label>
+            <label><span class="field-label">Six-digit key</span>
+              <input id="topicInternalKey" type="password" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="off" placeholder="000000" />
+            </label>
+            <button id="activateTopicInternalBtn" type="button" class="secondary-action">Activate developer access</button>
+          </details>
           <p id="topicMarketNote" class="hint topic-market-note">Choose Ghana only when Ghana is your billing country. International payments are processed in US dollars.</p>
         </section>
 
@@ -200,6 +211,6 @@
     </section>
   </main>
 
-  <script src="/static/topic_ideas.js?v=20260709-ui-restore-v1"></script>
+  <script src="/static/topic_ideas.js?v=20260710-internal-access-v1"></script>
 </body>
 </html>

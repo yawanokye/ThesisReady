@@ -112,6 +112,34 @@
     return data;
   }
 
+  async function activateInternalAccess({email, key, productArea, projectId, chapterNumber, chapterTitle}) {
+    if (!email || !email.includes("@")) throw new Error("Enter the approved developer email.");
+    if (!/^\d{6}$/.test(String(key || "").trim())) throw new Error("Enter the six-digit internal access key.");
+    const response = await fetch("/api/payments/internal-access", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        email: String(email || "").trim(),
+        key: String(key || "").trim(),
+        product_area: productArea || "all",
+        project_id: String(projectId || ""),
+        chapter_number: Number(chapterNumber || 0),
+        chapter_title: chapterTitle || ""
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const detail = typeof data.detail === "string" ? data.detail : (data.detail?.message || "Internal access could not be activated.");
+      throw new Error(detail);
+    }
+    if (data.project_id && data.chapter_number) {
+      saveCredential(data.project_id, data.chapter_number, data);
+    } else {
+      storeReturnedCredential(data);
+    }
+    return data;
+  }
+
   function getCredential(projectId, chapterNumber) {
     try {
       return JSON.parse(localStorage.getItem(entitlementKey(projectId, chapterNumber)) || "null");
@@ -171,6 +199,18 @@
           <button id="prRecoverAccessBtn" type="button" class="pr-access-secondary">Restore paid access</button>
           <p id="prRecoverStatus" class="pr-payment-status" aria-live="polite"></p>
         </details>
+        <details class="pr-access-recovery pr-internal-access">
+          <summary>Developer access</summary>
+          <p>For authorised developers only. Requires the allow-listed email and the six-digit internal key. This does not create a public trial or payment record.</p>
+          <label>Developer email
+            <input id="prInternalEmail" type="email" autocomplete="email" />
+          </label>
+          <label>Six-digit key
+            <input id="prInternalKey" type="password" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="off" placeholder="000000" />
+          </label>
+          <button id="prInternalAccessBtn" type="button" class="pr-access-secondary">Activate developer access</button>
+          <p id="prInternalStatus" class="pr-payment-status" aria-live="polite"></p>
+        </details>
         <p class="pr-payment-routing" id="prAccessBenefits">Paid chapter access includes one guided working draft, one strengthening revision, one compliance review and one editable DOCX export.</p>
       </section>`;
     document.body.appendChild(modal);
@@ -187,6 +227,28 @@
         window.setTimeout(() => closeModal(modal), 900);
       } catch (error) {
         status.textContent = error.message || "Access could not be restored.";
+      }
+    });
+    modal.querySelector("#prInternalAccessBtn")?.addEventListener("click", async () => {
+      const status = modal.querySelector("#prInternalStatus");
+      const email = modal.querySelector("#prInternalEmail")?.value.trim() || "";
+      const key = modal.querySelector("#prInternalKey")?.value.trim() || "";
+      const current = modal._projectReadyAccessOptions || {};
+      const productArea = current.purchaseMode === "revision_only" ? "chapter_strengthener" : "thesis_workspace";
+      try {
+        status.textContent = "Checking developer access...";
+        const internal = await activateInternalAccess({
+          email,
+          key,
+          productArea,
+          projectId: current.projectId,
+          chapterNumber: current.chapterNumber,
+          chapterTitle: current.chapterTitle || `Chapter ${current.chapterNumber || ""}`
+        });
+        status.textContent = internal.message || "Developer access activated.";
+        window.setTimeout(() => { closeModal(modal); window.location.reload(); }, 700);
+      } catch (error) {
+        status.textContent = error.message || "Developer access could not be activated.";
       }
     });
     return modal;
@@ -260,6 +322,7 @@
     if (missing.length) throw new Error(`Missing access value(s): ${missing.join(", ")}`);
 
     const modal = ensureAccessGate();
+    modal._projectReadyAccessOptions = {...options};
     const profile = readRegistrationProfile();
     const message = typeof detail === "string" ? detail : (detail?.message || "This chapter requires guided-development access before working-draft development can continue.");
     modal.querySelector("#prAccessMessage").textContent = message;
@@ -275,6 +338,8 @@
       : "No registration profile was found on this device. Register first to save your details, or continue directly to payment.";
     const recoverEmail = modal.querySelector("#prRecoverEmail");
     if (recoverEmail && profile?.email && !recoverEmail.value) recoverEmail.value = profile.email;
+    const internalEmail = modal.querySelector("#prInternalEmail");
+    if (internalEmail && profile?.email && !internalEmail.value) internalEmail.value = profile.email;
 
     const continueButton = modal.querySelector("#prContinuePayment");
     continueButton.onclick = async () => {
@@ -423,6 +488,7 @@
     storeReturnedCredential,
     redeemPaymentHandoff,
     recoverAccessByPurchase,
+    activateInternalAccess,
     getCredential,
     paymentHeaders,
     checkEntitlement,
