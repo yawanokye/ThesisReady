@@ -174,7 +174,7 @@ function isRevisionOnlyProject() {
 
 function paymentHeaders() {
   if (!window.ProjectReadyPayments || !projectId()) return {};
-  return ProjectReadyPayments.paymentHeaders(projectId(), chapterNumber());
+  return ProjectReadyPayments.paymentHeaders(projectId(), chapterNumber(), 'chapter_strengthener');
 }
 
 function accessOptions() {
@@ -315,7 +315,7 @@ async function updateAccessSummary() {
       : 'Connect or recover a project before strengthening. A paid chapter includes one strengthening revision and one DOCX export.';
     return;
   }
-  const credential = window.ProjectReadyPayments?.getCredential(projectId(), chapterNumber());
+  const credential = window.ProjectReadyPayments?.getCredential(projectId(), chapterNumber(), 'chapter_strengthener');
   if (!credential) {
     const label = isRevisionOnlyProject() ? 'Unlock revision-only access' : 'Unlock chapter';
     const explanation = isRevisionOnlyProject()
@@ -389,7 +389,51 @@ const registrationProfile = window.ProjectReadyPayments?.readRegistrationProfile
 if (registrationProfile?.email) {
   if (!byId('recoverEmail').value) byId('recoverEmail').value = registrationProfile.email;
   if (!byId('externalRecoveryEmail').value) byId('externalRecoveryEmail').value = registrationProfile.email;
+  if (byId('strengthenerDeveloperEmail') && !byId('strengthenerDeveloperEmail').value) byId('strengthenerDeveloperEmail').value = registrationProfile.email;
 }
+
+function updateStrengthenerDeveloperStatus(text, kind = '') {
+  const status = byId('strengthenerDeveloperAccessStatus');
+  if (!status) return;
+  status.textContent = text || '';
+  status.className = `status ${kind}`.trim();
+}
+
+async function activateStrengthenerDeveloperAccess() {
+  if (!window.ProjectReadyPayments?.activateInternalAccess) {
+    updateStrengthenerDeveloperStatus('Developer access tools are not loaded on this page.', 'error');
+    return;
+  }
+  const email = byId('strengthenerDeveloperEmail')?.value.trim() || '';
+  const key = byId('strengthenerDeveloperKey')?.value.trim() || '';
+  const activeProjectId = projectId();
+  const activeChapterNumber = chapterNumber();
+  const activeChapterTitle = byId('chapterTitle').value.trim() || byId('chapterType').value;
+  try {
+    updateStrengthenerDeveloperStatus('Checking developer access…');
+    const internal = await ProjectReadyPayments.activateInternalAccess({
+      email,
+      key,
+      productArea: 'chapter_strengthener',
+      projectId: activeProjectId,
+      chapterNumber: activeChapterNumber,
+      chapterTitle: activeChapterTitle,
+    });
+    updateStrengthenerDeveloperStatus(
+      activeProjectId
+        ? 'Developer access activated for this Chapter Strengthener project.'
+        : 'Developer access activated for Chapter Strengthener. It will apply after a project is loaded or created.',
+      'success'
+    );
+    if (byId('strengthenerDeveloperKey')) byId('strengthenerDeveloperKey').value = '';
+    updateAccessSummary();
+  } catch (error) {
+    updateStrengthenerDeveloperStatus(error.message || 'Developer access could not be activated.', 'error');
+  }
+}
+
+byId('activateStrengthenerDeveloperAccessBtn')?.addEventListener('click', activateStrengthenerDeveloperAccess);
+
 loadProject();
 
 function enableOutputs(enabled) {

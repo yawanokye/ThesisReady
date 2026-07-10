@@ -22,6 +22,39 @@
     return `${STORAGE_PREFIX}${projectId}:chapter-${chapterNumber}`;
   }
 
+  function isInternalCredential(data = {}) {
+    return String(data.purchase_id || "").startsWith("pr-internal-v1:");
+  }
+
+  function internalCredentialKeys(productArea = "all", chapterNumber = 0) {
+    const area = String(productArea || "all").trim() || "all";
+    const chapter = Number(chapterNumber || 0);
+    return [
+      `${STORAGE_PREFIX}internal:${area}:chapter-${chapter}`,
+      `${STORAGE_PREFIX}internal:${area}:chapter-0`,
+      `${STORAGE_PREFIX}internal:all:chapter-${chapter}`,
+      `${STORAGE_PREFIX}internal:all:chapter-0`,
+    ];
+  }
+
+  function saveInternalCredential(data = {}) {
+    if (!isInternalCredential(data)) return null;
+    const value = {
+      purchase_id: data.purchase_id,
+      access_token: data.access_token,
+      provider: data.provider || "internal_admin",
+      product_area: data.product_area || "all",
+      saved_at: new Date().toISOString()
+    };
+    const chapter = Number(data.chapter_number || 0);
+    const area = data.product_area || "all";
+    const keys = new Set(internalCredentialKeys(area, chapter));
+    if (area !== "all") keys.add(`${STORAGE_PREFIX}internal:all:chapter-${chapter}`);
+    keys.forEach(key => localStorage.setItem(key, JSON.stringify(value)));
+    if (data.purchase_id) localStorage.setItem(`${STORAGE_PREFIX}purchase:${data.purchase_id}`, JSON.stringify(value));
+    return value;
+  }
+
   function readRegistrationProfile() {
     try {
       const profile = JSON.parse(localStorage.getItem(REGISTRATION_PROFILE_KEY) || "null");
@@ -50,10 +83,16 @@
       purchase_id: data.purchase_id,
       access_token: data.access_token,
       provider: data.provider,
+      product_area: data.product_area || "",
       saved_at: new Date().toISOString()
     };
-    localStorage.setItem(entitlementKey(projectId, chapterNumber), JSON.stringify(value));
-    localStorage.setItem(`${STORAGE_PREFIX}purchase:${data.purchase_id}`, JSON.stringify(value));
+    if (projectId && chapterNumber) {
+      localStorage.setItem(entitlementKey(projectId, chapterNumber), JSON.stringify(value));
+    }
+    if (data.purchase_id) {
+      localStorage.setItem(`${STORAGE_PREFIX}purchase:${data.purchase_id}`, JSON.stringify(value));
+    }
+    if (isInternalCredential(data)) saveInternalCredential({...data, chapter_number: chapterNumber || data.chapter_number});
     return value;
   }
 
@@ -75,6 +114,7 @@
     if (projectId && chapterNumber) {
       localStorage.setItem(entitlementKey(projectId, chapterNumber), JSON.stringify(value));
     }
+    if (isInternalCredential(data)) saveInternalCredential(data);
     if (data.purchase_id) {
       localStorage.setItem(`${STORAGE_PREFIX}purchase:${data.purchase_id}`, JSON.stringify(value));
     }
@@ -140,16 +180,26 @@
     return data;
   }
 
-  function getCredential(projectId, chapterNumber) {
+  function getCredential(projectId, chapterNumber, productArea = "") {
     try {
-      return JSON.parse(localStorage.getItem(entitlementKey(projectId, chapterNumber)) || "null");
+      const exact = projectId ? JSON.parse(localStorage.getItem(entitlementKey(projectId, chapterNumber)) || "null") : null;
+      if (exact) return exact;
+      const area = String(productArea || "").trim();
+      const fallbackAreas = area ? [area, "all"] : ["all"];
+      for (const fallbackArea of fallbackAreas) {
+        for (const key of internalCredentialKeys(fallbackArea, chapterNumber)) {
+          const value = JSON.parse(localStorage.getItem(key) || "null");
+          if (value?.purchase_id && value?.access_token && isInternalCredential(value)) return value;
+        }
+      }
     } catch (_) {
       return null;
     }
+    return null;
   }
 
-  function paymentHeaders(projectId, chapterNumber) {
-    const credential = getCredential(projectId, chapterNumber);
+  function paymentHeaders(projectId, chapterNumber, productArea = "") {
+    const credential = getCredential(projectId, chapterNumber, productArea);
     if (!credential) return {};
     return {
       "X-ProjectReady-Purchase-ID": credential.purchase_id,

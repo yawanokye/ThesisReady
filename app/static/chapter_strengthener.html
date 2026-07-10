@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Chapter Strengthener | ProjectReady AI</title>
-  <link rel="stylesheet" href="/static/chapter_strengthener.css?v=20260710-nav-tabs-v1">
+  <link rel="stylesheet" href="/static/chapter_strengthener.css?v=20260710-internal-access-strengthener-v2">
   <link rel="stylesheet" href="/static/projectready_payments.css?v=20260709-live-payments-v1">
 </head>
 <body class="chapter-strengthener-page">
@@ -76,6 +76,16 @@
       </div>
 
       <div id="chapterAccessSummary" class="attached-summary">A paid ProjectReady chapter includes one strengthening revision. A chapter brought from elsewhere uses the revision-only research-support plan. Both pathways require user authorship, verification and revision.</div>
+      <details id="strengthenerDeveloperAccessPanel" class="developer-access-box">
+        <summary>Developer access</summary>
+        <p>For authorised internal testing only. Enter the allow-listed developer email and six-digit key to activate Chapter Strengthener access without creating a public trial or payment record.</p>
+        <div class="project-connect-actions developer-access-actions">
+          <label><span class="field-label">Developer email</span><input id="strengthenerDeveloperEmail" type="email" autocomplete="email"></label>
+          <label><span class="field-label">Six-digit key</span><input id="strengthenerDeveloperKey" type="password" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" autocomplete="off" placeholder="000000"></label>
+          <button type="button" id="activateStrengthenerDeveloperAccessBtn" class="secondary">Activate developer access</button>
+        </div>
+        <p id="strengthenerDeveloperAccessStatus" class="status" aria-live="polite"></p>
+      </details>
     </section>
 
     <section class="grid-two revision-layout">
@@ -210,7 +220,7 @@
   </main>
 
   <footer class="footer">ProjectReady AI, self-service academic research support with user authorship, verification and supervisor review.</footer>
-  <script src="/static/projectready_payments.js?v=20260709-live-payments-v1"></script>
-  <script src="/static/chapter_strengthener.js?v=20260707-alignment-v1"></script>
+  <script src="/static/projectready_payments.js?v=20260710-internal-access-strengthener-v2"></script>
+  <script src="/static/chapter_strengthener.js?v=20260710-internal-access-strengthener-v2"></script>
 </body>
 </html>

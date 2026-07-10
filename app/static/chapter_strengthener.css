@@ -513,3 +513,26 @@ input:focus, select:focus, textarea:focus { outline: 3px solid rgba(30,94,255,.1
     padding-bottom: .2rem;
   }
 }
+
+.developer-access-box {
+  margin-top: 1rem;
+  border: 1px dashed #b9c7ff;
+  border-radius: 18px;
+  background: #f8faff;
+  padding: 1rem 1.15rem;
+}
+
+.developer-access-box summary {
+  cursor: pointer;
+  font-weight: 800;
+  color: #2d44c8;
+}
+
+.developer-access-box p {
+  color: #475569;
+  margin-bottom: 0.8rem;
+}
+
+.developer-access-actions {
+  align-items: end;
+}
