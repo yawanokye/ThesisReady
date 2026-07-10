@@ -20,6 +20,12 @@ from app.payments.entitlements import (
     plan_key_for_level,
     validate_plan_for_level,
 )
+from app.payments.internal_access import (
+    internal_access_configured,
+    internal_entitlement_status,
+    is_internal_purchase_id,
+    issue_internal_access,
+)
 from app.payments.paystack import (
     PaystackError,
     get_paystack_charge,
@@ -78,7 +84,16 @@ class CheckoutRequest(BaseModel):
 
 class EntitlementStatusRequest(BaseModel):
     purchase_id: str = Field(min_length=10, max_length=100)
-    access_token: str = Field(min_length=20, max_length=200)
+    access_token: str = Field(min_length=20, max_length=1000)
+
+
+class InternalAccessRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=254)
+    key: str = Field(min_length=6, max_length=6)
+    product_area: str = Field(default="all", max_length=40)
+    project_id: str = Field(default="", max_length=120)
+    chapter_number: int = Field(default=0, ge=0, le=99)
+    chapter_title: str = Field(default="", max_length=200)
 
 
 class TopicIdeasCheckoutRequest(BaseModel):
@@ -444,8 +459,31 @@ def payment_environment() -> Dict[str, Any]:
     environment.update({
         "provider_routing": "paystack_africa_stripe_elsewhere",
         "warning": "Live payment mode is active. African billing countries use Paystack and other countries use Stripe.",
+        "internal_access_configured": internal_access_configured(),
     })
     return environment
+
+
+@api_router.post("/api/payments/internal-access")
+def activate_internal_access(payload: InternalAccessRequest) -> Dict[str, Any]:
+    """Issue a signed internal developer credential.
+
+    This is not trial access. It requires an allow-listed developer email and
+    the six-digit internal key configured in server environment variables.
+    """
+    try:
+        return issue_internal_access(
+            email=_valid_email(payload.email),
+            key=payload.key,
+            product_area=payload.product_area,
+            project_id=payload.project_id,
+            chapter_number=payload.chapter_number,
+            chapter_title=payload.chapter_title,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @api_router.get("/api/payments/plans")
@@ -645,6 +683,16 @@ def recover_topic_ideas_access(payload: TopicIdeasRecoveryRequest) -> Dict[str, 
 
 @api_router.post("/api/topic-ideas/payment-status")
 def topic_ideas_payment_status(payload: EntitlementStatusRequest) -> Dict[str, Any]:
+    if is_internal_purchase_id(payload.purchase_id):
+        try:
+            return internal_entitlement_status(
+                purchase_id=payload.purchase_id,
+                access_token=payload.access_token,
+                product_area="topic_ideas",
+                chapter_number=99,
+            )
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
     if not verify_access_token(payload.purchase_id, payload.access_token, database_url=DATABASE_URL):
         raise HTTPException(status_code=403, detail={"reason": "invalid_entitlement_token", "message": "The saved access credential is no longer valid."})
     purchase = get_purchase(payload.purchase_id, database_url=DATABASE_URL) or {}
@@ -851,6 +899,15 @@ async def stripe_webhook(request: Request):
 
 @api_router.post("/api/payments/entitlement-status")
 def get_entitlement_status(payload: EntitlementStatusRequest):
+    if is_internal_purchase_id(payload.purchase_id):
+        try:
+            return internal_entitlement_status(
+                purchase_id=payload.purchase_id,
+                access_token=payload.access_token,
+                product_area="all",
+            )
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
     result = entitlement_status(
         payload.purchase_id,
         payload.access_token,

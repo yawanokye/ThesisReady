@@ -51,7 +51,7 @@ def _paid_action_context(
         chapter_title=chapter_title,
         action=action,
         idempotency_key=request.headers.get("Idempotency-Key"),
-        metadata={"route": request.url.path, "method": request.method},
+        metadata={"route": request.url.path, "method": request.method, "product_area": "thesis_workspace", "module": "thesis_workspace"},
     )
 
 

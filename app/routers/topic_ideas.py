@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.topic_ideas_service import generate_topic_ideas
 from app.payments.guard import PaymentRequiredError, credentials_from_headers, paid_chapter_action
+from app.payments.internal_access import is_internal_purchase_id, validate_internal_access
 from app.payments.store import get_purchase
 
 router = APIRouter(prefix="/api/topic-ideas", tags=["topic ideas"])
@@ -89,7 +90,23 @@ def create_topic_ideas(payload: TopicIdeasRequest, request: Request) -> dict[str
         )
 
     purchase = get_purchase(purchase_id, database_url=DATABASE_URL)
-    if not purchase or str(purchase.get("plan_key") or "") != TOPIC_IDEAS_PLAN_KEY:
+    internal_access = None
+    if is_internal_purchase_id(purchase_id):
+        try:
+            internal_access = validate_internal_access(
+                purchase_id=purchase_id,
+                access_token=access_token,
+                product_area="topic_ideas",
+                chapter_number=TOPIC_IDEAS_CHAPTER_NUMBER,
+                action="draft",
+            )
+        except PermissionError as exc:
+            raise HTTPException(status_code=402, detail={
+                "reason": "topic_ideas_internal_access_invalid",
+                "message": str(exc),
+                "checkout_endpoint": "/api/topic-ideas/checkout",
+            }) from exc
+    elif not purchase or str(purchase.get("plan_key") or "") != TOPIC_IDEAS_PLAN_KEY:
         raise HTTPException(
             status_code=402,
             detail={
@@ -109,7 +126,7 @@ def create_topic_ideas(payload: TopicIdeasRequest, request: Request) -> dict[str
         with paid_chapter_action(
             purchase_id=purchase_id,
             access_token=access_token,
-            project_id=str(purchase.get("project_id") or ""),
+            project_id=str((purchase or {}).get("project_id") or (internal_access or {}).get("project_id") or ""),
             chapter_number=TOPIC_IDEAS_CHAPTER_NUMBER,
             chapter_title=TOPIC_IDEAS_CHAPTER_TITLE,
             action="draft",
@@ -128,11 +145,12 @@ def create_topic_ideas(payload: TopicIdeasRequest, request: Request) -> dict[str
             result = _run_generation(paid_payload)
             result.update(
                 {
-                    "access_tier": "paid_full_set",
+                    "access_tier": "internal_full_set" if internal_access else "paid_full_set",
                     "free_preview": False,
                     "ideas_returned": len(result.get("ideas") or []),
                     "maximum_ideas": PAID_MAXIMUM_IDEAS,
                     "paid_maximum_ideas": PAID_MAXIMUM_IDEAS,
+                    "internal_access": bool(internal_access),
                 }
             )
             return result
