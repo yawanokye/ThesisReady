@@ -7,6 +7,7 @@ import os
 import uuid
 
 from app.payments.store import claim_entitlement, complete_claim, rollback_claim
+from app.payments.internal_access import is_internal_purchase_id, validate_internal_access
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 
@@ -43,6 +44,35 @@ def paid_chapter_action(
     """
     if not purchase_id or not access_token:
         raise PaymentRequiredError("Paid chapter access is required for this action.")
+
+    product_area = "all"
+    if isinstance(metadata, dict):
+        product_area = str(
+            metadata.get("product_area")
+            or metadata.get("module")
+            or "all"
+        ).strip() or "all"
+
+    if is_internal_purchase_id(purchase_id):
+        try:
+            internal = validate_internal_access(
+                purchase_id=purchase_id,
+                access_token=access_token,
+                product_area=product_area,
+                project_id=project_id,
+                chapter_number=chapter_number,
+                action=action,
+            )
+        except PermissionError as exc:
+            raise PaymentRequiredError(str(exc)) from exc
+        yield {
+            "claimed": False,
+            "internal_access": True,
+            "access_type": "internal_admin",
+            "usage": {},
+            "purchase": internal,
+        }
+        return
 
     try:
         claim = claim_entitlement(
