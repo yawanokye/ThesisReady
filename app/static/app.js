@@ -314,6 +314,16 @@ async function restoreCurrentProject() {
     if ($("thesis_format") && profile.thesis_format) $("thesis_format").value = profile.thesis_format;
     if ($("research_area")) $("research_area").value = profile.research_area || "";
     if ($("study_context")) $("study_context").value = profile.study_context || "";
+    const contribution = profile.student_contribution || {};
+    if ($("draftMaturity")) $("draftMaturity").value = contribution.draft_maturity || profile.draft_maturity || $("draftMaturity").value;
+    if ($("centralArgument")) $("centralArgument").value = contribution.central_argument || "";
+    if ($("localContextNotes")) $("localContextNotes").value = contribution.local_context_notes || "";
+    if ($("evidenceAnchors")) $("evidenceAnchors").value = contribution.evidence_anchors || "";
+    if ($("supervisorComments")) $("supervisorComments").value = contribution.supervisor_comments || "";
+    if ($("preferredStyle")) $("preferredStyle").value = contribution.preferred_style || contribution.phrases_to_avoid || "";
+    if ($("writingSample")) $("writingSample").value = contribution.writing_sample || "";
+    if ($("humanRevisionPass")) $("humanRevisionPass").checked = contribution.human_revision_pass !== false;
+    if ($("humanizerMode")) $("humanizerMode").value = contribution.humanizer_mode || profile.humanizer_mode || "balanced";
     if ($("academicIntegrityDeclaration")) $("academicIntegrityDeclaration").checked = Boolean(profile.academic_integrity_confirmed);
     if ($("userContributionDeclaration")) $("userContributionDeclaration").checked = Boolean(profile.user_contribution_confirmed);
     customPageTargets = profile.custom_page_targets || {};
@@ -697,8 +707,10 @@ function collectProfile() {
       preferred_style: $("preferredStyle") ? $("preferredStyle").value.trim() : "",
       writing_sample: $("writingSample") ? $("writingSample").value.trim() : "",
       phrases_to_avoid: $("preferredStyle") ? $("preferredStyle").value.trim() : "",
-      human_revision_pass: $("humanRevisionPass") ? $("humanRevisionPass").checked : true
+      human_revision_pass: $("humanRevisionPass") ? $("humanRevisionPass").checked : true,
+      humanizer_mode: $("humanizerMode") ? $("humanizerMode").value : "balanced"
     },
+    humanizer_mode: $("humanizerMode") ? $("humanizerMode").value : "balanced",
     research_approach: $("research_approach").value,
     data_type: $("data_type") ? $("data_type").value : "Primary data",
     variables: {
@@ -986,9 +998,11 @@ async function generateDraft() {
       preferred_style: $("preferredStyle") ? $("preferredStyle").value.trim() : "",
       writing_sample: $("writingSample") ? $("writingSample").value.trim() : "",
       phrases_to_avoid: $("preferredStyle") ? $("preferredStyle").value.trim() : "",
-      human_revision_pass: $("humanRevisionPass") ? $("humanRevisionPass").checked : true
+      human_revision_pass: $("humanRevisionPass") ? $("humanRevisionPass").checked : true,
+      humanizer_mode: $("humanizerMode") ? $("humanizerMode").value : "balanced"
     },
     human_revision_pass: $("humanRevisionPass") ? $("humanRevisionPass").checked : true,
+    humanizer_mode: $("humanizerMode") ? $("humanizerMode").value : "balanced",
     academic_integrity_confirmed: $("academicIntegrityDeclaration") ? $("academicIntegrityDeclaration").checked : false,
     user_contribution_confirmed: $("userContributionDeclaration") ? $("userContributionDeclaration").checked : false,
     draft_consideration_warnings: considerationWarnings,

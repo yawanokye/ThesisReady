@@ -183,8 +183,16 @@
         <label>Optional sample of the student's own academic writing style
           <textarea id="writingSample" rows="3" placeholder="Paste a short paragraph written by the student. The app will use it only as tone guidance and will not copy it verbatim."></textarea>
         </label>
-        <label class="inline"><input type="checkbox" id="humanRevisionPass" checked /> Run academic quality improvement pass after initial development</label>
-        <p class="hint">For very long chapters, especially PhD and doctoral literature reviews, the system develops the chapter in staged section batches, then merges the output for coherence. This protects depth better than one whole-chapter pass.</p>
+        <label>Scholarly humanizer depth
+          <select id="humanizerMode">
+            <option value="light">Light, fastest and lowest cost</option>
+            <option value="balanced" selected>Balanced, recommended</option>
+            <option value="deep">Deep, strongest style refinement</option>
+            <option value="off">Off</option>
+          </select>
+        </label>
+        <label class="inline"><input type="checkbox" id="humanRevisionPass" checked /> Run the selective academic quality model pass when the draft still needs it</label>
+        <p class="hint">The protected humanizer removes generic or mechanical phrasing, improves paragraph rhythm and follows the student's supplied writing direction without changing citations, statistics, headings, tables or evidence. Balanced mode uses a model refinement only when the style diagnostic requires it. For very long chapters, refinement is handled in section batches so depth is not compressed.</p>
       </div>
 
       <div class="source-box literature-source-box" id="integrity-tools">

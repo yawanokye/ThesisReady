@@ -20,6 +20,8 @@ const targetNote = byId('targetNote');
 const PROJECT_STORAGE_KEY = 'projectready-current-project';
 let currentProject = null;
 let lastResult = null;
+let strengthenerTemplate = null;
+let customNewSections = [];
 
 function message(text, kind = '') {
   statusBox.textContent = text || '';
@@ -72,19 +74,142 @@ byId('extractChapterBtn').addEventListener('click', () => extractFile(byId('chap
 byId('extractCommentsBtn').addEventListener('click', () => extractFile(byId('commentsFile'), supervisorComments, 'supervisor-comment'));
 byId('extractAlignmentBtn').addEventListener('click', () => extractFile(byId('alignmentFile'), previousChaptersContext, 'previous-chapter or complete-work'));
 
+function selectedSectionPayload() {
+  const strengthen = Array.from(document.querySelectorAll('.section-strengthen:checked')).map((input) => ({
+    id: input.dataset.sectionId || '',
+    title: input.dataset.sectionTitle || '',
+  }));
+  const add = Array.from(document.querySelectorAll('.section-add:checked')).map((input) => ({
+    id: input.dataset.sectionId || '',
+    title: input.dataset.sectionTitle || '',
+  }));
+  return { strengthen, add };
+}
+
+function updateSectionSelectionCount() {
+  const { strengthen, add } = selectedSectionPayload();
+  const count = strengthen.length + add.length + customNewSections.length;
+  const badge = byId('sectionSelectionCount');
+  if (badge) badge.textContent = `${count} selected`;
+  updateTargetNote();
+}
+
+function renderCustomNewSections() {
+  const box = byId('customNewSectionsList');
+  if (!box) return;
+  box.innerHTML = '';
+  customNewSections.forEach((section, index) => {
+    const row = document.createElement('div');
+    row.className = 'custom-section-row';
+    const text = document.createElement('div');
+    text.innerHTML = `<strong>${section.title}</strong>${section.instructions ? `<small>${section.instructions}</small>` : ''}`;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'ghost-button compact-remove';
+    remove.textContent = 'Remove';
+    remove.addEventListener('click', () => {
+      customNewSections.splice(index, 1);
+      renderCustomNewSections();
+      updateSectionSelectionCount();
+    });
+    row.append(text, remove);
+    box.appendChild(row);
+  });
+}
+
+function chapterTemplateNumber() {
+  return chapterNumber();
+}
+
+function renderStrengthenerSections() {
+  const box = byId('strengthenerSectionsBox');
+  if (!box) return;
+  const chapter = strengthenerTemplate?.chapters?.find((item) => Number(item.chapter_number) === chapterTemplateNumber());
+  const sections = chapter?.section_groups?.flatMap((group) => group.sections || []) || [];
+  box.innerHTML = '';
+  if (!sections.length) {
+    box.innerHTML = '<p class="help">No standard section list is available for this custom chapter. Add one or more custom new sections below, or strengthen the complete chapter.</p>';
+    updateSectionSelectionCount();
+    return;
+  }
+  sections.forEach((section) => {
+    const row = document.createElement('div');
+    row.className = 'strengthener-section-row';
+    const title = document.createElement('div');
+    title.className = 'strengthener-section-title';
+    title.innerHTML = `<strong>${section.section_title}</strong>${section.rules?.[0] ? `<small>${section.rules[0]}</small>` : ''}`;
+    const strengthenLabel = document.createElement('label');
+    strengthenLabel.className = 'section-action-check';
+    const strengthen = document.createElement('input');
+    strengthen.type = 'checkbox';
+    strengthen.className = 'section-strengthen';
+    strengthen.dataset.sectionId = section.section_id;
+    strengthen.dataset.sectionTitle = section.section_title;
+    strengthenLabel.append(strengthen, document.createTextNode(' Strengthen'));
+    const addLabel = document.createElement('label');
+    addLabel.className = 'section-action-check';
+    const add = document.createElement('input');
+    add.type = 'checkbox';
+    add.className = 'section-add';
+    add.dataset.sectionId = section.section_id;
+    add.dataset.sectionTitle = section.section_title;
+    addLabel.append(add, document.createTextNode(' Add'));
+    strengthen.addEventListener('change', () => {
+      if (strengthen.checked) add.checked = false;
+      updateSectionSelectionCount();
+    });
+    add.addEventListener('change', () => {
+      if (add.checked) strengthen.checked = false;
+      updateSectionSelectionCount();
+    });
+    row.append(title, strengthenLabel, addLabel);
+    box.appendChild(row);
+  });
+  updateSectionSelectionCount();
+}
+
+async function loadStrengthenerTemplate() {
+  try {
+    const response = await fetch('/static/default_template.json', { cache: 'no-store' });
+    if (!response.ok) throw new Error('Template could not be loaded.');
+    strengthenerTemplate = await response.json();
+  } catch (_error) {
+    strengthenerTemplate = { chapters: [] };
+  }
+  renderStrengthenerSections();
+}
+
+function customTargetPayload() {
+  const enabled = Boolean(byId('customTargetPagesEnabled')?.checked);
+  return {
+    custom_target_pages_enabled: enabled,
+    target_page_min: enabled ? Number(byId('targetPageMin')?.value || 0) || null : null,
+    target_page_max: enabled ? Number(byId('targetPageMax')?.value || 0) || null : null,
+  };
+}
+
 async function updateTargetNote() {
   try {
+    const { strengthen, add } = selectedSectionPayload();
     const response = await fetch('/api/chapter-strengthener/targets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         academic_level: byId('academicLevel').value,
         chapter_type: byId('chapterType').value,
+        strengthening_scope: byId('strengtheningScope')?.value || 'whole_chapter',
+        selected_section_count: strengthen.length + add.length + customNewSections.length,
+        ...customTargetPayload(),
       }),
     });
     const data = await response.json();
     if (!response.ok) return;
-    targetNote.textContent = `Planning target: ${data.page_range.minimum}-${data.page_range.maximum} pages, approximately ${Number(data.word_range_estimate.minimum).toLocaleString()}-${Number(data.word_range_estimate.maximum).toLocaleString()} words, and ${data.citation_density_per_1000_words.minimum}-${data.citation_density_per_1000_words.maximum} citation occurrences per 1,000 words.`;
+    const scopeLabel = data.strengthening_scope === 'selected_sections' ? 'selected-section output' : 'complete selected chapter';
+    targetNote.textContent = `Planning target for the ${scopeLabel}: ${data.page_range.minimum}-${data.page_range.maximum} pages, approximately ${Number(data.word_range_estimate.minimum).toLocaleString()}-${Number(data.word_range_estimate.maximum).toLocaleString()} words, and ${data.citation_density_per_1000_words.minimum}-${data.citation_density_per_1000_words.maximum} citation occurrences per 1,000 words.${data.custom_target_applied ? ' Custom page target applied.' : ''}`;
+    if (!byId('customTargetPagesEnabled')?.checked) {
+      if (byId('targetPageMin')) byId('targetPageMin').placeholder = String(data.page_range.minimum);
+      if (byId('targetPageMax')) byId('targetPageMax').placeholder = String(data.page_range.maximum);
+    }
   } catch (_error) {
     targetNote.textContent = 'Planning target unavailable.';
   }
@@ -95,9 +220,31 @@ byId('academicLevel').addEventListener('change', () => {
   updateAccessSummary();
 });
 byId('chapterType').addEventListener('change', () => {
+  renderStrengthenerSections();
   updateTargetNote();
   updateAccessSummary();
 });
+byId('strengtheningScope')?.addEventListener('change', updateTargetNote);
+byId('customTargetPagesEnabled')?.addEventListener('change', () => {
+  byId('customTargetPagesFields').hidden = !byId('customTargetPagesEnabled').checked;
+  updateTargetNote();
+});
+byId('targetPageMin')?.addEventListener('input', updateTargetNote);
+byId('targetPageMax')?.addEventListener('input', updateTargetNote);
+byId('addCustomNewSectionBtn')?.addEventListener('click', () => {
+  const title = byId('customNewSectionTitle').value.trim();
+  const instructions = byId('customNewSectionInstructions').value.trim();
+  if (!title) {
+    message('Enter a title for the new section before adding it.', 'error');
+    return;
+  }
+  customNewSections.push({ title, instructions });
+  byId('customNewSectionTitle').value = '';
+  byId('customNewSectionInstructions').value = '';
+  renderCustomNewSections();
+  updateSectionSelectionCount();
+});
+loadStrengthenerTemplate();
 updateTargetNote();
 
 function payloadFromForm() {
@@ -122,9 +269,18 @@ function payloadFromForm() {
     school_guidelines: byId('schoolGuidelines').value.trim(),
     citation_style: byId('citationStyle').value,
     revision_level: byId('revisionLevel').value,
+    humanizer_mode: byId('strengthenerHumanizerMode') ? byId('strengthenerHumanizerMode').value : 'balanced',
     revision_goals: byId('revisionGoals').value.trim(),
     supervisor_comments: supervisorComments.value.trim(),
     previous_chapters_context: previousChaptersContext ? previousChaptersContext.value.trim() : '',
+    uploaded_content_scope: byId('uploadedContentScope')?.value || 'selected_chapter',
+    strengthening_scope: byId('strengtheningScope')?.value || 'whole_chapter',
+    selected_section_ids: selectedSectionPayload().strengthen.map((item) => item.id),
+    selected_section_titles: selectedSectionPayload().strengthen.map((item) => item.title),
+    new_section_ids: selectedSectionPayload().add.map((item) => item.id),
+    new_section_titles: selectedSectionPayload().add.map((item) => item.title),
+    custom_new_sections: customNewSections,
+    ...customTargetPayload(),
     strengthen_structure: byId('strengthenStructure').checked,
     allow_missing_section_insertions: byId('allowMissingSectionInsertions') ? byId('allowMissingSectionInsertions').checked : true,
     strengthen_problem_gap: byId('strengthenProblemGap').checked,
@@ -249,8 +405,18 @@ function fillFromProject(project) {
     byId('allowMissingSectionInsertions').checked = Boolean(profile.allow_missing_section_insertions);
   }
   if (profile.citation_style) byId('citationStyle').value = profile.citation_style;
+  if (byId('strengthenerHumanizerMode') && profile.humanizer_mode) byId('strengthenerHumanizerMode').value = profile.humanizer_mode;
   if (profile.external_revision_chapter_type) byId('chapterType').value = profile.external_revision_chapter_type;
   if (profile.external_revision_chapter_title) byId('chapterTitle').value = profile.external_revision_chapter_title;
+  if (byId('uploadedContentScope') && profile.uploaded_content_scope) byId('uploadedContentScope').value = profile.uploaded_content_scope;
+  if (byId('strengtheningScope') && profile.strengthening_scope) byId('strengtheningScope').value = profile.strengthening_scope;
+  if (byId('customTargetPagesEnabled')) byId('customTargetPagesEnabled').checked = Boolean(profile.custom_target_pages_enabled);
+  if (byId('customTargetPagesFields')) byId('customTargetPagesFields').hidden = !Boolean(profile.custom_target_pages_enabled);
+  if (byId('targetPageMin') && profile.target_page_min) byId('targetPageMin').value = profile.target_page_min;
+  if (byId('targetPageMax') && profile.target_page_max) byId('targetPageMax').value = profile.target_page_max;
+  customNewSections = Array.isArray(profile.custom_new_sections) ? profile.custom_new_sections : customNewSections;
+  renderCustomNewSections();
+  renderStrengthenerSections();
 
   localStorage.setItem(PROJECT_STORAGE_KEY, project.id);
   const external = profile.project_kind === 'external_revision';
@@ -457,6 +623,14 @@ form.addEventListener('submit', async (event) => {
     message('Chapter Four strengthening requires confirmed results or findings. Paste the available results before continuing.', 'error');
     return;
   }
+  if (payload.strengthening_scope === 'selected_sections' && !(payload.selected_section_titles.length || payload.new_section_titles.length || payload.custom_new_sections.length)) {
+    message('Select at least one section to strengthen or add before using selected-sections mode.', 'error');
+    return;
+  }
+  if (payload.custom_target_pages_enabled && (!payload.target_page_min || !payload.target_page_max || payload.target_page_max < payload.target_page_min)) {
+    message('Enter a valid custom page range. The maximum must be equal to or greater than the minimum.', 'error');
+    return;
+  }
 
   setBusy(true);
   enableOutputs(false);
@@ -491,11 +665,16 @@ form.addEventListener('submit', async (event) => {
     copyMatrixBtn.disabled = supervisorMatrixPanel.hidden;
 
     const sourceCount = Number(data.source_bank_count || 0);
-    revisionMeta.innerHTML = `<strong>${data.mode === 'ai_revision' ? 'Revision completed' : 'Fallback output returned'}.</strong> ${sourceCount} scholarly record(s) passed to the revision workflow. Estimated length: ${Number(data.estimated_pages || 0).toLocaleString()} pages and ${Number(data.word_count || 0).toLocaleString()} words. Citation density: ${Number(data.citations_per_1000_words || 0).toLocaleString()} per 1,000 words. Target: ${data.target_page_range || ''} pages and ${data.target_citation_density || ''}. ${data.revision_colour_note || ''}`;
+    const scopeText = data.strengthening_scope === 'selected_sections' ? 'Selected-section output' : 'Complete selected chapter';
+    const isolatedText = data.scope_metadata?.chapter_isolated ? ` A complete thesis was uploaded and Chapter ${data.scope_metadata.selected_chapter_number} was isolated before strengthening.` : '';
+    revisionMeta.innerHTML = `<strong>${data.mode === 'ai_revision' ? 'Revision completed' : 'Fallback output returned'}.</strong> ${scopeText}. ${sourceCount} scholarly record(s) passed to the revision workflow. Estimated length: ${Number(data.estimated_pages || 0).toLocaleString()} pages and ${Number(data.word_count || 0).toLocaleString()} words. Citation density: ${Number(data.citations_per_1000_words || 0).toLocaleString()} per 1,000 words. Target: ${data.target_page_range || ''} pages and ${data.target_citation_density || ''}.${isolatedText} ${data.revision_colour_note || ''}`;
 
     enableOutputs(Boolean(revisedChapter.value.trim()));
     const errors = Array.isArray(data.provider_errors) ? data.provider_errors.filter(Boolean) : [];
-    message(errors.length ? `Revision completed with ${errors.length} provider warning(s). Review the report and action items.` : `Working revision completed.${data.saved_to_project ? ' The strengthened chapter was saved to the project.' : ''} Review the working revision, report, sources, facts and all action items before export or academic use.`);
+    const saveMessage = data.saved_as_section_output
+      ? ' The selected-section output was saved in the Chapter Strengthener record without replacing the complete project chapter.'
+      : (data.saved_to_project ? ' The strengthened chapter was saved to the project.' : '');
+    message(errors.length ? `Revision completed with ${errors.length} provider warning(s). Review the report and action items.` : `Working revision completed.${saveMessage} Review the working revision, report, sources, facts and all action items before export or academic use.`);
     updateAccessSummary();
   } catch (error) {
     message(error.message || 'Chapter strengthening failed.', 'error');
@@ -536,7 +715,7 @@ downloadRevisionBtn.addEventListener('click', async () => {
         chapter_title: byId('chapterTitle').value.trim() || byId('chapterType').value,
         chapter_type: byId('chapterType').value,
         academic_level: byId('academicLevel').value,
-        original_chapter_text: chapterText.value.trim(),
+        original_chapter_text: lastResult?.processed_original_chapter_text || chapterText.value.trim(),
         revised_chapter_text: revisedChapter.value,
         strengthening_report: strengtheningReport.value,
         supervisor_response_matrix: supervisorMatrix.value,
@@ -579,6 +758,10 @@ byId('clearBtn').addEventListener('click', () => {
   supervisorMatrix.value = '';
   supervisorMatrixPanel.hidden = true;
   lastResult = null;
+  customNewSections = [];
+  renderCustomNewSections();
+  renderStrengthenerSections();
+  if (byId('customTargetPagesFields')) byId('customTargetPagesFields').hidden = true;
   revisionMeta.textContent = 'Revision details will appear here.';
   uploadStatus.textContent = '';
   message('');
