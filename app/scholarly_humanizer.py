@@ -74,6 +74,8 @@ def scholarly_humanizer_prompt_rules() -> list[str]:
         "Preserve the strength of claims. Do not replace cautious terms such as 'suggests' with stronger terms such as 'proves' or 'demonstrates' unless the evidence warrants it.",
         "Use formal British English, clear discipline-specific wording and moderate lexical variety. Prefer clarity over rare synonyms.",
         "Preserve all verified facts, statistics, dates, citations, references, equations, tables, headings, objectives, questions, hypotheses and bracketed action placeholders.",
+        "Keep academic prose free from drafting commentary. Any unresolved confirmation, missing source, missing evidence or student instruction must appear as a separate [ACTION REQUIRED: ...] item, never as part of a thesis sentence.",
+        "Do not use citations decoratively. Place each citation where it directly supports the preceding claim, compare sources where appropriate, and avoid leaving substantive evidence-based claims uncited.",
         "Do not add deliberate errors, sentence fragments, spelling variation, false hesitations or artificial drafting artefacts.",
         "Do not discuss AI detection or claim that the text is human-authored. The purpose of the pass is scholarly quality and alignment with the researcher's supplied voice and evidence.",
     ]

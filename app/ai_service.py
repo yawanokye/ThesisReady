@@ -10,6 +10,7 @@ from typing import Any, Optional
 from dotenv import load_dotenv
 
 from app.template_store import get_chapter, selected_sections
+from app.action_items import detach_action_items
 from app.scholarly_humanizer import (
     analyse_scholarly_style,
     humanize_scholarly_text,
@@ -1101,6 +1102,9 @@ def build_drafting_prompt(
             "When retrieved_sources contains sources marked highly_relevant or partly_relevant, review them carefully and integrate those that directly support the chapter argument. Do not cite not_relevant sources, and do not cite any source merely to increase citation count.",
             "Every chapter must end with a References section that includes complete reference entries for every source cited in the chapter, using available reference_entry_hint/apa_hint details from the source bank and user-supplied evidence notes. If source search results were attached, add a short Source Use Audit after the References section.",
             "Increase in-text citation density: Chapter Two should be citation-rich; Chapter One should cite evidence for context, problem and gaps; Chapter Three should cite methodological authorities where appropriate; Chapter Four discussion should cite theory and prior studies.",
+            "Run a claim-evidence pass before finalising. Every substantive factual, historical, policy, contextual, theoretical or empirical claim must be supported by a directly relevant and accurate citation from the supplied or retrieved evidence bank. Do not leave long substantive paragraphs without support.",
+            "For Chapter One, aim for 8-12 relevant citation occurrences per 1,000 words at Masters level and 10-14 at doctoral level, while prioritising accuracy and relevance over numerical padding.",
+            "Do not embed instructions, confirmations or missing-evidence commentary inside academic prose. Put each unresolved item on its own bracketed line beginning [ACTION REQUIRED: ...] so it is exported separately in red.",
             "If retrieved_sources do not provide enough support for a required claim, insert a bracketed placeholder such as [insert verified source for this claim] rather than guessing.",
             "For Chapter One, make the Background and Statement of the Problem factual and evidence-led. Use relevant accurate statistics, policy evidence, institutional evidence, or empirical findings to support the problem where supplied or confidently known.",
             "Do not fabricate citations, statistics, or reference-list entries. Use verified/supplied citations and facts where available. Where a required source, statistic, or fact is not supplied or cannot be stated confidently, insert a bracketed placeholder rather than inventing it.",
@@ -2219,7 +2223,7 @@ def generate_chapter(
         prompt = build_drafting_prompt(profile, chapter_number, selected_section_ids, answers, extra_instructions)
     except Exception:
         return (
-            _finalise_output_controls(_polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers))),
+            detach_action_items(_finalise_output_controls(_polish_generated_text(generate_fallback_chapter(profile, chapter_number, selected_section_ids, answers)))),
             "local_template_fallback_prompt_error"
         )
 
@@ -2331,6 +2335,7 @@ def generate_chapter(
 
             # 7. Final output controls for structure, dashes, attention placeholders and table noise.
             polished = _finalise_output_controls(polished)
+            polished = detach_action_items(polished)
 
             generation_mode = "chunked_depth" if chunked_generation else "single_pass_depth"
             return polished, f"openai_responses_api:{model_route}:{model}:{generation_mode}"

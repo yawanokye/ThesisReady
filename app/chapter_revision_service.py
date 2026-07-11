@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Any
 
 from app.source_finder import search_literature_sources
+from app.action_items import detach_action_items
 from app.scholarly_humanizer import humanize_scholarly_text, scholarly_humanizer_prompt_rules
 
 _REVISION_BLUE = (0, 112, 192)
@@ -952,6 +953,9 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
                 "Retain valid existing citations. Do not alter author names or publication years unless the supplied evidence confirms a correction.",
                 "Use retrieved metadata only when the title or abstract directly supports the claim. Never turn metadata into evidence for a result not reported by the source.",
                 "Increase citation density where the chapter and academic level require it, but avoid citation padding and do not attach citations to unsupported claims.",
+                "Run a claim-evidence audit. Support every substantive factual, historical, policy, contextual, theoretical and empirical claim with a directly relevant and accurate source from the existing citations or verified source bank.",
+                "For Chapter One, target about 8-12 relevant citation occurrences per 1,000 words at Masters level and 10-14 at doctoral level, without forcing citations onto objectives, questions or purely organisational sentences.",
+                "Do not leave comments or user instructions inside the scholarly narrative. Put every unresolved action on a separate line beginning [ACTION REQUIRED: ...].",
                 "Do not add mediation, moderation, causality, longitudinal design, multilevel structure, robustness tests or measurement validation unless they are justified by the approved study and available data.",
                 "Do not present a recommended analysis as completed. Use a concise bracketed action item such as [conduct and report the required diagnostic test] when essential evidence is missing.",
                 "Preserve chapter numbering and school-specific headings where supplied. Add a missing expected heading only when the chapter type, school guidelines, previous chapters or supervisor comments clearly require it.",
@@ -1034,7 +1038,7 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
     else:
         humanizer_report = {"mode": humanizer_mode, "applied": False, "reason": "No completed AI revision to refine."}
 
-    revised_chapter = _finalise_chapter_text(revised_chapter)
+    revised_chapter = detach_action_items(_finalise_chapter_text(revised_chapter))
     strengthening_report = _finalise_chapter_text(strengthening_report)
     supervisor_matrix = _finalise_chapter_text(supervisor_matrix) if supervisor_matrix else ""
     metrics = _metrics(revised_chapter)

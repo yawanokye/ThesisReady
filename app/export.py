@@ -66,7 +66,7 @@ def _set_paragraph_spacing(paragraph) -> None:
 
 def _attention_placeholder_pattern() -> re.Pattern:
     return re.compile(
-        r"(\[(?:insert|verify|confirm|provide|supply|complete|replace|check|add|update|obtain|state|specify|include)\b[^\]]*\])",
+        r"(\[(?:(?:ACTION\s+REQUIRED(?:\s+\d+)?\s*:\s*)|(?:insert|verify|confirm|provide|supply|complete|replace|check|add|update|obtain|state|specify|include|conduct|resolve|revise)\b)[^\]]*\])",
         flags=re.IGNORECASE,
     )
 
