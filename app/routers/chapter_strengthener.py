@@ -236,7 +236,15 @@ async def extract_chapter_strengthener_file(file: UploadFile = File(...)) -> dic
 
 @router.post("/api/chapter-strengthener/targets")
 def chapter_strengthener_targets(payload: ChapterTargetRequest) -> dict[str, Any]:
-    return chapter_planning_targets(payload.academic_level, payload.chapter_type)
+    return chapter_planning_targets(
+        payload.academic_level,
+        payload.chapter_type,
+        strengthening_scope=payload.strengthening_scope,
+        selected_section_count=payload.selected_section_count,
+        custom_target_pages_enabled=payload.custom_target_pages_enabled,
+        target_page_min=payload.target_page_min,
+        target_page_max=payload.target_page_max,
+    )
 
 
 @router.post("/api/chapter-strengthener/external-projects")
@@ -281,6 +289,16 @@ def create_external_revision_project(payload: ExternalRevisionProjectCreate) -> 
         "data_and_results": payload.data_and_results,
         "previous_chapters_context": payload.previous_chapters_context,
         "allow_missing_section_insertions": payload.allow_missing_section_insertions,
+        "uploaded_content_scope": payload.uploaded_content_scope,
+        "strengthening_scope": payload.strengthening_scope,
+        "selected_section_ids": payload.selected_section_ids,
+        "selected_section_titles": payload.selected_section_titles,
+        "new_section_ids": payload.new_section_ids,
+        "new_section_titles": payload.new_section_titles,
+        "custom_new_sections": payload.custom_new_sections,
+        "custom_target_pages_enabled": payload.custom_target_pages_enabled,
+        "target_page_min": payload.target_page_min,
+        "target_page_max": payload.target_page_max,
         "created_for": "chapter_strengthener",
         "academic_integrity_confirmed": True,
         "user_contribution_confirmed": True,
@@ -387,11 +405,20 @@ def strengthen_project_chapter(
                     "estimated_pages": result.get("estimated_pages", 0),
                     "citations_per_1000_words": result.get("citations_per_1000_words", 0),
                     "source_bank_count": result.get("source_bank_count", 0),
+                    "strengthening_scope": result.get("strengthening_scope", "whole_chapter"),
+                    "selected_section_titles": result.get("selected_section_titles", []),
+                    "new_section_titles": result.get("new_section_titles", []),
+                    "custom_new_sections": result.get("custom_new_sections", []),
+                    "target_page_range": result.get("target_page_range", ""),
+                    "scope_metadata": result.get("scope_metadata", {}),
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 }
                 profile["chapter_strengthener"] = strengthener_store
                 drafts = project.get("drafts") or {}
-                drafts[str(chapter_number)] = result.get("revised_chapter_text", "")
+                if result.get("strengthening_scope") != "selected_sections":
+                    drafts[str(chapter_number)] = result.get("revised_chapter_text", "")
+                else:
+                    result["saved_as_section_output"] = True
                 with get_conn() as conn:
                     conn.execute(
                         """

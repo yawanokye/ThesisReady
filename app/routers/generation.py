@@ -456,6 +456,11 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
         project["profile"]["draft_maturity"] = merged_contribution.get("draft_maturity") or getattr(payload, "draft_maturity", "") or project["profile"].get("draft_maturity", "Supervisor-ready draft")
         if getattr(payload, "human_revision_pass", None) is not None:
             merged_contribution["human_revision_pass"] = bool(getattr(payload, "human_revision_pass", True))
+        requested_humanizer_mode = str(getattr(payload, "humanizer_mode", "") or merged_contribution.get("humanizer_mode") or "balanced").strip().lower()
+        if requested_humanizer_mode not in {"off", "light", "balanced", "deep"}:
+            requested_humanizer_mode = "balanced"
+        merged_contribution["humanizer_mode"] = requested_humanizer_mode
+        project["profile"]["humanizer_mode"] = requested_humanizer_mode
 
     contribution = project["profile"].get("student_contribution") or {}
     if isinstance(contribution, dict) and any(str(contribution.get(k) or "").strip() for k in ["central_argument", "local_context_notes", "evidence_anchors", "supervisor_comments", "preferred_style", "writing_sample"]):
