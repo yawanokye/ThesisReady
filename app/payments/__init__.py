@@ -1,0 +1,1 @@
+"""ProjectReady AI payment package."""
