@@ -13,6 +13,7 @@ from app.template_store import get_chapter, selected_sections
 from app.action_items import detach_action_items
 from app.scholarly_humanizer import (
     analyse_scholarly_style,
+    build_humanizer_batches,
     humanize_scholarly_text,
     scholarly_humanizer_prompt_rules,
     validate_humanizer_preservation,
@@ -1104,7 +1105,7 @@ def build_drafting_prompt(
             "Increase in-text citation density: Chapter Two should be citation-rich; Chapter One should cite evidence for context, problem and gaps; Chapter Three should cite methodological authorities where appropriate; Chapter Four discussion should cite theory and prior studies.",
             "Run a claim-evidence pass before finalising. Every substantive factual, historical, policy, contextual, theoretical or empirical claim must be supported by a directly relevant and accurate citation from the supplied or retrieved evidence bank. Do not leave long substantive paragraphs without support.",
             "For Chapter One, aim for 8-12 relevant citation occurrences per 1,000 words at Masters level and 10-14 at doctoral level, while prioritising accuracy and relevance over numerical padding.",
-            "Do not embed instructions, confirmations or missing-evidence commentary inside academic prose. Put each unresolved item on its own bracketed line beginning [ACTION REQUIRED: ...] so it is exported separately in red.",
+            "Do not embed instructions, confirmations or missing-evidence commentary inside academic prose. Put each unresolved item on its own bracketed line beginning [ACTION REQUIRED: ...] immediately after the sentence or paragraph that requires the action, so the full instruction is exported in red at the exact point of need.",
             "If retrieved_sources do not provide enough support for a required claim, insert a bracketed placeholder such as [insert verified source for this claim] rather than guessing.",
             "For Chapter One, make the Background and Statement of the Problem factual and evidence-led. Use relevant accurate statistics, policy evidence, institutional evidence, or empirical findings to support the problem where supplied or confidently known.",
             "Do not fabricate citations, statistics, or reference-list entries. Use verified/supplied citations and facts where available. Where a required source, statistic, or fact is not supplied or cannot be stated confidently, insert a bracketed placeholder rather than inventing it.",
@@ -1666,6 +1667,59 @@ def _sentence_length_variance(text: str) -> float:
     return variance
 
 
+def _humanizer_batch_token_budget(word_count: int) -> int:
+    """Estimate a conservative output ceiling for a style-only batch."""
+    words = max(250, int(word_count or 0))
+    # Academic English averages roughly 1.3-1.7 tokens per word. The buffer allows
+    # the model to preserve headings, citations and action lines without inviting expansion.
+    return max(1800, min(9000, int(words * 2.1)))
+
+
+def _refine_humanizer_batch_with_model(
+    *,
+    client: Any,
+    model: str,
+    instructions: str,
+    original_prompt: str,
+    batch_text: str,
+    controls: dict[str, Any],
+    chapter_number: int,
+    diagnostic: dict[str, Any],
+) -> str:
+    payload = {
+        "task": "Apply a conservative scholarly naturalness edit to this chapter section without changing its evidence or argument.",
+        "chapter_number": chapter_number,
+        "student_contribution_controls": controls,
+        "style_diagnostic": diagnostic,
+        "quality_rules": [
+            "Revise the supplied section rather than rewriting it from scratch.",
+            *scholarly_humanizer_prompt_rules(),
+            "Preserve every heading, objective, research question, hypothesis, citation, reference, date, statistic, table, equation, quotation and bracketed action item exactly.",
+            "Preserve the sequence of ideas and the strength of every claim. Do not add evidence, examples, citations, findings, recommendations or interpretations.",
+            "Improve naturalness through clearer subjects and verbs, varied but purposeful sentence movement, less repetitive framing, and transitions that match the logic.",
+            "Do not make every paragraph the same length or end every paragraph with a summary sentence.",
+            "Do not mechanically replace ordinary words with rare synonyms and do not remove discipline-specific terms.",
+            "Keep the word count within four percent of the supplied section.",
+            "Return only the complete revised section with its original headings. Do not add a report.",
+        ],
+        "original_generation_context": original_prompt,
+        "section_to_refine": batch_text,
+    }
+    candidate = _call_openai_response_safely(
+        client,
+        model,
+        instructions + " Perform one preservation-gated scholarly naturalness edit. Return only the revised section.",
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        max_output_tokens=_humanizer_batch_token_budget(int(diagnostic.get("word_count") or 0)),
+    )
+    if not candidate:
+        return batch_text
+    candidate = _polish_generated_text(candidate)
+    candidate, _ = humanize_scholarly_text(candidate, mode="balanced")
+    valid, _issues = validate_humanizer_preservation(batch_text, candidate, max_word_change_ratio=0.045)
+    return candidate if valid else batch_text
+
+
 def _human_academic_revision_pass(
     client: Any,
     model: str,
@@ -1675,11 +1729,11 @@ def _human_academic_revision_pass(
     profile: dict[str, Any],
     chapter_number: int,
 ) -> str:
-    """Run a selective, preservation-gated scholarly humanizer pass.
+    """Run selective, section-batched scholarly naturalness refinement.
 
-    Light mode uses only the deterministic local pass. Balanced mode calls the
-    model only when the local diagnostic still finds weak prose or when the user
-    supplied a writing sample/style direction. Deep mode requests one model pass.
+    Light mode uses only the deterministic local pass. Balanced mode refines only
+    weak batches, with a strict cap to control cost. Deep mode refines all eligible
+    batches, still preserving citations, statistics, headings and action items.
     """
     controls = _student_contribution_requirements(profile)
     mode = _humanizer_mode(profile)
@@ -1687,50 +1741,58 @@ def _human_academic_revision_pass(
     if mode in {"off", "light"} or not controls.get("human_revision_pass_requested", True):
         return local_draft
 
-    length_requirements = _chapter_length_requirements(profile, chapter_number)
     has_style_context = any(str(controls.get(k) or "").strip() for k in [
         "preferred_style", "writing_sample", "phrases_to_avoid", "supervisor_comments"
     ])
-    threshold = int(os.getenv("PROJECTREADY_HUMANIZER_MODEL_THRESHOLD", "86") or 86)
+    threshold = int(os.getenv("PROJECTREADY_HUMANIZER_MODEL_THRESHOLD", "94") or 90)
     current_score = int(local_report.get("score") or 0)
     should_call_model = mode == "deep" or has_style_context or current_score < threshold
     if not should_call_model:
         return local_draft
 
-    revision_payload = {
-        "task": "Refine the chapter for natural, human-supervised scholarly quality while preserving all substantive content.",
-        "chapter_number": chapter_number,
-        "chapter_length_requirements": length_requirements,
-        "draft_maturity": controls.get("draft_maturity"),
-        "student_contribution_controls": controls,
-        "style_diagnostic_before_model_pass": local_report,
-        "quality_rules": [
-            "Revise rather than restart. Preserve every heading, objective, research question, hypothesis, table, equation, citation, reference, date, statistic, placeholder and supplied result.",
-            *scholarly_humanizer_prompt_rules(),
-            "Do not add new evidence, citations, interpretations, examples or recommendations during this style-only pass.",
-            "Do not mechanically replace ordinary words with rare synonyms. Preserve the epistemic strength of claims, especially suggests, indicates, may, could and is associated with.",
-            "Use the student's writing sample only for broad rhythm, directness and paragraph movement. Do not copy phrases from it.",
-            "Remove awkward legacy phrases such as 'That matters', 'This qualification matters' and excessive 'insofar as'.",
-            "Do not reduce the word count by more than three percent and do not expand it by more than four percent.",
-            "Return only the complete revised chapter, with no report or commentary.",
-        ],
-        "original_generation_prompt": original_prompt,
-        "draft_to_refine": local_draft,
-    }
-    revised = _call_openai_response_safely(
-        client,
-        model,
-        instructions + " Perform one conservative, style-only scholarly humanizer pass. Preserve content exactly and return only the revised chapter.",
-        json.dumps(revision_payload, ensure_ascii=False, indent=2),
-        max_output_tokens=_max_output_tokens_for_length(length_requirements, revision=True),
-    )
-    if not revised:
+    batch_words = int(os.getenv("PROJECTREADY_HUMANIZER_BATCH_WORDS", "2400") or 2400)
+    batches = build_humanizer_batches(local_draft, max_words=batch_words)
+    if not batches:
         return local_draft
 
-    revised = _polish_generated_text(revised)
-    revised, _ = humanize_scholarly_text(revised, mode=mode)
-    valid, _issues = validate_humanizer_preservation(local_draft, revised, max_word_change_ratio=0.045)
-    return revised if valid else local_draft
+    balanced_cap = int(os.getenv("PROJECTREADY_HUMANIZER_MAX_BATCHES_BALANCED", "4") or 4)
+    deep_cap = int(os.getenv("PROJECTREADY_HUMANIZER_MAX_BATCHES_DEEP", "12") or 12)
+    eligible_indices = [
+        index for index, batch in enumerate(batches)
+        if not batch.get("protected")
+        and int((batch.get("diagnostic") or {}).get("word_count") or 0) >= 120
+        and (mode == "deep" or has_style_context or int((batch.get("diagnostic") or {}).get("score") or 100) < threshold)
+    ]
+    if mode == "balanced":
+        eligible_indices.sort(key=lambda index: int((batches[index].get("diagnostic") or {}).get("score") or 100))
+        eligible_indices = eligible_indices[:max(1, balanced_cap)]
+    else:
+        eligible_indices = eligible_indices[:max(1, deep_cap)]
+
+    if not eligible_indices:
+        return local_draft
+
+    revised_parts: list[str] = []
+    selected = set(eligible_indices)
+    for index, batch in enumerate(batches):
+        batch_text = str(batch.get("text") or "")
+        if index not in selected:
+            revised_parts.append(batch_text)
+            continue
+        revised_parts.append(_refine_humanizer_batch_with_model(
+            client=client,
+            model=model,
+            instructions=instructions,
+            original_prompt=original_prompt,
+            batch_text=batch_text,
+            controls=controls,
+            chapter_number=chapter_number,
+            diagnostic=dict(batch.get("diagnostic") or {}),
+        ))
+
+    candidate = "\n\n".join(part.strip() for part in revised_parts if part.strip()).strip()
+    valid, _issues = validate_humanizer_preservation(local_draft, candidate, max_word_change_ratio=0.045)
+    return candidate if valid else local_draft
 
 
 def _call_openai_response_safely(
@@ -2295,34 +2357,30 @@ def generate_chapter(
                     chapter_number=chapter_number,
                 )
 
-                # 4. Final human-academic revision pass. Very long chapters skip the
-                # whole-document rewrite by default because a second full rewrite can
-                # compress the chapter and substantially increase latency and cost.
-                long_revision_limit = int(os.getenv("PROJECTREADY_LONG_CHAPTER_REVISION_LIMIT_WORDS", "12000") or 12000)
-                if int(length_requirements.get("target_words") or 0) <= long_revision_limit:
-                    polished = _human_academic_revision_pass(
-                        client=client,
-                        model=revision_model,
-                        instructions=instructions,
-                        original_prompt=prompt,
-                        draft=polished,
-                        profile=profile,
-                        chapter_number=chapter_number,
-                    )
+            # 4. Enforce the page/word depth target before the final naturalness pass.
+            # This ensures any added depth receives the same protected style refinement.
+            polished = _ensure_chapter_depth(
+                client=client,
+                model=revision_model,
+                instructions=instructions,
+                original_prompt=prompt,
+                draft=polished,
+                profile=profile,
+                chapter_number=chapter_number,
+                selected_section_ids=selected_section_ids,
+            )
 
-                # 5. Enforce the page/word depth target after revision. This expansion
-                # pass preserves evidence integrity and is used only when the chapter
-                # is materially below the minimum target.
-                polished = _ensure_chapter_depth(
-                    client=client,
-                    model=revision_model,
-                    instructions=instructions,
-                    original_prompt=prompt,
-                    draft=polished,
-                    profile=profile,
-                    chapter_number=chapter_number,
-                    selected_section_ids=selected_section_ids,
-                )
+            # 5. Refine weak sections in controlled batches. Long chapters are no longer
+            # skipped or rewritten as one block, which protects depth and controls cost.
+            polished = _human_academic_revision_pass(
+                client=client,
+                model=revision_model,
+                instructions=instructions,
+                original_prompt=prompt,
+                draft=polished,
+                profile=profile,
+                chapter_number=chapter_number,
+            )
 
             # 6. Apply the protected deterministic humanizer once, after content,
             #    evidence and depth are settled. This pass preserves citations,

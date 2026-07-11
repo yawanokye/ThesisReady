@@ -10,7 +10,13 @@ from typing import Any
 
 from app.source_finder import search_literature_sources
 from app.action_items import detach_action_items
-from app.scholarly_humanizer import humanize_scholarly_text, scholarly_humanizer_prompt_rules
+from app.scholarly_humanizer import (
+    analyse_scholarly_style,
+    build_humanizer_batches,
+    humanize_scholarly_text,
+    scholarly_humanizer_prompt_rules,
+    validate_humanizer_preservation,
+)
 
 _REVISION_BLUE = (0, 112, 192)
 _ACTION_RED = (192, 0, 0)
@@ -746,6 +752,99 @@ def _metrics(text: str) -> dict[str, Any]:
 
 
 
+def _humanizer_batch_output_tokens(word_count: int) -> int:
+    words = max(250, int(word_count or 0))
+    return max(1800, min(9000, int(words * 2.1)))
+
+
+def _humanize_strengthened_chapter_with_model(
+    client: Any,
+    model: str,
+    text: str,
+    *,
+    mode: str,
+    level: str,
+    chapter_type: str,
+    payload: dict[str, Any],
+) -> str:
+    """Apply a protected section-batched model pass after substantive strengthening.
+
+    A failure in this optional style stage never invalidates the completed revision.
+    Balanced mode touches only the weakest batches and Deep mode covers all eligible
+    batches up to a configurable cap.
+    """
+    if mode not in {"balanced", "deep"} or not client or not text.strip():
+        return text
+
+    threshold = _env_int("PROJECTREADY_HUMANIZER_MODEL_THRESHOLD", 94, minimum=60, maximum=99)
+    overall = analyse_scholarly_style(text)
+    style_context = any(str(payload.get(key) or "").strip() for key in (
+        "revision_goals", "supervisor_comments", "school_guidelines"
+    ))
+    if mode == "balanced" and not style_context and int(overall.get("score") or 100) >= threshold:
+        return text
+
+    batch_words = _env_int("PROJECTREADY_HUMANIZER_BATCH_WORDS", 2400, minimum=800, maximum=5000)
+    batches = build_humanizer_batches(text, max_words=batch_words)
+    eligible = [
+        index for index, batch in enumerate(batches)
+        if not batch.get("protected")
+        and int((batch.get("diagnostic") or {}).get("word_count") or 0) >= 120
+        and (mode == "deep" or style_context or int((batch.get("diagnostic") or {}).get("score") or 100) < threshold)
+    ]
+    if mode == "balanced":
+        eligible.sort(key=lambda index: int((batches[index].get("diagnostic") or {}).get("score") or 100))
+        eligible = eligible[:_env_int("PROJECTREADY_HUMANIZER_MAX_BATCHES_BALANCED", 4, minimum=1, maximum=10)]
+    else:
+        eligible = eligible[:_env_int("PROJECTREADY_HUMANIZER_MAX_BATCHES_DEEP", 12, minimum=1, maximum=24)]
+    if not eligible:
+        return text
+
+    chosen = set(eligible)
+    output: list[str] = []
+    for index, batch in enumerate(batches):
+        original = str(batch.get("text") or "")
+        if index not in chosen:
+            output.append(original)
+            continue
+        prompt = {
+            "task": "Refine this strengthened thesis section for natural scholarly flow without changing its substance.",
+            "academic_level": level,
+            "chapter_type": chapter_type,
+            "style_diagnostic": batch.get("diagnostic") or {},
+            "revision_direction": str(payload.get("revision_goals") or "").strip(),
+            "supervisor_direction": str(payload.get("supervisor_comments") or "").strip(),
+            "rules": [
+                "Revise rather than restart.",
+                *scholarly_humanizer_prompt_rules(),
+                "Preserve every heading, citation, reference, date, statistic, objective, research question, hypothesis, table, equation and bracketed action item exactly.",
+                "Do not add evidence, citations, findings, examples, interpretations, recommendations or new sections.",
+                "Preserve the order of ideas and the strength of claims.",
+                "Improve directness, sentence movement, paragraph rhythm and logical transitions without rare-synonym substitution.",
+                "Keep the word count within four percent of the supplied section.",
+                "Return only the revised section with its headings and no report.",
+            ],
+            "section": original,
+        }
+        try:
+            response = client.responses.create(
+                model=model,
+                max_output_tokens=_humanizer_batch_output_tokens(int(batch.get("word_count") or 0)),
+                instructions="Perform a conservative, evidence-preserving scholarly naturalness edit. Return only the revised section.",
+                input=json.dumps(prompt, ensure_ascii=False, indent=2),
+            )
+            candidate = _response_output_text(response)
+            candidate, _ = humanize_scholarly_text(candidate, mode="balanced") if candidate else (original, {})
+            valid, _issues = validate_humanizer_preservation(original, candidate, max_word_change_ratio=0.045)
+            output.append(candidate if candidate and valid else original)
+        except Exception:
+            output.append(original)
+
+    candidate = "\n\n".join(part.strip() for part in output if part.strip()).strip()
+    valid, _issues = validate_humanizer_preservation(text, candidate, max_word_change_ratio=0.045)
+    return candidate if valid else text
+
+
 def _revision_long_chapter_strategy(level: str, chapter_type: str, page_min: int, page_max: int) -> dict[str, Any]:
     level_key = _level_key(level)
     chapter_key = _chapter_key(chapter_type)
@@ -955,7 +1054,7 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
                 "Increase citation density where the chapter and academic level require it, but avoid citation padding and do not attach citations to unsupported claims.",
                 "Run a claim-evidence audit. Support every substantive factual, historical, policy, contextual, theoretical and empirical claim with a directly relevant and accurate source from the existing citations or verified source bank.",
                 "For Chapter One, target about 8-12 relevant citation occurrences per 1,000 words at Masters level and 10-14 at doctoral level, without forcing citations onto objectives, questions or purely organisational sentences.",
-                "Do not leave comments or user instructions inside the scholarly narrative. Put every unresolved action on a separate line beginning [ACTION REQUIRED: ...].",
+                "Do not leave comments or user instructions inside the scholarly narrative. Put every unresolved action on a separate line beginning [ACTION REQUIRED: ...] immediately after the affected paragraph or list. Do not collect actions at the end of the chapter.",
                 "Do not add mediation, moderation, causality, longitudinal design, multilevel structure, robustness tests or measurement validation unless they are justified by the approved study and available data.",
                 "Do not present a recommended analysis as completed. Use a concise bracketed action item such as [conduct and report the required diagnostic test] when essential evidence is missing.",
                 "Preserve chapter numbering and school-specific headings where supplied. Add a missing expected heading only when the chapter type, school guidelines, previous chapters or supervisor comments clearly require it.",
@@ -971,7 +1070,7 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
                 "Do not expand the chapter merely to hit a page target. Add depth through evidence, critique, theory, methodological justification, interpretation and cross-section alignment.",
                 "When long_chapter_strengthening_strategy is enabled, treat the chapter as staged section strengthening. Do not compress a doctoral literature review into a short summary; diagnose and deepen conceptual, theoretical, empirical, methodological, contextual, gap and framework coverage separately.",
                 "Use Markdown headings and tables where useful. Keep equations intact.",
-                "Mark only genuine student or supervisor action items in square brackets so they appear red in the DOCX.",
+                "Mark only genuine student or supervisor action items in square brackets so the complete instruction appears red in the DOCX, placed directly after the affected text.",
             ],
             "report_requirements": [
                 "State whether the uploaded text matches the selected chapter type.",
@@ -1035,6 +1134,17 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
     humanizer_mode = str(payload.get("humanizer_mode") or os.getenv("PROJECTREADY_HUMANIZER_MODE", "balanced") or "balanced").strip().lower()
     if mode == "ai_revision":
         revised_chapter, humanizer_report = humanize_scholarly_text(revised_chapter, mode=humanizer_mode)
+        revised_chapter = _humanize_strengthened_chapter_with_model(
+            client,
+            model_used,
+            revised_chapter,
+            mode=humanizer_mode,
+            level=level,
+            chapter_type=chapter_type,
+            payload=payload,
+        )
+        revised_chapter, final_humanizer_report = humanize_scholarly_text(revised_chapter, mode=humanizer_mode)
+        humanizer_report = {**humanizer_report, "final_score": final_humanizer_report.get("score")}
     else:
         humanizer_report = {"mode": humanizer_mode, "applied": False, "reason": "No completed AI revision to refine."}
 

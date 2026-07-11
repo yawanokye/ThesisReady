@@ -4,7 +4,6 @@ import json
 import os
 import re
 import time
-from collections import Counter
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlencode
@@ -13,8 +12,11 @@ from urllib.request import Request, urlopen
 from app.source_finder import search_literature_sources
 
 RESOURCE_TIMEOUT_SECONDS = max(4, int(os.getenv("TOPIC_RESOURCE_SEARCH_TIMEOUT_SECONDS", "10") or 10))
-MAX_DATASET_RESULTS = max(3, min(int(os.getenv("TOPIC_DATASET_RESULTS", "8") or 8), 15))
-MAX_INSTRUMENT_RESULTS = max(3, min(int(os.getenv("TOPIC_INSTRUMENT_RESULTS", "8") or 8), 15))
+MAX_DATASET_RESULTS = max(2, min(int(os.getenv("TOPIC_DATASET_RESULTS", "6") or 6), 10))
+MAX_INSTRUMENT_RESULTS = max(2, min(int(os.getenv("TOPIC_INSTRUMENT_RESULTS", "6") or 6), 10))
+MAX_TOPIC_SPECIFIC_RESULTS = max(1, min(int(os.getenv("TOPIC_SPECIFIC_RESOURCE_RESULTS", "4") or 4), 6))
+MIN_DATASET_RELEVANCE = float(os.getenv("TOPIC_DATASET_MIN_RELEVANCE", "5") or 5)
+MIN_INSTRUMENT_RELEVANCE = float(os.getenv("TOPIC_INSTRUMENT_MIN_RELEVANCE", "14") or 14)
 
 _INSTRUMENT_TERMS = re.compile(
     r"\b(scale|questionnaire|instrument|inventory|measure|measurement|psychometric|validation|validated|"
@@ -179,22 +181,43 @@ def _constructs_for_idea(idea: dict[str, Any]) -> list[str]:
     return cleaned[:8]
 
 
-def _global_construct_pool(payload: dict[str, Any], ideas: list[dict[str, Any]]) -> list[str]:
-    phrases: list[str] = []
-    for idea in ideas:
-        phrases.extend(_constructs_for_idea(idea))
-    phrases.extend([
-        _clean(payload.get("research_area")),
-        _clean(payload.get("context")),
-        _clean(payload.get("country_region")),
-    ])
-    counter = Counter(p.lower() for p in phrases if p)
-    unique: list[str] = []
-    for phrase, _ in counter.most_common():
-        original = next((p for p in phrases if p.lower() == phrase), phrase)
-        if original and original not in unique:
-            unique.append(original)
-    return unique[:10]
+def _idea_topic_scope(payload: dict[str, Any], idea: dict[str, Any]) -> dict[str, Any]:
+    """Build a narrow search scope for one generated idea."""
+    title = _clean(idea.get("title")) or _clean(payload.get("research_area"))
+    synopsis = _clean(idea.get("synopsis"))
+    constructs = _constructs_for_idea(idea)
+    objectives = idea.get("proposed_objectives") or {}
+    objective_values = (
+        objectives.get("specific_objectives") or []
+        if isinstance(objectives, dict)
+        else []
+    )
+    if not isinstance(objective_values, list):
+        objective_values = [objective_values]
+    objective_values = [_clean(x) for x in objective_values if _clean(x)]
+    context = _clean(payload.get("context"))
+    country_region = _clean(payload.get("country_region"))
+    topic_terms = _tokenise(" ".join([title, synopsis, *constructs, *objective_values[:3]]))
+    geography_terms = _tokenise(" ".join([context, country_region]))
+    return {
+        "title": title,
+        "synopsis": synopsis,
+        "constructs": constructs,
+        "objectives": objective_values[:3],
+        "context": context,
+        "country_region": country_region,
+        "topic_terms": topic_terms,
+        "subject_terms": topic_terms - geography_terms,
+    }
+
+
+def _specific_search_basis(scope: dict[str, Any]) -> list[str]:
+    basis: list[str] = []
+    for value in [scope.get("title"), *(scope.get("constructs") or [])]:
+        text = _clean(value)
+        if text and text.lower() not in {item.lower() for item in basis}:
+            basis.append(text)
+    return basis[:7]
 
 
 def research_resource_modes(payload: dict[str, Any]) -> dict[str, bool]:
@@ -235,15 +258,16 @@ def _get_json(url: str, accept: str = "application/json") -> dict[str, Any]:
     return json.loads(raw)
 
 
-def _dataset_query(payload: dict[str, Any], constructs: list[str]) -> str:
+def _dataset_query(payload: dict[str, Any], scope: dict[str, Any]) -> str:
+    constructs = scope.get("constructs") or []
     pieces = [
-        _clean(payload.get("research_area")),
+        _clean(scope.get("title")),
         *constructs[:4],
-        _clean(payload.get("country_region")),
-        _clean(payload.get("context")),
+        _clean(scope.get("country_region")),
+        _clean(scope.get("context")),
     ]
     query = " ".join(x for x in pieces if x)
-    return re.sub(r"\s+", " ", query).strip()[:220]
+    return re.sub(r"\s+", " ", query).strip()[:260]
 
 
 def _search_datacite_datasets(query: str, limit: int = MAX_DATASET_RESULTS) -> list[dict[str, Any]]:
@@ -351,45 +375,73 @@ def _matched_constructs(record: dict[str, Any], constructs: list[str]) -> list[s
     return matches[:5]
 
 
-def _dataset_relevance(record: dict[str, Any], constructs: list[str], topic: str) -> float:
+def _dataset_relevance(record: dict[str, Any], scope: dict[str, Any]) -> float:
+    constructs = scope.get("constructs") or []
+    haystack = " ".join([
+        _clean(record.get("name")),
+        _clean(record.get("description")),
+        " ".join(record.get("subjects") or []),
+    ])
     matches = _matched_constructs(record, constructs)
-    topic_tokens = _tokenise(topic)
+    hay_tokens = _tokenise(haystack)
+    subject_overlap = set(scope.get("subject_terms") or set()) & hay_tokens
+    title_overlap = _tokenise(scope.get("title")) & hay_tokens
+    exact_construct_hits = sum(
+        1 for construct in constructs
+        if _clean(construct).lower() and _clean(construct).lower() in haystack.lower()
+    )
+    return float(
+        len(matches) * 7
+        + exact_construct_hits * 7
+        + len(subject_overlap) * 2
+        + len(title_overlap)
+        + (1 if record.get("doi") else 0)
+    )
+
+
+def _dataset_is_topic_specific(record: dict[str, Any], scope: dict[str, Any]) -> bool:
+    matches = _matched_constructs(record, scope.get("constructs") or [])
     hay_tokens = _tokenise(" ".join([
         _clean(record.get("name")),
         _clean(record.get("description")),
         " ".join(record.get("subjects") or []),
     ]))
-    return float(len(matches) * 8 + len(topic_tokens & hay_tokens) * 2 + (2 if record.get("doi") else 0))
+    subject_overlap = set(scope.get("subject_terms") or set()) & hay_tokens
+    return bool(matches) or len(subject_overlap) >= 2
 
 
-def _official_portal_matches(payload: dict[str, Any], idea: dict[str, Any], limit: int = 5) -> list[dict[str, Any]]:
-    constructs = _constructs_for_idea(idea)
-    search_text = " ".join([
-        _clean(payload.get("research_area")),
-        _clean(payload.get("country_region")),
-        _clean(payload.get("context")),
-        *constructs,
-    ])
-    search_tokens = _tokenise(search_text)
+def _official_portal_matches(payload: dict[str, Any], idea: dict[str, Any], limit: int = MAX_TOPIC_SPECIFIC_RESULTS) -> list[dict[str, Any]]:
+    scope = _idea_topic_scope(payload, idea)
+    constructs = scope.get("constructs") or []
+    subject_terms = set(scope.get("subject_terms") or set())
     ranked: list[tuple[float, dict[str, Any]]] = []
     for portal in OFFICIAL_DATA_PORTALS:
-        tag_tokens = _tokenise(" ".join(portal.get("tags") or []))
-        overlap = search_tokens & tag_tokens
-        phrase_hits = sum(1 for tag in portal.get("tags") or [] if _clean(tag).lower() in search_text.lower())
-        score = len(overlap) * 2 + phrase_hits * 3
-        if score > 0:
-            item = {k: v for k, v in portal.items() if k != "tags"}
-            item["source_type"] = "Official data portal"
-            item["discovery_database"] = "ProjectReady official-source catalogue"
-            item["matched_variables_or_constructs"] = _matched_constructs(item, constructs) or constructs[:2]
-            ranked.append((float(score), item))
+        portal_text = " ".join([
+            _clean(portal.get("name")),
+            _clean(portal.get("description")),
+            " ".join(portal.get("tags") or []),
+        ])
+        portal_tokens = _tokenise(portal_text)
+        overlap = subject_terms & portal_tokens
+        matched_constructs = _matched_constructs(portal, constructs)
+        if not matched_constructs and len(overlap) < 2:
+            continue
+        score = len(overlap) * 3 + len(matched_constructs) * 8
+        item = {k: v for k, v in portal.items() if k != "tags"}
+        item["source_type"] = "Official data portal"
+        item["discovery_database"] = "ProjectReady official-source catalogue"
+        item["matched_variables_or_constructs"] = matched_constructs
+        item["matched_topic_terms"] = sorted(overlap)[:6]
+        item["topic_match_reason"] = "Matched this idea's focal constructs and subject terms."
+        ranked.append((float(score), item))
     ranked.sort(key=lambda pair: pair[0], reverse=True)
     return [item for _, item in ranked[:limit]]
 
 
-def _instrument_query(payload: dict[str, Any], constructs: list[str], systematic: bool) -> str:
-    topic = _clean(payload.get("research_area"))
-    context = _clean(payload.get("country_region"))
+def _instrument_query(payload: dict[str, Any], scope: dict[str, Any], systematic: bool) -> str:
+    topic = _clean(scope.get("title"))
+    constructs = scope.get("constructs") or []
+    context = _clean(scope.get("country_region"))
     if systematic:
         suffix = "systematic review protocol critical appraisal checklist quality assessment tool"
     else:
@@ -401,7 +453,7 @@ def _instrument_query(payload: dict[str, Any], constructs: list[str], systematic
         else:
             suffix = "questionnaire scale instrument validation psychometric"
     query = " ".join([topic, *constructs[:4], context, suffix])
-    return re.sub(r"\s+", " ", query).strip()[:220]
+    return re.sub(r"\s+", " ", query).strip()[:260]
 
 
 def _instrument_record_candidates(search_result: dict[str, Any]) -> list[dict[str, Any]]:
@@ -439,135 +491,232 @@ def _instrument_record_candidates(search_result: dict[str, Any]) -> list[dict[st
     return strong[:MAX_INSTRUMENT_RESULTS]
 
 
-def _instrument_relevance(record: dict[str, Any], constructs: list[str], topic: str) -> float:
+def _instrument_relevance(record: dict[str, Any], scope: dict[str, Any]) -> float:
     haystack = " ".join([
         _clean(record.get("title")),
         _clean(record.get("abstract")),
         _clean(record.get("source")),
     ])
-    matches = _matched_constructs(record, constructs)
-    score = len(matches) * 8 + len(_tokenise(topic) & _tokenise(haystack)) * 2
+    matches = _matched_constructs(record, scope.get("constructs") or [])
+    subject_overlap = set(scope.get("subject_terms") or set()) & _tokenise(haystack)
+    score = len(matches) * 8 + len(subject_overlap) * 2
     if _INSTRUMENT_TERMS.search(haystack):
         score += 6
     if record.get("doi"):
-        score += 2
+        score += 1
     return float(score)
+
+
+def _instrument_is_topic_specific(record: dict[str, Any], scope: dict[str, Any]) -> bool:
+    haystack = " ".join([
+        _clean(record.get("title")),
+        _clean(record.get("abstract")),
+        _clean(record.get("source")),
+    ])
+    if not _INSTRUMENT_TERMS.search(haystack):
+        return False
+    matches = _matched_constructs(record, scope.get("constructs") or [])
+    subject_overlap = set(scope.get("subject_terms") or set()) & _tokenise(haystack)
+    return bool(matches) or len(subject_overlap) >= 2
+
+
+def _topic_specific_data_directions(
+    payload: dict[str, Any],
+    idea: dict[str, Any],
+    modes: dict[str, bool],
+    secondary_sources: list[dict[str, Any]],
+    instrument_sources: list[dict[str, Any]],
+) -> list[str]:
+    scope = _idea_topic_scope(payload, idea)
+    constructs = scope.get("constructs") or []
+    focal = ", ".join(constructs[:3]) or _clean(scope.get("title"))
+    population = _clean(scope.get("context")) or "the proposed study population"
+    place = _clean(scope.get("country_region"))
+    location = f" in {place}" if place else ""
+    methodology = _clean(payload.get("methodology")).lower()
+    directions: list[str] = []
+
+    if modes.get("secondary"):
+        for source in secondary_sources[:3]:
+            name = _clean(source.get("name"))
+            matches = source.get("matched_variables_or_constructs") or []
+            match_text = ", ".join(str(x) for x in matches[:3] if str(x).strip())
+            if name:
+                directions.append(f"{name} records relevant to {match_text or focal}{location}")
+        if not secondary_sources:
+            directions.append(f"A verified secondary dataset containing measures of {focal} for {population}{location}")
+
+    if modes.get("instrument"):
+        if modes.get("systematic"):
+            directions.append(f"Peer-reviewed studies and review records specifically addressing {_clean(scope.get('title'))}")
+        elif "qualitative" in methodology or "case study" in methodology:
+            directions.append(f"Semi-structured interview data from {population}{location} focused on {focal}")
+        elif "mixed" in methodology:
+            directions.append(f"Questionnaire responses and interview data from {population}{location} measuring or exploring {focal}")
+        else:
+            directions.append(f"Primary questionnaire responses from {population}{location} measuring {focal}")
+
+    for source in instrument_sources[:2]:
+        title = _clean(source.get("title"))
+        matches = source.get("matched_constructs") or []
+        if title:
+            directions.append(f"Candidate items or measures from {title}, subject to validation for {', '.join(matches[:3]) or focal}")
+
+    output: list[str] = []
+    seen: set[str] = set()
+    for item in directions:
+        key = item.lower()
+        if item and key not in seen:
+            output.append(item)
+            seen.add(key)
+    return output[:6]
 
 
 def discover_research_resources(
     payload: dict[str, Any],
     ideas: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    """Search once per resource type and map candidates to every generated idea.
-
-    This avoids a slow provider search for every idea while still matching results to each idea's
-    variables or constructs. Returned resources are candidates, not endorsements. Users must
-    verify access, measurement fit, licensing, ethics and institutional requirements.
-    """
+    """Find narrowly matched data and instrument candidates for each idea."""
     modes = research_resource_modes(payload)
-    constructs = _global_construct_pool(payload, ideas)
-    topic = _clean(payload.get("research_area"))
     provider_errors: list[dict[str, str]] = []
-    live_datasets: list[dict[str, Any]] = []
-    instrument_records: list[dict[str, Any]] = []
-    dataset_query = ""
-    instrument_query = ""
     searched_databases: list[str] = []
-
-    if modes["secondary"]:
-        dataset_query = _dataset_query(payload, constructs)
-        for label, searcher in [
-            ("DataCite", _search_datacite_datasets),
-            ("Harvard Dataverse", _search_harvard_dataverse),
-        ]:
-            try:
-                live_datasets.extend(searcher(dataset_query, MAX_DATASET_RESULTS))
-                searched_databases.append(label)
-            except Exception as exc:
-                provider_errors.append({"provider": label, "error": _clean(exc)[:220]})
-        live_datasets = _dedupe_dataset_candidates(live_datasets)
-
-    if modes["instrument"]:
-        instrument_query = _instrument_query(payload, constructs, modes["systematic"])
-        try:
-            instrument_search = search_literature_sources(
-                profile={
-                    "title": topic,
-                    "research_area": topic,
-                    "study_context": _clean(payload.get("context")),
-                    "objectives": constructs[:4],
-                },
-                query=instrument_query,
-                max_results=max(10, MAX_INSTRUMENT_RESULTS * 2),
-                include_older_foundational=True,
-            )
-            instrument_records = _instrument_record_candidates(instrument_search)
-            searched_databases.extend(instrument_search.get("databases") or [])
-            provider_errors.extend(instrument_search.get("provider_errors") or [])
-        except Exception as exc:
-            provider_errors.append({"provider": "instrument literature search", "error": _clean(exc)[:220]})
-
+    per_idea_searches: list[dict[str, Any]] = []
     enriched: list[dict[str, Any]] = []
-    for idea in ideas:
+    dataset_cache: dict[str, list[dict[str, Any]]] = {}
+    instrument_cache: dict[str, tuple[list[dict[str, Any]], list[str], list[dict[str, str]]]] = {}
+
+    for idea_index, idea in enumerate(ideas, start=1):
         item = dict(idea)
-        idea_constructs = _constructs_for_idea(item)
+        scope = _idea_topic_scope(payload, item)
+        idea_constructs = scope.get("constructs") or []
+        dataset_query = ""
+        instrument_query = ""
+        live_datasets: list[dict[str, Any]] = []
+        instrument_records: list[dict[str, Any]] = []
+        idea_databases: list[str] = []
+
+        if modes["secondary"]:
+            dataset_query = _dataset_query(payload, scope)
+            cache_key = dataset_query.lower()
+            if cache_key in dataset_cache:
+                live_datasets = dataset_cache[cache_key]
+            else:
+                datacite_records: list[dict[str, Any]] = []
+                try:
+                    datacite_records = _search_datacite_datasets(dataset_query, MAX_DATASET_RESULTS)
+                    idea_databases.append("DataCite")
+                except Exception as exc:
+                    provider_errors.append({"provider": "DataCite", "idea": _clean(scope.get("title"))[:180], "error": _clean(exc)[:220]})
+                specific_datacite = [record for record in datacite_records if _dataset_is_topic_specific(record, scope) and _dataset_relevance(record, scope) >= MIN_DATASET_RELEVANCE]
+                dataverse_records: list[dict[str, Any]] = []
+                if len(specific_datacite) < 2:
+                    try:
+                        dataverse_records = _search_harvard_dataverse(dataset_query, MAX_DATASET_RESULTS)
+                        idea_databases.append("Harvard Dataverse")
+                    except Exception as exc:
+                        provider_errors.append({"provider": "Harvard Dataverse", "idea": _clean(scope.get("title"))[:180], "error": _clean(exc)[:220]})
+                live_datasets = _dedupe_dataset_candidates(datacite_records + dataverse_records)
+                dataset_cache[cache_key] = live_datasets
+
+        if modes["instrument"]:
+            instrument_query = _instrument_query(payload, scope, modes["systematic"])
+            cache_key = instrument_query.lower()
+            if cache_key in instrument_cache:
+                instrument_records, cached_databases, cached_errors = instrument_cache[cache_key]
+                idea_databases.extend(cached_databases)
+                provider_errors.extend(cached_errors)
+            else:
+                local_errors: list[dict[str, str]] = []
+                local_databases: list[str] = []
+                try:
+                    instrument_search = search_literature_sources(
+                        profile={
+                            "title": _clean(scope.get("title")),
+                            "research_area": _clean(scope.get("title")),
+                            "study_context": " ".join(filter(None, [_clean(scope.get("context")), _clean(scope.get("country_region"))])),
+                            "objectives": idea_constructs[:4],
+                        },
+                        query=instrument_query,
+                        max_results=max(8, MAX_INSTRUMENT_RESULTS * 2),
+                        include_older_foundational=True,
+                    )
+                    instrument_records = _instrument_record_candidates(instrument_search)
+                    local_databases.extend(instrument_search.get("databases") or [])
+                    for error in instrument_search.get("provider_errors") or []:
+                        prepared = dict(error)
+                        prepared["idea"] = _clean(scope.get("title"))[:180]
+                        local_errors.append(prepared)
+                except Exception as exc:
+                    local_errors.append({"provider": "instrument literature search", "idea": _clean(scope.get("title"))[:180], "error": _clean(exc)[:220]})
+                instrument_cache[cache_key] = (instrument_records, local_databases, local_errors)
+                idea_databases.extend(local_databases)
+                provider_errors.extend(local_errors)
 
         ranked_live = sorted(
-            live_datasets,
-            key=lambda record: _dataset_relevance(record, idea_constructs, topic),
+            [record for record in live_datasets if _dataset_is_topic_specific(record, scope) and _dataset_relevance(record, scope) >= MIN_DATASET_RELEVANCE],
+            key=lambda record: _dataset_relevance(record, scope),
             reverse=True,
         )
         selected_live: list[dict[str, Any]] = []
-        for record in ranked_live[:5]:
+        for record in ranked_live[:MAX_TOPIC_SPECIFIC_RESULTS]:
             candidate = dict(record)
-            candidate["matched_variables_or_constructs"] = _matched_constructs(record, idea_constructs) or idea_constructs[:2]
+            candidate["matched_variables_or_constructs"] = _matched_constructs(record, idea_constructs)
+            candidate["matched_topic_terms"] = sorted(set(scope.get("subject_terms") or set()) & _tokenise(" ".join([_clean(record.get("name")), _clean(record.get("description")), " ".join(record.get("subjects") or [])])))[:6]
+            candidate["topic_relevance_score"] = _dataset_relevance(record, scope)
+            candidate["topic_match_reason"] = "Passed the idea-specific dataset relevance gate."
             selected_live.append(candidate)
-        official = _official_portal_matches(payload, item, limit=5) if modes["secondary"] else []
-        secondary_sources = _dedupe_dataset_candidates(selected_live + official)[:8]
+
+        official = _official_portal_matches(payload, item) if modes["secondary"] else []
+        secondary_sources = _dedupe_dataset_candidates(selected_live + official)[:MAX_TOPIC_SPECIFIC_RESULTS]
 
         ranked_instruments = sorted(
-            instrument_records,
-            key=lambda record: _instrument_relevance(record, idea_constructs, topic),
+            [record for record in instrument_records if _instrument_is_topic_specific(record, scope) and _instrument_relevance(record, scope) >= MIN_INSTRUMENT_RELEVANCE],
+            key=lambda record: _instrument_relevance(record, scope),
             reverse=True,
         )
         selected_instruments: list[dict[str, Any]] = []
-        for record in ranked_instruments[:6]:
+        for record in ranked_instruments[:MAX_TOPIC_SPECIFIC_RESULTS]:
             candidate = dict(record)
-            candidate["matched_constructs"] = _matched_constructs(record, idea_constructs) or idea_constructs[:2]
+            candidate["matched_constructs"] = _matched_constructs(record, idea_constructs)
+            candidate["matched_topic_terms"] = sorted(set(scope.get("subject_terms") or set()) & _tokenise(" ".join([_clean(record.get("title")), _clean(record.get("abstract"))])))[:6]
+            candidate["topic_relevance_score"] = _instrument_relevance(record, scope)
+            candidate["topic_match_reason"] = "Passed the idea-specific instrument relevance gate."
             if modes["systematic"]:
-                candidate["candidate_use"] = "Possible source of a review protocol, appraisal checklist or evidence-assessment tool relevant to the proposed review."
+                candidate["candidate_use"] = "Possible source of a review protocol, appraisal checklist or evidence-assessment tool specifically relevant to this proposed review."
             elif "qualitative" in _clean(payload.get("methodology")).lower() or "case study" in _clean(payload.get("methodology")).lower():
-                candidate["candidate_use"] = "Possible source of an interview guide, interview protocol or qualitative data-collection structure that may be adapted."
+                candidate["candidate_use"] = "Possible source of an interview guide or qualitative data-collection structure for the focal constructs in this idea."
             else:
-                candidate["candidate_use"] = "Possible source of a questionnaire, scale, index or measurement instrument that may be adopted or adapted."
+                candidate["candidate_use"] = "Possible source of a questionnaire, scale, index or measurement instrument for the focal constructs in this idea."
             selected_instruments.append(candidate)
 
-        existing_categories = item.get("possible_data_sources") or []
-        if not isinstance(existing_categories, list):
-            existing_categories = [existing_categories]
-        if modes["secondary"] and secondary_sources:
-            item["possible_data_sources"] = [source.get("name") for source in secondary_sources[:5] if source.get("name")]
-        else:
-            item["possible_data_sources"] = [str(x) for x in existing_categories if str(x).strip()]
-
+        item["possible_data_sources"] = _topic_specific_data_directions(payload, item, modes, secondary_sources, selected_instruments)
         item["research_resource_guidance"] = {
-            "search_basis": idea_constructs,
+            "topic_scope": _clean(scope.get("title")),
+            "search_basis": _specific_search_basis(scope),
+            "dataset_query": dataset_query,
+            "instrument_query": instrument_query,
             "secondary_data_sources": secondary_sources,
             "questionnaire_or_instrument_sources": selected_instruments,
-            "resource_note": (
-                "These are candidate sources identified from live metadata searches and an official-source catalogue. "
-                "Before approval, confirm variable definitions, coverage, access conditions, measurement validity, permissions, ethics and fit with the final design."
-            ),
+            "resource_note": "Only candidates that matched this idea's title, focal constructs and subject terms are shown. General sources are omitted. Confirm variables, population, geographic coverage, access conditions, validity, permissions and ethics before use.",
         }
         enriched.append(item)
+        searched_databases.extend(idea_databases)
+        per_idea_searches.append({
+            "idea_number": idea_index,
+            "title": _clean(scope.get("title")),
+            "dataset_query": dataset_query,
+            "instrument_query": instrument_query,
+            "datasets_returned": len(secondary_sources),
+            "instruments_returned": len(selected_instruments),
+        })
 
     return {
         "ideas": enriched,
         "resource_search": {
             "searched_at": datetime.now(timezone.utc).isoformat(),
             "modes": modes,
-            "dataset_query": dataset_query,
-            "instrument_query": instrument_query,
+            "strategy": "per_idea_strict",
+            "per_idea_searches": per_idea_searches,
             "databases": list(dict.fromkeys(searched_databases)),
             "provider_errors": provider_errors,
         },

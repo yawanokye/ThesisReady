@@ -221,7 +221,7 @@ def _required_topic_json_structure() -> dict[str, Any]:
                 "current_research_trend_or_gap": "string",
                 "possible_methodology": "string",
                 "possible_variables_or_constructs": ["string"],
-                "possible_data_sources": ["string"],
+                "possible_data_sources": ["topic-specific data direction tied to the title, population and focal constructs"],
                 "potential_contribution": "string",
                 "proposed_objectives": {
                     "general_objective": "string",
@@ -592,7 +592,9 @@ def _fallback_ideas(payload: dict[str, Any], sources: list[dict[str, Any]], coun
             "current_research_trend_or_gap": trends[i % len(trends)],
             "possible_methodology": methodology,
             "possible_variables_or_constructs": [area, "contextual drivers", "outcomes", "institutional factors"],
-            "possible_data_sources": ["recent scholarly literature", "survey or interview data", "official or institutional records where available"],
+            "possible_data_sources": [
+                f"Topic-specific {methodology.lower()} data on {area} from {context}",
+            ],
             "potential_contribution": "Provides a current, context-specific study that can be refined once the supervisor confirms the final scope and available data.",
             "evidence_sources": ["S1", "S2"] if len(sources) >= 2 else (["S1"] if sources else []),
             "attention_note": "[confirm final scope, variables and data access before approval]",
@@ -685,14 +687,17 @@ def generate_topic_ideas(payload: dict[str, Any]) -> dict[str, Any]:
             ),
             (
                 "Each idea must include a concise synopsis, trend or gap, "
-                "possible methodology, variables or constructs, broad "
-                "data-source categories, contribution, proposed objectives and "
-                "evidence source keys."
+                "possible methodology, variables or constructs, topic-specific "
+                "data directions tied to the proposed population and constructs, "
+                "contribution, proposed objectives and evidence source keys."
             ),
             (
                 "Do not invent named datasets, questionnaires, scales or "
-                "instruments. The application will run a separate live resource "
-                "search after the ideas are generated."
+                "instruments. Do not use generic entries such as 'survey data', "
+                "'official records', 'recent literature' or 'institutional data'. "
+                "Describe the exact kind of data needed for the individual title, "
+                "population, location and focal constructs. The application will "
+                "then run a separate idea-specific live resource search."
             ),
             (
                 "Return one JSON object only with the keys trend_summary, ideas "
@@ -852,8 +857,8 @@ def generate_topic_ideas(payload: dict[str, Any]) -> dict[str, Any]:
             "with a supervisor and a full literature search before submission. "
             "Retracted or withdrawn records are excluded from the "
             "idea-generation context where detected. Named datasets and "
-            "instrument sources are candidates from live metadata searches or "
-            "official source catalogues and must be checked before adoption, "
-            "adaptation or analysis."
+            "instrument sources are candidates from strict, idea-specific metadata "
+            "searches or official source catalogues. General resources are omitted, "
+            "and every candidate must be checked before adoption, adaptation or analysis."
         ),
     }
