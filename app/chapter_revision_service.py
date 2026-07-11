@@ -115,10 +115,128 @@ def _safe_get_openai_client():
         from openai import OpenAI
         return OpenAI(
             api_key=api_key,
-            timeout=float(os.getenv("PROJECTREADY_CHAPTER_REVISION_TIMEOUT_SECONDS", "240")),
+            timeout=float(os.getenv("PROJECTREADY_CHAPTER_REVISION_TIMEOUT_SECONDS", "900")),
         )
     except Exception:
         return None
+
+
+
+
+def _env_int(name: str, default: int, minimum: int | None = None, maximum: int | None = None) -> int:
+    try:
+        value = int(os.getenv(name, str(default)) or default)
+    except Exception:
+        value = default
+    if minimum is not None:
+        value = max(minimum, value)
+    if maximum is not None:
+        value = min(maximum, value)
+    return value
+
+
+def _format_provider_errors(errors: list[Any]) -> str:
+    rows: list[str] = []
+    for item in errors:
+        if isinstance(item, dict):
+            provider = str(item.get("provider") or "provider").strip()
+            error = str(item.get("error") or item.get("message") or "unavailable").strip()
+            if "HTTP Error 429" in error or "rate limit" in error.lower():
+                error = "temporary rate limit from this scholarly metadata provider"
+            rows.append(f"- {provider}: {error[:220]}")
+        else:
+            rows.append(f"- {str(item)[:240]}")
+    return "\n".join(rows) or "- The AI revision service was unavailable."
+
+
+def _revision_model_candidates(level: str) -> list[str]:
+    primary = _revision_model(level)
+    candidates = [
+        primary,
+        os.getenv("OPENAI_CHAPTER_REVISION_FALLBACK_MODEL", ""),
+        os.getenv("OPENAI_FINAL_SYNTHESIS_MODEL", ""),
+        os.getenv("OPENAI_SECTION_ANALYSIS_MODEL", ""),
+        os.getenv("OPENAI_MODEL", ""),
+    ]
+    # Keep conservative fallback names last. Unsupported models fail fast and the
+    # next configured option is tried. Production should still set the explicit
+    # env vars above for the models available to the account.
+    if _level_key(level) in {"research_masters", "professional_doctorate", "phd"}:
+        candidates.extend(["gpt-5.5", "gpt-5.4", "gpt-4.1"])
+    else:
+        candidates.extend(["gpt-5.4", "gpt-4.1"])
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in candidates:
+        item = str(value or "").strip()
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        result.append(item)
+    return result
+
+
+def _response_output_text(response: Any) -> str:
+    output = str(getattr(response, "output_text", "") or "").strip()
+    if output:
+        return output
+    try:
+        chunks: list[str] = []
+        for item in getattr(response, "output", []) or []:
+            for content in getattr(item, "content", []) or []:
+                text = getattr(content, "text", None)
+                if text:
+                    chunks.append(str(text))
+        return "\n".join(chunks).strip()
+    except Exception:
+        return ""
+
+
+def _call_responses_with_fallbacks(
+    client: Any,
+    *,
+    level: str,
+    prompt: dict[str, Any],
+    instructions: str,
+    max_output_tokens: int,
+) -> tuple[str, str, list[dict[str, str]]]:
+    """Call the revision model with retries and configured fallbacks.
+
+    The old implementation made one very large request. A single timeout then
+    returned the chapter unchanged and consumed the user's revision entitlement.
+    This helper tries configured fallback models and reduces the token ceiling on
+    retry so a transient timeout does not become a completed fallback report.
+    """
+    errors: list[dict[str, str]] = []
+    attempts_per_model = _env_int("PROJECTREADY_CHAPTER_REVISION_MODEL_ATTEMPTS", 2, minimum=1, maximum=4)
+    for candidate in _revision_model_candidates(level):
+        token_budget = max_output_tokens
+        for attempt in range(1, attempts_per_model + 1):
+            try:
+                response = client.responses.create(
+                    model=candidate,
+                    max_output_tokens=max(3500, token_budget),
+                    instructions=instructions,
+                    input=json.dumps(prompt, ensure_ascii=False, indent=2),
+                )
+                output = _response_output_text(response)
+                if output:
+                    return output, candidate, errors
+                errors.append({
+                    "provider": "openai",
+                    "error": f"{candidate} returned an empty response on attempt {attempt}.",
+                })
+            except Exception as exc:
+                message = str(exc)[:240]
+                errors.append({
+                    "provider": "openai",
+                    "error": f"{candidate} attempt {attempt}: {message}",
+                })
+                if re.search(r"timed?\s*out|timeout|request\s+timed\s+out", message, flags=re.IGNORECASE):
+                    token_budget = max(3500, int(token_budget * 0.55))
+                    continue
+                break
+    raise RuntimeError("Chapter revision failed after configured model retries. " + _format_provider_errors(errors))
 
 
 def _level_key(level: str) -> str:
@@ -462,7 +580,7 @@ def _fallback_report(payload: dict[str, Any], sources: list[dict[str, Any]], err
         f"{len(sources)} scholarly record(s) were available for relevance screening, but no source was inserted automatically in fallback mode."
         if sources else "No scholarly records were available for source-supported strengthening."
     )
-    error_text = "\n".join(f"- {item}" for item in errors) or "- The AI revision service was unavailable."
+    error_text = _format_provider_errors(errors)
     return f"""# Chapter Strengthening Report
 
 ## Status
@@ -622,6 +740,7 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
     source_records = _source_context(sources)
     provider_errors = list(search_result.get("provider_errors") or [])
     model = _revision_model(level)
+    model_used = model
     client = _safe_get_openai_client()
     ai_enabled = _env_bool("PROJECTREADY_CHAPTER_REVISION_USE_AI", True)
 
@@ -713,20 +832,22 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
             "include_supervisor_response_matrix": bool(payload.get("include_supervisor_response_matrix", True)),
         }
 
+        revision_instructions = (
+            "You are ProjectReady AI's senior thesis and dissertation chapter editor. "
+            "Strengthen the supplied chapter rigorously while preserving confirmed evidence, valid citations, "
+            "approved research logic and the student's substantive voice. Apply chapter-aware academic standards, "
+            "formal British English and natural scholarly flow. Never invent analysis, results or references. "
+            "Separate completed revisions from remaining student or supervisor actions."
+        )
         try:
-            response = client.responses.create(
-                model=model,
-                max_output_tokens=max(4000, min(int(os.getenv("PROJECTREADY_CHAPTER_REVISION_MAX_OUTPUT_TOKENS", "30000")), 60000)),
-                instructions=(
-                    "You are ProjectReady AI's senior thesis and dissertation chapter editor. "
-                    "Strengthen the supplied chapter rigorously while preserving confirmed evidence, valid citations, "
-                    "approved research logic and the student's substantive voice. Apply chapter-aware academic standards, "
-                    "formal British English and natural scholarly flow. Never invent analysis, results or references. "
-                    "Separate completed revisions from remaining student or supervisor actions."
-                ),
-                input=json.dumps(prompt, ensure_ascii=False, indent=2),
+            raw, model_used, attempt_errors = _call_responses_with_fallbacks(
+                client,
+                level=level,
+                prompt=prompt,
+                instructions=revision_instructions,
+                max_output_tokens=max(4000, min(_env_int("PROJECTREADY_CHAPTER_REVISION_MAX_OUTPUT_TOKENS", 18000, minimum=4000), 60000)),
             )
-            raw = str(getattr(response, "output_text", "") or "").strip()
+            provider_errors.extend(attempt_errors)
             revised_chapter, strengthening_report, supervisor_matrix = _split_revision_package(raw)
             if not revised_chapter:
                 revised_chapter = chapter_text
@@ -754,7 +875,7 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
         "strengthening_report": strengthening_report,
         "supervisor_response_matrix": supervisor_matrix,
         "mode": mode,
-        "model_used": model if client and ai_enabled else "none",
+        "model_used": model_used if client and ai_enabled else "none",
         "selected_level": level,
         "selected_chapter_type": chapter_type,
         "target_page_range": f"{page_min}-{page_max}",
@@ -776,6 +897,7 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
             "Citation density is strengthened through relevant evidence, not reference padding.",
             "Retracted or withdrawn records are excluded where detectable.",
             "The report does not guarantee supervisor approval or examination success.",
+            "If the AI revision model is unavailable, the protected route returns an error instead of consuming paid revision entitlement.",
         ],
     }
 
