@@ -367,6 +367,11 @@ def strengthen_project_chapter(
             action="revision",
         ):
             result = revise_chapter(merged_payload)
+            if str(result.get("mode") or "").startswith("metadata_fallback"):
+                raise RuntimeError(
+                    "The chapter revision model was unavailable or timed out, so the chapter was not strengthened. "
+                    "No paid revision entitlement was completed. Please retry after checking OPENAI_API_KEY, model access, quota and timeout settings."
+                )
 
             if bool(merged_payload.get("save_to_project", True)):
                 profile = project.get("profile") or {}
