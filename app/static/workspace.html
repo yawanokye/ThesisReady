@@ -185,14 +185,14 @@
         </label>
         <label>Scholarly humanizer depth
           <select id="humanizerMode">
-            <option value="light">Light, fastest and lowest cost</option>
-            <option value="balanced" selected>Balanced, recommended</option>
-            <option value="deep">Deep, strongest style refinement</option>
+            <option value="light">Light, protected local refinement only</option>
+            <option value="balanced" selected>Balanced, natural scholarly refinement</option>
+            <option value="deep">Deep, section-by-section refinement</option>
             <option value="off">Off</option>
           </select>
         </label>
         <label class="inline"><input type="checkbox" id="humanRevisionPass" checked /> Run the selective academic quality model pass when the draft still needs it</label>
-        <p class="hint">The protected humanizer removes generic or mechanical phrasing, improves paragraph rhythm and follows the student's supplied writing direction without changing citations, statistics, headings, tables or evidence. Balanced mode uses a model refinement only when the style diagnostic requires it. For very long chapters, refinement is handled in section batches so depth is not compressed.</p>
+        <p class="hint">The protected humanizer removes generic or mechanical phrasing, reduces repeated sentence frames, improves paragraph movement and follows the student's supplied writing direction without changing citations, statistics, headings, tables or evidence. Balanced mode refines only the weakest sections to control cost. Deep mode works section by section, including very long chapters, so depth is not compressed.</p>
       </div>
 
       <div class="source-box literature-source-box" id="integrity-tools">

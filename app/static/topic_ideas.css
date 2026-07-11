@@ -404,6 +404,13 @@ body.topic-page {
   font-size: 0.76rem;
   font-weight: 700;
 }
+
+.resource-topic-match {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #1f4f46;
+}
+
 .resource-caution,
 .resource-note {
   color: #78350f;

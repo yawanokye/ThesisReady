@@ -413,6 +413,8 @@ function renderSecondarySources(resources) {
       <p class="resource-provider">${escapeHtml(source.provider || source.discovery_database || "")}${source.year ? ` · ${escapeHtml(source.year)}` : ""}</p>
       ${source.description ? `<p>${escapeHtml(source.description)}</p>` : ""}
       ${renderMatchedBadges(source.matched_variables_or_constructs || [])}
+      ${renderMatchedBadges(source.matched_topic_terms || [])}
+      ${source.topic_match_reason ? `<p class="resource-topic-match">${escapeHtml(source.topic_match_reason)}</p>` : ""}
       ${source.access_note ? `<p class="resource-caution">${escapeHtml(source.access_note)}</p>` : ""}
       ${resourceLink(source.url, "Open data source")}
     </article>
@@ -433,6 +435,8 @@ function renderInstrumentSources(resources) {
       <p class="resource-provider">${escapeHtml(authors)}${source.year ? ` (${escapeHtml(source.year)})` : ""}${source.source ? ` · ${escapeHtml(source.source)}` : ""}</p>
       ${source.candidate_use ? `<p>${escapeHtml(source.candidate_use)}</p>` : ""}
       ${renderMatchedBadges(source.matched_constructs || [])}
+      ${renderMatchedBadges(source.matched_topic_terms || [])}
+      ${source.topic_match_reason ? `<p class="resource-topic-match">${escapeHtml(source.topic_match_reason)}</p>` : ""}
       ${source.access_and_adaptation_note ? `<p class="resource-caution">${escapeHtml(source.access_and_adaptation_note)}</p>` : ""}
       ${resourceLink(source.url || (source.doi ? `https://doi.org/${source.doi}` : ""), "Open publication record")}
     </article>`;
@@ -443,19 +447,20 @@ function renderResearchResources(idea) {
   const guidance = idea.research_resource_guidance || {};
   const secondary = normaliseList(guidance.secondary_data_sources);
   const instruments = normaliseList(guidance.questionnaire_or_instrument_sources);
-  if (!secondary.length && !instruments.length) return "";
+  if (!Object.keys(guidance).length) return "";
   const basis = normaliseList(guidance.search_basis);
+  const topicScope = guidance.topic_scope || idea.title || "this proposed topic";
   return `
     <section class="idea-box resource-guidance-box">
       <div class="resource-guidance-head">
         <div>
-          <strong>Possible research data and instrument sources</strong>
-          <p>Search matched to the variables and constructs proposed for this idea.</p>
+          <strong>Idea-specific research data and instrument sources</strong>
+          <p>Strict search scope: ${escapeHtml(topicScope)}. General resources are excluded.</p>
         </div>
       </div>
       ${basis.length ? `<div class="idea-badge-row resource-basis">${basis.map(item => `<span class="badge">${escapeHtml(item)}</span>`).join("")}</div>` : ""}
-      ${secondary.length ? `<div class="resource-group"><h4>Possible secondary data sources</h4>${renderSecondarySources(secondary)}</div>` : ""}
-      ${instruments.length ? `<div class="resource-group"><h4>Possible questionnaire, scale, interview guide or instrument sources</h4>${renderInstrumentSources(instruments)}</div>` : ""}
+      <div class="resource-group"><h4>Topic-specific secondary data sources</h4>${renderSecondarySources(secondary)}</div>
+      <div class="resource-group"><h4>Topic-specific questionnaire, scale, interview guide or instrument sources</h4>${renderInstrumentSources(instruments)}</div>
       ${guidance.resource_note ? `<p class="resource-note">${escapeHtml(guidance.resource_note)}</p>` : ""}
     </section>
   `;
@@ -519,7 +524,7 @@ function renderIdeas(result) {
         <div class="idea-box"><strong>Current trend or gap</strong>${escapeHtml(idea.current_research_trend_or_gap || "")}</div>
         <div class="idea-box"><strong>Possible methodology</strong>${escapeHtml(idea.possible_methodology || "")}</div>
         <div class="idea-box"><strong>Variables or constructs</strong><div class="idea-badge-row">${listText(idea.possible_variables_or_constructs || [])}</div></div>
-        <div class="idea-box"><strong>Likely data direction</strong><div class="idea-badge-row">${listText(idea.possible_data_sources || [])}</div></div>
+        <div class="idea-box"><strong>Topic-specific data direction</strong><div class="idea-badge-row">${listText(idea.possible_data_sources || [])}</div></div>
       </div>
       ${renderResearchResources(idea)}
       <div class="idea-box"><strong>Potential contribution</strong>${escapeHtml(idea.potential_contribution || "")}</div>
@@ -567,7 +572,7 @@ Level alignment: ${objectives.levelAlignment}
 Trend/gap: ${idea.current_research_trend_or_gap || ""}
 Method: ${idea.possible_methodology || ""}
 Variables/constructs: ${variables}
-Likely data direction: ${dataSources}
+Topic-specific data direction: ${dataSources}
 Possible secondary data sources:
 ${secondarySources}
 Possible questionnaire or instrument sources:
@@ -615,7 +620,7 @@ async function generateIdeas(event) {
     } else {
       $("ideaStatus").textContent = providerErrors
         ? `Generated the unlocked idea set. ${providerErrors} metadata provider(s) could not be reached.`
-        : "Generated the unlocked topic ideas, objectives, possible data sources and possible instrument sources.";
+        : "Generated the unlocked topic ideas with idea-specific data sources and instruments. General resources were excluded.";
       await checkTopicAccess({ quiet: true });
     }
   } catch (err) {
