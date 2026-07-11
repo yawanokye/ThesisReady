@@ -55,3 +55,18 @@ def test_docx_export_marks_changes_and_action_items():
     )
     assert filename.endswith(".docx")
     assert len(stream.getvalue()) > 1000
+
+
+def test_fallback_report_formats_provider_errors():
+    from app.chapter_revision_service import _fallback_report
+    report = _fallback_report(
+        {},
+        [],
+        [
+            {"provider": "Semantic Scholar", "error": "HTTP Error 429: "},
+            {"provider": "openai", "error": "Chapter revision failed: Request timed out."},
+        ],
+    )
+    assert "{'provider'" not in report
+    assert "Semantic Scholar: temporary rate limit" in report
+    assert "openai: Chapter revision failed" in report
