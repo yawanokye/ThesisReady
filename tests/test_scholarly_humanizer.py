@@ -83,3 +83,40 @@ def test_humanizer_controls_are_available_in_both_workspaces():
 
 def test_backend_python_is_not_publicly_served_from_static():
     assert not list(Path("app/static").glob("*.py"))
+
+
+def test_humanizer_improves_repetitive_academic_framing_without_changing_citations():
+    text = """# 1.2 Background
+
+Furthermore, it is important to note that the present study plays a crucial role in examining teacher assessment (Mensah, 2024). Furthermore, the present study is able to show how assessment operates in order to support learning. Furthermore, it is against this background that the present study examines the issue.
+"""
+    revised, report = humanize_scholarly_text(text, mode="balanced")
+    assert "it is important to note" not in revised.lower()
+    assert "plays a crucial role" not in revised.lower()
+    assert "is able to" not in revised.lower()
+    assert revised.lower().count("furthermore") <= 2
+    assert "(Mensah, 2024)" in revised
+    assert report["score_after"] >= report["score_before"]
+
+
+def test_long_chapter_is_split_into_protected_section_batches():
+    from app.scholarly_humanizer import build_humanizer_batches
+
+    text = """# CHAPTER 2
+
+# 2.1 Introduction
+
+""" + ("The literature presents a contested position. " * 120) + """
+
+# 2.2 Theoretical Review
+
+""" + ("The theory provides a basis for comparison. " * 120) + """
+
+# References
+
+Mensah, A. (2024). Example study.
+"""
+    batches = build_humanizer_batches(text, max_words=700)
+    assert len(batches) >= 3
+    assert any(batch["protected"] for batch in batches)
+    assert all(batch["word_count"] > 0 for batch in batches)
