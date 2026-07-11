@@ -33,6 +33,7 @@ class ProjectCreate(BaseModel):
     other_chapter_title: str = ""
     other_chapter_instructions: str = ""
     draft_maturity: str = "Supervisor-ready draft"
+    humanizer_mode: str = "balanced"
     student_contribution: dict[str, Any] = Field(default_factory=dict)
     project_kind: str = "standard"
     recovery_email: str = ""
@@ -71,6 +72,7 @@ class DraftRequest(BaseModel):
     draft_maturity: str = "Supervisor-ready draft"
     student_contribution: dict[str, Any] = Field(default_factory=dict)
     human_revision_pass: bool = True
+    humanizer_mode: str = "balanced"
     academic_integrity_confirmed: bool = False
     user_contribution_confirmed: bool = False
     allow_provisional_drafting: bool = True
@@ -160,6 +162,7 @@ class ChapterRevisionRequest(BaseModel):
     citation_style: str = "APA 7th"
     revision_level: str = "Comprehensive chapter strengthening"
     revision_goals: str = ""
+    humanizer_mode: str = "balanced"
     supervisor_comments: str = ""
     strengthen_structure: bool = True
     strengthen_problem_gap: bool = True
@@ -177,6 +180,16 @@ class ChapterRevisionRequest(BaseModel):
     source_limit: int = 45
     previous_chapters_context: str = ""
     allow_missing_section_insertions: bool = True
+    uploaded_content_scope: str = "selected_chapter"
+    strengthening_scope: str = "whole_chapter"
+    selected_section_ids: list[str] = Field(default_factory=list)
+    selected_section_titles: list[str] = Field(default_factory=list)
+    new_section_ids: list[str] = Field(default_factory=list)
+    new_section_titles: list[str] = Field(default_factory=list)
+    custom_new_sections: list[dict[str, Any]] = Field(default_factory=list)
+    custom_target_pages_enabled: bool = False
+    target_page_min: int | None = None
+    target_page_max: int | None = None
     source_bank: list[dict[str, Any]] = Field(default_factory=list)
     save_to_project: bool = True
     academic_integrity_confirmed: bool = False
@@ -208,6 +221,54 @@ class ChapterRevisionRequest(BaseModel):
         }
         return value if value in allowed else "Comprehensive chapter strengthening"
 
+
+    @field_validator("uploaded_content_scope")
+    @classmethod
+    def validate_uploaded_content_scope(cls, value: str) -> str:
+        return value if value in {"selected_chapter", "complete_thesis"} else "selected_chapter"
+
+    @field_validator("strengthening_scope")
+    @classmethod
+    def validate_strengthening_scope(cls, value: str) -> str:
+        return value if value in {"whole_chapter", "selected_sections"} else "whole_chapter"
+
+    @field_validator("selected_section_ids", "selected_section_titles", "new_section_ids", "new_section_titles")
+    @classmethod
+    def validate_section_lists(cls, value: list[str]) -> list[str]:
+        result: list[str] = []
+        seen: set[str] = set()
+        for item in value or []:
+            text = str(item or "").strip()
+            key = text.casefold()
+            if not text or key in seen:
+                continue
+            seen.add(key)
+            result.append(text[:180])
+        return result[:40]
+
+    @field_validator("custom_new_sections")
+    @classmethod
+    def validate_custom_new_sections(cls, value: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        result: list[dict[str, Any]] = []
+        for item in value or []:
+            if not isinstance(item, dict):
+                continue
+            title = str(item.get("title") or "").strip()
+            if not title:
+                continue
+            result.append({
+                "title": title[:180],
+                "instructions": str(item.get("instructions") or "").strip()[:1800],
+            })
+        return result[:20]
+
+    @field_validator("target_page_min", "target_page_max")
+    @classmethod
+    def validate_target_page_values(cls, value: int | None) -> int | None:
+        if value is None:
+            return None
+        return max(1, min(int(value), 120))
+
     @field_validator("source_limit")
     @classmethod
     def validate_strengthener_source_limit(cls, value: int) -> int:
@@ -235,6 +296,11 @@ class ChapterRevisionExportRequest(BaseModel):
 class ChapterTargetRequest(BaseModel):
     academic_level: str = "Bachelors"
     chapter_type: str = "1. Introduction"
+    strengthening_scope: str = "whole_chapter"
+    selected_section_count: int = 0
+    custom_target_pages_enabled: bool = False
+    target_page_min: int | None = None
+    target_page_max: int | None = None
 
 
 class ProjectRecoveryRequest(BaseModel):

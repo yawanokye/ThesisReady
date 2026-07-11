@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Any
 
 from app.source_finder import search_literature_sources
+from app.scholarly_humanizer import humanize_scholarly_text, scholarly_humanizer_prompt_rules
 
 _REVISION_BLUE = (0, 112, 192)
 _ACTION_RED = (192, 0, 0)
@@ -269,6 +270,109 @@ def _chapter_key(chapter_type: str) -> str:
 
 def _page_target(level: str, chapter_type: str) -> tuple[int, int]:
     return CHAPTER_PAGE_TARGETS[_level_key(level)][_chapter_key(chapter_type)]
+
+
+_SECTION_PAGE_TARGETS: dict[str, tuple[int, int]] = {
+    "bachelors": (2, 4),
+    "non_research_masters": (3, 5),
+    "research_masters": (4, 7),
+    "professional_doctorate": (5, 9),
+    "phd": (6, 10),
+}
+
+
+def _resolved_page_target(payload: dict[str, Any], level: str, chapter_type: str) -> tuple[int, int]:
+    default_min, default_max = _page_target(level, chapter_type)
+    if bool(payload.get("custom_target_pages_enabled")):
+        try:
+            custom_min = max(1, min(int(payload.get("target_page_min") or default_min), 120))
+            custom_max = max(1, min(int(payload.get("target_page_max") or default_max), 120))
+        except Exception:
+            custom_min, custom_max = default_min, default_max
+        if custom_max < custom_min:
+            custom_min, custom_max = custom_max, custom_min
+        return custom_min, custom_max
+
+    if str(payload.get("strengthening_scope") or "whole_chapter") == "selected_sections":
+        section_count = len(payload.get("selected_section_titles") or [])
+        section_count += len(payload.get("new_section_titles") or [])
+        section_count += len(payload.get("custom_new_sections") or [])
+        section_count = max(1, section_count)
+        per_min, per_max = _SECTION_PAGE_TARGETS[_level_key(level)]
+        return max(1, min(default_max, section_count * per_min)), max(2, min(default_max, section_count * per_max))
+    return default_min, default_max
+
+
+_CHAPTER_WORD_NUMBERS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+}
+
+
+def _chapter_heading_number(line: str) -> int | None:
+    value = re.sub(r"^\s*#{1,6}\s*", "", str(line or "")).strip()
+    value = re.sub(r"\s+", " ", value)
+    match = re.match(r"^chapter\s+(one|two|three|four|five|six|seven|eight|nine|ten|\d{1,2})\b", value, flags=re.IGNORECASE)
+    if match:
+        token = match.group(1).lower()
+        return int(token) if token.isdigit() else _CHAPTER_WORD_NUMBERS.get(token)
+    match = re.match(r"^(\d{1,2})(?:\.0)?\s+(?!\d)([A-Za-z][^\n]{2,100})$", value)
+    if match and "." not in match.group(1):
+        return int(match.group(1))
+    return None
+
+
+def _scope_to_selected_chapter(text: str, chapter_type: str, uploaded_content_scope: str) -> tuple[str, dict[str, Any]]:
+    value = _finalise_chapter_text(text)
+    if uploaded_content_scope != "complete_thesis":
+        return value, {"uploaded_content_scope": "selected_chapter", "chapter_isolated": False, "reason": "selected chapter supplied"}
+
+    chapter_number_match = re.match(r"^\s*(\d+)", str(chapter_type or ""))
+    chapter_number = int(chapter_number_match.group(1)) if chapter_number_match else None
+    if not chapter_number:
+        raise ValueError(
+            "A complete thesis can only be isolated when a numbered chapter is selected. "
+            "Choose Chapters One to Five or paste only the custom chapter text."
+        )
+
+    lines = value.splitlines(keepends=True)
+    offsets: list[int] = []
+    cursor = 0
+    headings: list[tuple[int, int]] = []
+    for line in lines:
+        offsets.append(cursor)
+        number = _chapter_heading_number(line)
+        if number is not None:
+            headings.append((cursor, number))
+        cursor += len(line)
+
+    candidates: list[tuple[int, str]] = []
+    for index, (start, number) in enumerate(headings):
+        if number != chapter_number:
+            continue
+        end = len(value)
+        for next_start, next_number in headings[index + 1:]:
+            if next_number != chapter_number:
+                end = next_start
+                break
+        segment = value[start:end].strip()
+        if len(segment) >= 100:
+            candidates.append((len(segment), segment))
+
+    if not candidates:
+        raise ValueError(
+            f"The uploaded complete thesis could not be safely separated at Chapter {chapter_number}. "
+            "Make sure the document contains a clear heading such as 'CHAPTER TWO' or '2 LITERATURE REVIEW', "
+            "or upload/paste only the selected chapter."
+        )
+    _, selected = max(candidates, key=lambda item: item[0])
+    return selected, {
+        "uploaded_content_scope": "complete_thesis",
+        "chapter_isolated": True,
+        "selected_chapter_number": chapter_number,
+        "original_character_count": len(value),
+        "selected_character_count": len(selected),
+    }
 
 
 def _citation_target(level: str, chapter_type: str) -> tuple[int, int]:
@@ -726,14 +830,41 @@ def _previous_chapters_revision_context(payload: dict[str, Any]) -> dict[str, An
 
 
 def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
-    chapter_text = _finalise_chapter_text(str(payload.get("chapter_text") or ""))
-    if len(chapter_text) < 100:
+    payload = dict(payload)
+    raw_uploaded_text = _finalise_chapter_text(str(payload.get("chapter_text") or ""))
+    if len(raw_uploaded_text) < 100:
         raise ValueError("Paste or upload the existing thesis or dissertation chapter before requesting strengthening.")
 
-    payload = dict(payload)
     level = str(payload.get("academic_level") or "Bachelors")
     chapter_type = str(payload.get("chapter_type") or "1. Introduction")
-    page_min, page_max = _page_target(level, chapter_type)
+    chapter_text, scope_metadata = _scope_to_selected_chapter(
+        raw_uploaded_text,
+        chapter_type,
+        str(payload.get("uploaded_content_scope") or "selected_chapter"),
+    )
+    if scope_metadata.get("chapter_isolated"):
+        existing_alignment = str(payload.get("previous_chapters_context") or "").strip()
+        if len(raw_uploaded_text) <= 52000:
+            full_thesis_alignment = raw_uploaded_text
+        else:
+            middle_start = max(0, (len(raw_uploaded_text) // 2) - 8000)
+            full_thesis_alignment = "\n\n".join([
+                "[Beginning of complete thesis]\n" + raw_uploaded_text[:18000],
+                "[Middle sample of complete thesis]\n" + raw_uploaded_text[middle_start:middle_start + 16000],
+                "[End of complete thesis]\n" + raw_uploaded_text[-18000:],
+            ])
+        payload["previous_chapters_context"] = "\n\n---\n\n".join(
+            item for item in [existing_alignment, "Complete thesis supplied for alignment only:\n" + full_thesis_alignment] if item
+        )
+
+    strengthening_scope = str(payload.get("strengthening_scope") or "whole_chapter")
+    selected_titles = [str(item).strip() for item in payload.get("selected_section_titles") or [] if str(item).strip()]
+    new_titles = [str(item).strip() for item in payload.get("new_section_titles") or [] if str(item).strip()]
+    custom_new_sections = [item for item in payload.get("custom_new_sections") or [] if isinstance(item, dict) and str(item.get("title") or "").strip()]
+    if strengthening_scope == "selected_sections" and not (selected_titles or new_titles or custom_new_sections):
+        raise ValueError("Select at least one section to strengthen or add before using selected-sections mode.")
+
+    page_min, page_max = _resolved_page_target(payload, level, chapter_type)
     citation_min, citation_max = _citation_target(level, chapter_type)
 
     sources, blocked, search_result = _search_sources(payload)
@@ -770,6 +901,11 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
                 "target_pages": f"{page_min}-{page_max}",
                 "target_citations_per_1000_words": f"{citation_min}-{citation_max}",
                 "allow_missing_section_insertions": bool(payload.get("allow_missing_section_insertions", True)),
+                "uploaded_content_scope": str(payload.get("uploaded_content_scope") or "selected_chapter"),
+                "strengthening_scope": strengthening_scope,
+                "selected_sections_to_strengthen": selected_titles,
+                "standard_sections_to_add_if_missing": new_titles,
+                "custom_sections_to_add": custom_new_sections,
             },
             "long_chapter_strengthening_strategy": _revision_long_chapter_strategy(level, chapter_type, page_min, page_max),
             "previous_chapters_for_alignment": _previous_chapters_revision_context(payload),
@@ -790,6 +926,24 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
                 "focus": _revision_focus(payload),
             },
             "existing_chapter": chapter_text,
+            "section_scope": {
+                "mode": strengthening_scope,
+                "sections_to_strengthen": selected_titles,
+                "sections_to_add_if_missing": new_titles,
+                "custom_sections_to_add": custom_new_sections,
+                "rules": (
+                    [
+                        "Return only the selected sections and requested new sections, not the full chapter.",
+                        "Use the rest of the selected chapter only as context. Do not rewrite, summarise or reproduce unselected sections.",
+                        "Preserve the selected chapter's numbering style and place requested additions in their academically appropriate location.",
+                    ]
+                    if strengthening_scope == "selected_sections"
+                    else [
+                        "Return the complete strengthened selected chapter only. Never return another chapter from a complete thesis upload.",
+                        "Strengthen the complete selected chapter while preserving confirmed content and chapter boundaries.",
+                    ]
+                ),
+            },
             "chapter_specific_rules": _chapter_rules(chapter_type, str(payload.get("study_stage") or "")),
             "scholarly_source_records": source_records,
             "strict_rules": [
@@ -801,11 +955,15 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
                 "Do not add mediation, moderation, causality, longitudinal design, multilevel structure, robustness tests or measurement validation unless they are justified by the approved study and available data.",
                 "Do not present a recommended analysis as completed. Use a concise bracketed action item such as [conduct and report the required diagnostic test] when essential evidence is missing.",
                 "Preserve chapter numbering and school-specific headings where supplied. Add a missing expected heading only when the chapter type, school guidelines, previous chapters or supervisor comments clearly require it.",
+                "The uploaded input may be a complete thesis, but existing_chapter has already been isolated to the selected chapter. Do not output any other chapter.",
+                "Obey section_scope exactly. In selected_sections mode, return only the chosen existing sections and requested additions. Do not revise or reproduce unselected sections.",
+                "For a requested standard or custom new section, do not duplicate an equivalent section that already exists. Strengthen the existing equivalent instead and explain this in the report.",
+                "Place [confirm added section: Section Title] immediately before every genuinely new section so the DOCX marks the addition for user confirmation.",
                 "When an important section is missing and allow_missing_section_insertions is true, insert the missing heading or section in the revised chapter but mark it for confirmation using a bracketed red-action marker, for example [confirm added section: Theoretical Framework].",
                 "If an added section requires evidence that was not supplied, include only defensible bridging prose and a precise bracketed placeholder such as [insert verified source for this added subsection] or [confirm supervisor approval for this added subsection].",
                 "Use previous_chapters_for_alignment to check consistency from Chapter Two onward. Do not copy earlier chapters, but align variables, objectives, theory, method, terminology and scope.",
                 "Strengthen paragraphs through claim, evidence, synthesis, interpretation, qualification and linkage to the study. Avoid repetitive templates and author-by-author listing.",
-                "Use formal British English, varied sentence and paragraph length, precise transitions and natural scholarly rhythm. Do not insert artificial mistakes or mention AI detection.",
+                *scholarly_humanizer_prompt_rules(),
                 "Do not expand the chapter merely to hit a page target. Add depth through evidence, critique, theory, methodological justification, interpretation and cross-section alignment.",
                 "When long_chapter_strengthening_strategy is enabled, treat the chapter as staged section strengthening. Do not compress a doctoral literature review into a short summary; diagnose and deepen conceptual, theoretical, empirical, methodological, contextual, gap and framework coverage separately.",
                 "Use Markdown headings and tables where useful. Keep equations intact.",
@@ -824,7 +982,11 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
             ],
             "output_format": [
                 "Return plain Markdown using the exact markers below.",
-                "Start with ===REVISED_CHAPTER=== followed by the complete strengthened chapter.",
+                (
+                    "Start with ===REVISED_CHAPTER=== followed only by the strengthened selected sections and requested additions."
+                    if strengthening_scope == "selected_sections"
+                    else "Start with ===REVISED_CHAPTER=== followed by the complete strengthened selected chapter."
+                ),
                 "Then add ===STRENGTHENING_REPORT=== followed by the Chapter Strengthening Report.",
                 "When supervisor comments were supplied and include_supervisor_response_matrix is true, add ===SUPERVISOR_RESPONSE_MATRIX=== followed by a Markdown table with columns Supervisor comment, Revision made, Location and Remaining action.",
                 "Do not use code fences.",
@@ -836,7 +998,8 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
             "You are ProjectReady AI's senior thesis and dissertation chapter editor. "
             "Strengthen the supplied chapter rigorously while preserving confirmed evidence, valid citations, "
             "approved research logic and the student's substantive voice. Apply chapter-aware academic standards, "
-            "formal British English and natural scholarly flow. Never invent analysis, results or references. "
+            "formal British English and protected natural scholarly flow. Never invent analysis, results or references. "
+            "Use clear discipline-specific wording rather than mechanical synonym replacement. "
             "Separate completed revisions from remaining student or supervisor actions."
         )
         try:
@@ -865,6 +1028,12 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
             supervisor_matrix = _fallback_matrix(str(payload.get("supervisor_comments") or ""))
             mode = "metadata_fallback_after_ai_error"
 
+    humanizer_mode = str(payload.get("humanizer_mode") or os.getenv("PROJECTREADY_HUMANIZER_MODE", "balanced") or "balanced").strip().lower()
+    if mode == "ai_revision":
+        revised_chapter, humanizer_report = humanize_scholarly_text(revised_chapter, mode=humanizer_mode)
+    else:
+        humanizer_report = {"mode": humanizer_mode, "applied": False, "reason": "No completed AI revision to refine."}
+
     revised_chapter = _finalise_chapter_text(revised_chapter)
     strengthening_report = _finalise_chapter_text(strengthening_report)
     supervisor_matrix = _finalise_chapter_text(supervisor_matrix) if supervisor_matrix else ""
@@ -878,6 +1047,12 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
         "model_used": model_used if client and ai_enabled else "none",
         "selected_level": level,
         "selected_chapter_type": chapter_type,
+        "strengthening_scope": strengthening_scope,
+        "selected_section_titles": selected_titles,
+        "new_section_titles": new_titles,
+        "custom_new_sections": custom_new_sections,
+        "scope_metadata": scope_metadata,
+        "processed_original_chapter_text": chapter_text,
         "target_page_range": f"{page_min}-{page_max}",
         "target_citation_density": f"{citation_min}-{citation_max} per 1,000 words",
         **metrics,
@@ -886,12 +1061,15 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
         "excluded_retracted_count": len(blocked),
         "excluded_retracted_titles": [str(item.get("title") or "Untitled") for item in blocked[:10]],
         "provider_errors": provider_errors,
+        "humanizer_report": humanizer_report,
         "revision_colour_note": (
             "In the downloaded DOCX, wording added or changed by ProjectReady AI is shown in blue. "
             "Student or supervisor action items are shown in red. Exact unchanged wording remains black."
         ),
         "quality_filters": [
-            "The selected chapter type and academic level control the strengthening rules.",
+            "The selected chapter type, requested section scope and academic level control the strengthening rules.",
+            "A complete thesis upload is isolated to the selected chapter before revision.",
+            "Selected-sections mode does not rewrite or return unselected sections.",
             "Confirmed numerical and qualitative evidence is preserved.",
             "Missing analysis is marked as action required rather than presented as completed.",
             "Citation density is strengthened through relevant evidence, not reference padding.",
@@ -902,8 +1080,24 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def chapter_planning_targets(level: str, chapter_type: str) -> dict[str, Any]:
-    page_min, page_max = _page_target(level, chapter_type)
+def chapter_planning_targets(
+    level: str,
+    chapter_type: str,
+    *,
+    strengthening_scope: str = "whole_chapter",
+    selected_section_count: int = 0,
+    custom_target_pages_enabled: bool = False,
+    target_page_min: int | None = None,
+    target_page_max: int | None = None,
+) -> dict[str, Any]:
+    target_payload = {
+        "strengthening_scope": strengthening_scope,
+        "selected_section_titles": [f"Section {index + 1}" for index in range(max(0, int(selected_section_count or 0)))],
+        "custom_target_pages_enabled": custom_target_pages_enabled,
+        "target_page_min": target_page_min,
+        "target_page_max": target_page_max,
+    }
+    page_min, page_max = _resolved_page_target(target_payload, level, chapter_type)
     citation_min, citation_max = _citation_target(level, chapter_type)
     return {
         "academic_level": level,
@@ -911,7 +1105,9 @@ def chapter_planning_targets(level: str, chapter_type: str) -> dict[str, Any]:
         "page_range": {"minimum": page_min, "maximum": page_max},
         "citation_density_per_1000_words": {"minimum": citation_min, "maximum": citation_max},
         "word_range_estimate": {"minimum": page_min * 330, "maximum": page_max * 380},
-        "note": "Page and citation ranges are planning targets. Quality, institutional requirements and evidence availability remain controlling considerations.",
+        "strengthening_scope": strengthening_scope,
+        "custom_target_applied": bool(custom_target_pages_enabled),
+        "note": "Page and citation ranges are planning targets for the selected strengthening scope. Quality, institutional requirements and evidence availability remain controlling considerations.",
     }
 
 

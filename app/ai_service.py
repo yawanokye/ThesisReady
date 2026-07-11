@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import random
 import subprocess
 from datetime import datetime
 from typing import Any, Optional
@@ -11,6 +10,12 @@ from typing import Any, Optional
 from dotenv import load_dotenv
 
 from app.template_store import get_chapter, selected_sections
+from app.scholarly_humanizer import (
+    analyse_scholarly_style,
+    humanize_scholarly_text,
+    scholarly_humanizer_prompt_rules,
+    validate_humanizer_preservation,
+)
 
 load_dotenv()
 
@@ -806,19 +811,8 @@ def _retrieved_sources_for_prompt(profile: dict[str, Any], chapter_number: int |
 
 
 def _human_scholarly_style_requirements(seed: Optional[int] = None) -> dict[str, list[str]]:
-    """Return safe thesis-quality style rules without deliberate errors or disrupted structure."""
-    return {
-        "humanizer_rules": [
-            "Use natural sentence variation, but keep grammar, citations, headings, tables and references clean.",
-            "Vary paragraph length according to argument needs rather than making every paragraph the same size.",
-            "Use precise, discipline-appropriate verbs such as indicates, suggests, qualifies, explains, constrains and supports.",
-            "Avoid generic academic filler, repeated transition words and over-polished template-like phrasing.",
-            "Keep section numbering and subsection hierarchy consistent with the selected thesis structure.",
-            "Do not introduce typographical errors, lowercase sentence starts, double spaces, broken citations or artificial mistakes.",
-            "Minimise em dashes and en dashes. Prefer commas, semicolons, colons, parentheses or separate sentences.",
-            "Only bracketed placeholders that require user verification or completion should be treated as attention items."
-        ]
-    }
+    """Return protected scholarly-humanizer rules for generation prompts."""
+    return {"humanizer_rules": scholarly_humanizer_prompt_rules()}
 
 
 def _student_contribution_requirements(profile: dict[str, Any]) -> dict[str, Any]:
@@ -836,12 +830,13 @@ def _student_contribution_requirements(profile: dict[str, Any]) -> dict[str, Any
         "writing_sample": contribution.get("writing_sample") or "",
         "phrases_to_avoid": contribution.get("phrases_to_avoid") or "",
         "human_revision_pass_requested": bool(contribution.get("human_revision_pass", True)),
+        "humanizer_mode": _humanizer_mode(profile),
         "paragraph_development_protocol": [
             "Before writing each substantive paragraph, identify the paragraph purpose, the evidence or user input available, the interpretation required, and the link to the study objective.",
             "Use the student's project-specific context, evidence anchors, supervisor comments, and preferred style wherever supplied.",
             "If the user has not supplied enough evidence for a confident claim, use a clear bracketed attention placeholder instead of writing a generic unsupported claim.",
             "Avoid over-polished, perfectly balanced, template-like prose. Use natural scholarly reasoning, varied sentence structure, and context-specific transitions.",
-            "Apply controlled high-burstiness and extremely high-perplexity academic style in practical terms: vary rhythm, vocabulary, sentence openings, and paragraph shape while preserving clarity, evidence, and disciplinary precision.",
+            "Use controlled scholarly variation in practical terms: vary rhythm, sentence openings and paragraph shape only when the argument requires it, while preserving clarity, evidence and disciplinary precision.",
             "Where a writing sample is supplied, use it only to infer broad tone, sentence rhythm and level of directness; do not copy wording or imitate personal details.",
             "Make the draft sound like it has passed through a careful supervisor-student revision process: specific, cautious, evidenced and reflective, not generic or promotional.",
             "Do not add a visible AI-detection or humanisation note to the chapter; the chapter should read as an ordinary academic draft.",
@@ -1087,7 +1082,7 @@ def build_drafting_prompt(
             "Meet the depth target through evidence, synthesis, comparison, critique, methodological explanation, interpretation and study-specific application. Never meet it through repetition, generic padding, duplicated definitions or inflated wording.",
             "Use the stated citation-occurrences-per-1,000-words range as a planning guide. Increase citation density across substantive paragraphs while preserving strict relevance and source integrity.",
             "Follow the human_scholarly_style_requirements and student_contribution_and_style_controls so the writing sounds natural, rigorous, context-specific, evidence-led and carefully supervised rather than generic or mechanical.",
-            "In all generated chapters, use controlled high-burstiness and extremely high-perplexity scholarly writing: natural variation in sentence length, paragraph shape, vocabulary, transitions and argumentative movement, without sacrificing clarity, evidence, APA accuracy or methodological precision.",
+            "In all generated chapters, use protected scholarly variation: natural sentence and paragraph rhythm, context-specific transitions and moderate lexical variety without sacrificing clarity, evidence, APA accuracy or methodological precision.",
             "Use the student's central argument, local context notes, evidence anchors, supervisor comments, preferred writing style and supplied writing sample as style/context guidance; do not copy the writing sample verbatim unless the user has written it as content to include.",
             "Use an evidence-to-paragraph method: each substantive paragraph should have a purpose, a claim grounded in supplied evidence or source-bank material, interpretation, and a clear link to the objective or chapter argument.",
             "Before producing a long paragraph, ask internally whether the user supplied enough context, evidence or source support for that paragraph. If not, write a shorter defensible paragraph and insert a precise bracketed attention placeholder for the missing evidence.",
@@ -1155,157 +1150,41 @@ def build_drafting_prompt(
 # HUMANISER POST-PROCESSING FUNCTIONS
 # ----------------------------------------------------------------------
 
+def _humanizer_mode(profile: Optional[dict[str, Any]] = None) -> str:
+    """Resolve the requested humanizer mode from the project profile or environment."""
+    contribution = (profile or {}).get("student_contribution") or {}
+    requested = ""
+    if isinstance(contribution, dict):
+        requested = str(contribution.get("humanizer_mode") or "").strip().lower()
+    if not requested:
+        requested = str((profile or {}).get("humanizer_mode") or "").strip().lower()
+    if not requested:
+        requested = str(os.getenv("PROJECTREADY_HUMANIZER_MODE", "balanced") or "balanced").strip().lower()
+    return requested if requested in {"off", "light", "balanced", "deep"} else "balanced"
+
+
 def _increase_natural_variation(text: str) -> str:
-    """Post‑process to improve sentence length std dev and break repetitive trigrams."""
-    if not text:
-        return text
-
-    sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text)
-    if len(sentences) < 4:
-        return text
-
-    first_200 = text[:200]
-    if not re.search(r'(?<![A-Z][a-z]\.)[.!?]\s+\b\w{1,4}\b', first_200):
-        match = re.search(r'([^.?!]+[.!?])\s+', first_200)
-        if match:
-            short_clause = " That matters. "
-            text = text[:match.end()] + short_clause + text[match.end():]
-
-    trigram_replacements = {
-        r'\bin order to\b': 'to',
-        r'\bthe fact that\b': 'that',
-        r'\bas well as\b': 'and also',
-        r'\bdue to the fact that\b': 'because',
-        r'\bit is important to note that\b': '',
-        r'\bas a result of\b': 'from',
-    }
-    for pattern, repl in trigram_replacements.items():
-        text = re.sub(pattern, repl, text, flags=re.IGNORECASE)
-
-    short_pair = re.search(r'([^.?!]{5,20}[.!?])\s+([^.?!]{5,20}[.!?])', text)
-    if short_pair and random.random() < 0.3:
-        joined = short_pair.group(1).rstrip('.!?') + ', and ' + short_pair.group(2).lstrip()
-        text = text[:short_pair.start()] + joined + text[short_pair.end():]
-
-    return text
+    """Compatibility wrapper for the protected local scholarly humanizer."""
+    return humanize_scholarly_text(text, mode="balanced")[0]
 
 
 def _enforce_burstiness(text: str, target_std_dev: float = 12.0, max_uniform: int = 3) -> str:
-    """Post‑process to guarantee sentence length variance."""
-    if not text or len(text) < 200:
-        return text
-
-    sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text)
-    if len(sentences) < 4:
-        return text
-
-    lengths = [len(s.split()) for s in sentences]
-    mean_len = sum(lengths) / len(lengths)
-    std_dev = (sum((l - mean_len) ** 2 for l in lengths) / len(lengths)) ** 0.5
-
-    if std_dev >= target_std_dev:
-        new_sentences = []
-        run_len = 1
-        for i in range(1, len(sentences)):
-            if abs(lengths[i] - lengths[i-1]) <= 3:
-                run_len += 1
-            else:
-                run_len = 1
-            if run_len > max_uniform:
-                insert_pos = i - run_len//2
-                short_clause = " That is, it matters. "
-                sentences[insert_pos] += short_clause
-                run_len = 0
-        return " ".join(sentences)
-
-    new_sentences = []
-    for s in sentences:
-        word_count = len(s.split())
-        if word_count > 25 and random.random() < 0.6:
-            split_points = [m.start() for m in re.finditer(r'(,|;|and|but|or)\s+', s)]
-            if split_points:
-                split_at = split_points[len(split_points)//2]
-                first = s[:split_at].rstrip()
-                second = s[split_at:].lstrip()
-                if second and second[0].islower():
-                    second = second[0].upper() + second[1:]
-                new_sentences.append(first + ".")
-                new_sentences.append(second)
-                continue
-        new_sentences.append(s)
-
-    merged = []
-    skip = False
-    for i in range(len(new_sentences)):
-        if skip:
-            skip = False
-            continue
-        if i + 1 < len(new_sentences):
-            len_i = len(new_sentences[i].split())
-            len_j = len(new_sentences[i+1].split())
-            if len_i <= 7 and len_j <= 7 and random.random() < 0.6:
-                combined = new_sentences[i].rstrip('.!?') + ', ' + new_sentences[i+1].lower()
-                merged.append(combined)
-                skip = True
-                continue
-        merged.append(new_sentences[i])
-
-    return " ".join(merged)
+    """Compatibility wrapper. Natural variation is now evidence-preserving and deterministic."""
+    return text or ""
 
 
 def _add_drafting_artefacts(text: str, probability_per_500_words: float = 0.25) -> str:
-    """Add very light scholarly texture without typographical errors, dashes or structural disruption."""
-    if not text or len(text.split()) < 300:
-        return text
-    if random.random() > probability_per_500_words:
-        return text
-    # Do not touch tables, references, source audits, equations, headings or placeholders.
-    protected = re.search(r"(?im)^#{0,3}\s*(references|source\s+use\s+audit)\b", text)
-    body = text[:protected.start()] if protected else text
-    tail = text[protected.start():] if protected else ""
-    paragraphs = re.split(r"\n\s*\n", body)
-    for i, para in enumerate(paragraphs):
-        p = para.strip()
-        if not p or p.startswith("#") or "|" in p or "[insert" in p.lower() or "$$" in p:
-            continue
-        # Add one modest qualifying sentence after a developed paragraph.
-        if len(p.split()) > 90 and not re.search(r"\bThis qualification matters\b", p):
-            paragraphs[i] = p + " This qualification matters because it keeps the argument tied to the evidence rather than to an unsupported general claim."
-            break
-    return "\n\n".join(paragraphs) + tail
+    """Retained for compatibility. Artificial drafting artefacts are no longer inserted."""
+    return text or ""
 
 
 def _boost_lexical_richness(text: str, replacement_probability: float = 0.5) -> str:
-    """Replace overused academic phrases with rarer synonyms."""
-    if not text or len(text.split()) < 200:
-        return text
-
-    replacements = {
-        r'\bshows that\b': 'indicates that',
-        r'\bsuggests that\b': 'implies that',
-        r'\bdemonstrates that\b': 'exemplifies how',
-        r'\bimportant role\b': 'non‑trivial function',
-        r'\bsignificant\b': 'meaningful',
-        r'\bhowever\b': 'nevertheless',
-        r'\btherefore\b': 'consequently',
-        r'\bfor example\b': 'as an illustration',
-        r'\bbecause\b': 'insofar as',
-        r'\bthe study\b': 'the present investigation',
-        r'\bits findings\b': 'the results obtained',
-        r'\bmany studies\b': 'a substantial body of work',
-        r'\bhas been shown\b': 'has been demonstrated',
-        r'\bin contrast\b': 'by contrast',
-    }
-
-    for pattern, repl in replacements.items():
-        if random.random() < replacement_probability:
-            text = re.sub(pattern, repl, text, flags=re.IGNORECASE)
-
-    return text
+    """Retained for compatibility. Mechanical synonym replacement is no longer used."""
+    return text or ""
 
 
 def _cluster_citations(text: str) -> str:
-    """Keep citation clusters only when the sources already exist; never fabricate placeholder authors."""
+    """Keep citation clusters only when the sources already exist; never fabricate authors."""
     return text or ""
 
 
@@ -1320,78 +1199,56 @@ def _randomise_paragraph_order(text: str) -> str:
 
 
 def _vary_paragraph_openings(text: str) -> str:
-    """Compatibility hook. Do not add transition words that can leak into tables or item codes."""
+    """Compatibility hook. Paragraph-opening refinement is handled by the protected humanizer."""
     return text or ""
 
 
 def _force_short_sentences(text: str, target_every_n_words: int = 200) -> str:
-    """Ensure at least one very short sentence per target_every_n_words."""
-    words = text.split()
-    if len(words) < target_every_n_words:
-        return text
-    short_sentences = re.findall(r'\b[a-z]{1,4}\s+[a-z]{1,4}\s+[a-z]{1,4}\s*[.!?]', text, re.IGNORECASE)
-    expected = max(1, len(words) // target_every_n_words)
-    if len(short_sentences) >= expected:
-        return text
-    match = re.search(r'\.\s+', text)
-    if match:
-        pos = match.end()
-        short = " That matters. "
-        text = text[:pos] + short + text[pos:]
-    return text
+    """Retained for compatibility. Short sentences are not forced mechanically."""
+    return text or ""
 
 
 def _humanize_with_small_model(text: str, model: str = "llama3-8b-8192") -> str:
-    """
-    Rewrite text using Groq's fast inference API (Llama 3 8B).
-    Provides low‑perplexity, natural variation without local Ollama.
+    """Optional compatibility pass that never introduces deliberate errors.
+
+    The main application uses the OpenAI revision pass and the deterministic local
+    humanizer. This Groq path remains opt-in for older deployments.
     """
     if not text or len(text) < 200:
         return text
-
     api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        return text  # fallback: no rewrite
-
+    if not api_key or os.getenv("PROJECTREADY_ENABLE_GROQ_HUMANIZER", "0").strip().lower() not in {"1", "true", "yes"}:
+        return text
     try:
         from groq import Groq
         client = Groq(api_key=api_key)
-    except ImportError:
+    except Exception:
         return text
 
-    prompt = f"""You are a careful but hurried PhD student revising your own draft.
-Rewrite the following academic paragraph in your own voice. Keep all facts, citations, statistics, placeholders, and technical terms exactly as given.
-Introduce natural variation: very short sentences (3-5 words), occasional sentence fragments, small grammatical inconsistencies (e.g., missing comma, lowercase after period, double space).
-Do not change any bracketed placeholders like [insert ...]. Do not remove or alter citations. Do not fabricate anything.
-Output only the rewritten text, no extra commentary.
+    prompt = f"""Revise the academic prose below for clarity, natural scholarly rhythm and discipline-appropriate wording.
+Preserve every fact, statistic, date, citation, reference, heading, equation, table and bracketed placeholder exactly.
+Do not add deliberate mistakes, fragments, casual language, new claims, new citations or commentary.
+Return only the revised text.
 
-Original text:
-{text}
-
-Rewritten text:"""
-
+Text:
+{text}"""
     try:
         response = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
+            temperature=0.2,
             max_tokens=2000,
         )
-        rewritten = response.choices[0].message.content.strip()
-        rewritten = re.sub(r'^Rewritten text:\s*', '', rewritten, flags=re.IGNORECASE)
-        return rewritten
+        candidate = str(response.choices[0].message.content or "").strip()
+        valid, _ = validate_humanizer_preservation(text, candidate, max_word_change_ratio=0.04)
+        return candidate if candidate and valid else text
     except Exception:
         return text
 
 
 def _add_human_noise(text: str, error_probability: float = 0.02) -> str:
-    """Compatibility hook for style texture. By default, do not introduce errors."""
-    if not text:
-        return text
-    if os.getenv("PROJECTREADY_ALLOW_SURFACE_NOISE", "0").strip().lower() not in {"1", "true", "yes"}:
-        return text
-    # Even when enabled, avoid damaging citations, placeholders, headings, tables and references.
-    return text
+    """Compatibility hook. Deliberate surface noise is permanently disabled."""
+    return text or ""
 
 
 def _polish_generated_text(text: str) -> str:
@@ -1814,58 +1671,62 @@ def _human_academic_revision_pass(
     profile: dict[str, Any],
     chapter_number: int,
 ) -> str:
-    """Run one quality-focused revision pass to increase natural variation and reduce generic prose."""
+    """Run a selective, preservation-gated scholarly humanizer pass.
+
+    Light mode uses only the deterministic local pass. Balanced mode calls the
+    model only when the local diagnostic still finds weak prose or when the user
+    supplied a writing sample/style direction. Deep mode requests one model pass.
+    """
     controls = _student_contribution_requirements(profile)
-    if not controls.get("human_revision_pass_requested", True):
-        return draft
+    mode = _humanizer_mode(profile)
+    local_draft, local_report = humanize_scholarly_text(draft, mode=mode)
+    if mode in {"off", "light"} or not controls.get("human_revision_pass_requested", True):
+        return local_draft
+
     length_requirements = _chapter_length_requirements(profile, chapter_number)
-
-    has_user_context = any(str(controls.get(k) or "").strip() for k in [
-        "central_argument", "local_context_notes", "evidence_anchors", "supervisor_comments", "preferred_style", "writing_sample", "phrases_to_avoid"
+    has_style_context = any(str(controls.get(k) or "").strip() for k in [
+        "preferred_style", "writing_sample", "phrases_to_avoid", "supervisor_comments"
     ])
-
-    current_variance = _sentence_length_variance(draft)
+    threshold = int(os.getenv("PROJECTREADY_HUMANIZER_MODEL_THRESHOLD", "86") or 86)
+    current_score = int(local_report.get("score") or 0)
+    should_call_model = mode == "deep" or has_style_context or current_score < threshold
+    if not should_call_model:
+        return local_draft
 
     revision_payload = {
-        "task": "Revise the chapter for human-supervised academic quality, specificity and natural scholarly flow.",
+        "task": "Refine the chapter for natural, human-supervised scholarly quality while preserving all substantive content.",
         "chapter_number": chapter_number,
         "chapter_length_requirements": length_requirements,
         "draft_maturity": controls.get("draft_maturity"),
         "student_contribution_controls": controls,
-        "current_sentence_length_variance": current_variance,
+        "style_diagnostic_before_model_pass": local_report,
         "quality_rules": [
-            "Revise rather than restart. Preserve the chapter structure, headings, accurate citations, tables, equations, placeholders and supplied results.",
-            "Increase natural scholarly variation: vary sentence rhythm, paragraph density, transition choices, and analytical movement. Simulate a careful human editor, not a template.",
-            "Break any three consecutive sentences that start with the same grammatical pattern (e.g., subject-verb, 'The', 'This').",
-            "Where you see two consecutive paragraphs beginning with the same phrase (e.g., 'Moreover,' 'In addition,'), rewrite one to use a causal or conditional opener.",
-            "Add occasional careful qualification where the evidence requires it, using wording such as 'That said, a closer look suggests...' without disrupting the argument.",
-            "Use sentence-length variation naturally, but do not force very short sentences or choppy prose.",
-            "Replace any 'furthermore', 'moreover', 'in addition' with domain‑specific logical connectors: 'This holds only if', 'By the same logic', 'A corollary is...'.",
-            "Do not attempt to evade AI detectors and do not mention AI detection. The purpose is academic quality, specificity, and defensible student-supervised writing.",
-            "Remove generic filler, repetitive transitions, vague claims, inflated language, and over-polished template‑like phrasing.",
-            "Strengthen paragraph‑level reasoning: each paragraph should connect claim, evidence or placeholder, interpretation, and relevance to the study objective or chapter argument.",
-            "Use the student's central argument, local context notes, evidence anchors, supervisor comments and preferred style where supplied.",
-            "Where evidence is missing, keep or add bracketed attention placeholders instead of inventing claims, statistics, results, ethical approvals, sources, sample sizes or institutional facts.",
-            "Do not add a visible humanisation note, contribution log or detector note to the chapter body.",
-            "Keep APA references complete and limited to sources cited in the chapter body.",
-            "Preserve the chapter's substantive depth and section coverage. Do not reduce the word count by more than three percent unless removing exact repetition or unsupported filler.",
-            "Keep the revised chapter within the stated page and word target range where the available evidence permits it.",
+            "Revise rather than restart. Preserve every heading, objective, research question, hypothesis, table, equation, citation, reference, date, statistic, placeholder and supplied result.",
+            *scholarly_humanizer_prompt_rules(),
+            "Do not add new evidence, citations, interpretations, examples or recommendations during this style-only pass.",
+            "Do not mechanically replace ordinary words with rare synonyms. Preserve the epistemic strength of claims, especially suggests, indicates, may, could and is associated with.",
+            "Use the student's writing sample only for broad rhythm, directness and paragraph movement. Do not copy phrases from it.",
+            "Remove awkward legacy phrases such as 'That matters', 'This qualification matters' and excessive 'insofar as'.",
+            "Do not reduce the word count by more than three percent and do not expand it by more than four percent.",
+            "Return only the complete revised chapter, with no report or commentary.",
         ],
-        "generic_language_score_before_revision": _generic_language_score(draft),
-        "user_context_supplied": has_user_context,
         "original_generation_prompt": original_prompt,
-        "draft_to_revise": draft,
+        "draft_to_refine": local_draft,
     }
     revised = _call_openai_response_safely(
         client,
         model,
-        instructions + " Perform one conservative academic-quality revision pass. Do not restart or shorten the chapter. Do not add unsupported content.",
+        instructions + " Perform one conservative, style-only scholarly humanizer pass. Preserve content exactly and return only the revised chapter.",
         json.dumps(revision_payload, ensure_ascii=False, indent=2),
         max_output_tokens=_max_output_tokens_for_length(length_requirements, revision=True),
     )
-    if revised:
-        return _polish_generated_text(revised)
-    return draft
+    if not revised:
+        return local_draft
+
+    revised = _polish_generated_text(revised)
+    revised, _ = humanize_scholarly_text(revised, mode=mode)
+    valid, _issues = validate_humanizer_preservation(local_draft, revised, max_word_change_ratio=0.045)
+    return revised if valid else local_draft
 
 
 def _call_openai_response_safely(
@@ -2218,6 +2079,10 @@ def _generate_chapter_in_chunks(
                 if _chapter_word_count(retry_body) > current_chunk_words:
                     chunk_body, chunk_refs = retry_body, retry_refs
 
+        chunk_body, _chunk_humanizer_report = humanize_scholarly_text(
+            chunk_body,
+            mode=_humanizer_mode(profile),
+        )
         bodies.append(chunk_body)
         references.extend(chunk_refs)
 
@@ -2348,7 +2213,7 @@ def generate_chapter(
 ) -> tuple[str, str]:
     """
     Generate a chapter using OpenAI (if available) or fallback to local templates.
-    Incorporates high-burstiness, randomised humaniser and multiple human-quality passes.
+    Incorporates a protected scholarly humanizer and evidence-preserving quality passes.
     """
     try:
         prompt = build_drafting_prompt(profile, chapter_number, selected_section_ids, answers, extra_instructions)
@@ -2367,8 +2232,8 @@ def generate_chapter(
             "You are ProjectReady AI, an academic project-work drafting and compliance assistant. "
             "Write in a natural, high-standard scholarly voice that sounds like a carefully supervised draft, "
             "built from the student's own evidence, context, supervisor comments and project decisions. "
-            "Apply controlled high-burstiness and high-perplexity: vary sentence/paragraph length, transitions, vocabulary, "
-            "and argumentative rhythm while keeping clarity, evidence-led reasoning, and disciplinary precision. "
+            "Apply a protected scholarly-humanizer standard: vary sentence and paragraph rhythm where the argument requires it, "
+            "use context-specific transitions, and prefer clear disciplinary vocabulary over rare synonyms. "
             "Never mention the selected academic level, template, or checklist. Avoid generic AI phrasing, filler, overclaiming, "
             "and perfectly balanced paragraphs. Use grounded verbs (suggests, indicates, complicates, qualifies). "
             "Do not begin problem statements with 'The research problem is that'. Frame problems through evidence, tension, or gap. "
@@ -2411,8 +2276,8 @@ def generate_chapter(
             # 1. Basic polish
             polished = _polish_generated_text(text)
 
-            # 2. Increase natural variation
-            polished = _increase_natural_variation(polished)
+            # 2. Remove legacy humanizer artefacts before evidence and depth passes.
+            polished, _ = humanize_scholarly_text(polished, mode="light")
 
             if not chunked_generation:
                 # 3. Relevance-gated source integration
@@ -2455,16 +2320,14 @@ def generate_chapter(
                     selected_section_ids=selected_section_ids,
                 )
 
-            # 6. Controlled style texture. Do not apply texture to the Supplementary Methods
-            #    and Analysis Guide because it is table/checklist driven and must stay compact.
-            if int(chapter_number or 0) != 7:
-                polished = _enforce_burstiness(polished, target_std_dev=12.0)
-                polished = _add_drafting_artefacts(polished, probability_per_500_words=0.35)
-                polished = _boost_lexical_richness(polished, replacement_probability=0.25)
-                polished = _cluster_citations(polished)
-                polished = _vary_paragraph_openings(polished)
-                polished = _force_short_sentences(polished, target_every_n_words=200)
-                polished = _add_human_noise(polished, error_probability=0.015)
+            # 6. Apply the protected deterministic humanizer once, after content,
+            #    evidence and depth are settled. This pass preserves citations,
+            #    numbers, headings, tables, equations and attention placeholders.
+            polished, _humanizer_report = humanize_scholarly_text(
+                polished,
+                mode=_humanizer_mode(profile),
+            )
+            polished = _cluster_citations(polished)
 
             # 7. Final output controls for structure, dashes, attention placeholders and table noise.
             polished = _finalise_output_controls(polished)
