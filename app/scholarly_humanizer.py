@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 import re
 from collections import Counter
 from typing import Any
@@ -110,11 +111,60 @@ _SECTION_HEADING_RE = re.compile(
 _REFERENCE_HEADING_RE = re.compile(r"^(?:#{1,6}\s*)?(?:References|Bibliography|Source Use Audit|Appendix|Appendices)\b", re.I)
 
 
+def _normalise_variation_level(value: str, *, default: str = "high") -> str:
+    level = str(value or default).strip().lower()
+    return level if level in {"moderate", "high"} else default
+
+
+def humanizer_variation_profile() -> dict[str, Any]:
+    """Return the controlled variation targets used by both drafting workflows.
+
+    ``Perplexity`` is treated here as context-sensitive lexical and syntactic
+    variety, not random or obscure wording. ``Burstiness`` is measured through
+    purposeful variation in sentence and paragraph rhythm.
+    """
+    perplexity = _normalise_variation_level(
+        os.getenv("PROJECTREADY_HUMANIZER_PERPLEXITY_LEVEL", "high")
+    )
+    burstiness = _normalise_variation_level(
+        os.getenv("PROJECTREADY_HUMANIZER_BURSTINESS_LEVEL", "high")
+    )
+    high = perplexity == "high" or burstiness == "high"
+    return {
+        "perplexity_level": perplexity,
+        "burstiness_level": burstiness,
+        "lexical_diversity_target": 0.64 if perplexity == "high" else 0.56,
+        "sentence_length_cv_target": 0.50 if burstiness == "high" else 0.38,
+        "paragraph_length_cv_target": 0.42 if burstiness == "high" else 0.30,
+        "short_sentence_ratio_target": 0.10 if burstiness == "high" else 0.06,
+        "long_sentence_ratio_target": 0.14 if burstiness == "high" else 0.09,
+        "model_word_change_limit": float(
+            os.getenv("PROJECTREADY_HUMANIZER_MAX_WORD_CHANGE_RATIO", "0.06" if high else "0.045")
+            or (0.06 if high else 0.045)
+        ),
+    }
+
+
+def variation_targets_met(report: dict[str, Any], profile: dict[str, Any] | None = None) -> bool:
+    targets = profile or humanizer_variation_profile()
+    return (
+        float(report.get("lexical_diversity_msttr") or 0.0) >= float(targets["lexical_diversity_target"])
+        and float(report.get("sentence_length_cv") or 0.0) >= float(targets["sentence_length_cv_target"])
+        and float(report.get("paragraph_length_cv") or 0.0) >= float(targets["paragraph_length_cv_target"])
+        and float(report.get("short_sentence_ratio") or 0.0) >= float(targets["short_sentence_ratio_target"])
+        and float(report.get("long_sentence_ratio") or 0.0) >= float(targets["long_sentence_ratio_target"])
+    )
+
+
 def scholarly_humanizer_prompt_rules() -> list[str]:
     """Prompt rules shared by chapter generation and chapter strengthening."""
     return [
         "Write in a natural, disciplined scholarly voice rather than a promotional, formulaic or template-like voice.",
         "Preserve the author's substantive voice. Improve clarity and flow without making every paragraph sound as though it was written by the same generic editor.",
+        "Use high controlled perplexity: vary vocabulary, clause structure and rhetorical framing through precise context-specific choices. Do not create variety through rare synonyms, technical-term substitution or ornamental wording.",
+        "Use high controlled burstiness: mix concise emphasis sentences, medium analytical sentences and occasional longer synthesis sentences where the argument calls for them. Avoid a uniform cadence, but do not manufacture fragments or overlong sentences.",
+        "Vary paragraph length and internal movement according to function. A definition, comparison, qualification, empirical synthesis and transition should not all have the same shape.",
+        "Avoid repeating distinctive content words, sentence openings or grammatical frames within a short span when an equally precise natural construction is available.",
         "Use direct subjects and active verbs where they improve clarity, but retain passive constructions when the disciplinary convention or focus on process makes them appropriate.",
         "Vary sentence length and paragraph density according to argumentative function. Do not force every paragraph into the same number of sentences or the same claim-evidence-conclusion template.",
         "Let paragraph movement follow the evidence. Some paragraphs may define, compare, qualify, critique, interpret or connect; do not append a generic concluding sentence merely to make a paragraph appear complete.",
@@ -157,6 +207,27 @@ def _paragraph_opening(paragraph: str) -> str:
     return " ".join(words[:3])
 
 
+def _moving_standardised_type_token_ratio(text: str, *, window: int = 50) -> float:
+    tokens = re.findall(r"[A-Za-z][A-Za-z'-]*", str(text or "").lower())
+    if not tokens:
+        return 0.0
+    if len(tokens) <= window:
+        return len(set(tokens)) / len(tokens)
+    scores: list[float] = []
+    step = max(10, window // 2)
+    for start in range(0, len(tokens) - window + 1, step):
+        sample = tokens[start:start + window]
+        scores.append(len(set(sample)) / window)
+    return sum(scores) / len(scores) if scores else 0.0
+
+
+def _coefficient_of_variation(values: list[int]) -> float:
+    if len(values) < 2:
+        return 0.0
+    mean = sum(values) / len(values)
+    return (_std_dev(values) / mean) if mean else 0.0
+
+
 def analyse_scholarly_style(text: str) -> dict[str, Any]:
     """Return an explainable diagnostic for natural scholarly prose."""
     value = str(text or "")
@@ -167,6 +238,12 @@ def analyse_scholarly_style(text: str) -> dict[str, Any]:
 
     sentence_lengths = [_word_count(sentence) for sentence in sentences if _word_count(sentence)]
     paragraph_lengths = [_word_count(paragraph) for paragraph in paragraphs if _word_count(paragraph)]
+    lexical_diversity = _moving_standardised_type_token_ratio(value)
+    sentence_length_cv = _coefficient_of_variation(sentence_lengths)
+    paragraph_length_cv = _coefficient_of_variation(paragraph_lengths)
+    short_sentence_ratio = (sum(1 for length in sentence_lengths if 5 <= length <= 11) / len(sentence_lengths)) if sentence_lengths else 0.0
+    long_sentence_ratio = (sum(1 for length in sentence_lengths if 30 <= length <= 52) / len(sentence_lengths)) if sentence_lengths else 0.0
+    variation_profile = humanizer_variation_profile()
     sentence_openings = [_sentence_opening(sentence) for sentence in sentences]
     paragraph_openings = [_paragraph_opening(paragraph) for paragraph in paragraphs]
     sentence_opening_counts = Counter(opening for opening in sentence_openings if opening)
@@ -203,6 +280,16 @@ def analyse_scholarly_style(text: str) -> dict[str, Any]:
         score -= 7
     if uniform_paragraph_rhythm:
         score -= 5
+    if lexical_diversity < float(variation_profile["lexical_diversity_target"]):
+        score -= min(10, round((float(variation_profile["lexical_diversity_target"]) - lexical_diversity) * 50))
+    if sentence_length_cv < float(variation_profile["sentence_length_cv_target"]):
+        score -= min(10, round((float(variation_profile["sentence_length_cv_target"]) - sentence_length_cv) * 20))
+    if paragraph_length_cv < float(variation_profile["paragraph_length_cv_target"]):
+        score -= min(7, round((float(variation_profile["paragraph_length_cv_target"]) - paragraph_length_cv) * 15))
+    if short_sentence_ratio < float(variation_profile["short_sentence_ratio_target"]):
+        score -= 4
+    if long_sentence_ratio < float(variation_profile["long_sentence_ratio_target"]):
+        score -= 4
 
     return {
         "score": max(0, min(100, score)),
@@ -210,6 +297,20 @@ def analyse_scholarly_style(text: str) -> dict[str, Any]:
         "word_count": _word_count(value),
         "paragraph_count": len(paragraphs),
         "sentence_count": len(sentences),
+        "perplexity_level": variation_profile["perplexity_level"],
+        "burstiness_level": variation_profile["burstiness_level"],
+        "lexical_diversity_msttr": round(lexical_diversity, 3),
+        "sentence_length_cv": round(sentence_length_cv, 3),
+        "paragraph_length_cv": round(paragraph_length_cv, 3),
+        "short_sentence_ratio": round(short_sentence_ratio, 3),
+        "long_sentence_ratio": round(long_sentence_ratio, 3),
+        "variation_targets_met": variation_targets_met({
+            "lexical_diversity_msttr": lexical_diversity,
+            "sentence_length_cv": sentence_length_cv,
+            "paragraph_length_cv": paragraph_length_cv,
+            "short_sentence_ratio": short_sentence_ratio,
+            "long_sentence_ratio": long_sentence_ratio,
+        }, variation_profile),
         "sentence_length_std_dev": round(_std_dev(sentence_lengths), 2),
         "paragraph_length_std_dev": round(_std_dev(paragraph_lengths), 2),
         "generic_phrase_hits": generic_hits,

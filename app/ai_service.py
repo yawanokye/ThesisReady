@@ -15,8 +15,10 @@ from app.scholarly_humanizer import (
     analyse_scholarly_style,
     build_humanizer_batches,
     humanize_scholarly_text,
+    humanizer_variation_profile,
     scholarly_humanizer_prompt_rules,
     validate_humanizer_preservation,
+    variation_targets_met,
 )
 
 load_dotenv()
@@ -1687,8 +1689,9 @@ def _refine_humanizer_batch_with_model(
     diagnostic: dict[str, Any],
 ) -> str:
     payload = {
-        "task": "Apply a conservative scholarly naturalness edit to this chapter section without changing its evidence or argument.",
+        "task": "Apply a high-variation scholarly naturalness edit to this chapter section without changing its evidence or argument.",
         "chapter_number": chapter_number,
+        "variation_profile": humanizer_variation_profile(),
         "student_contribution_controls": controls,
         "style_diagnostic": diagnostic,
         "quality_rules": [
@@ -1696,10 +1699,12 @@ def _refine_humanizer_batch_with_model(
             *scholarly_humanizer_prompt_rules(),
             "Preserve every heading, objective, research question, hypothesis, citation, reference, date, statistic, table, equation, quotation and bracketed action item exactly.",
             "Preserve the sequence of ideas and the strength of every claim. Do not add evidence, examples, citations, findings, recommendations or interpretations.",
+            "Increase controlled perplexity through context-sensitive lexical and syntactic variety, not obscure vocabulary or random synonym replacement.",
+            "Increase controlled burstiness through a purposeful mix of concise, medium and longer synthesis sentences, with paragraph lengths that reflect different argumentative functions.",
             "Improve naturalness through clearer subjects and verbs, varied but purposeful sentence movement, less repetitive framing, and transitions that match the logic.",
             "Do not make every paragraph the same length or end every paragraph with a summary sentence.",
             "Do not mechanically replace ordinary words with rare synonyms and do not remove discipline-specific terms.",
-            "Keep the word count within four percent of the supplied section.",
+            "Keep the word count within six percent of the supplied section.",
             "Return only the complete revised section with its original headings. Do not add a report.",
         ],
         "original_generation_context": original_prompt,
@@ -1708,7 +1713,7 @@ def _refine_humanizer_batch_with_model(
     candidate = _call_openai_response_safely(
         client,
         model,
-        instructions + " Perform one preservation-gated scholarly naturalness edit. Return only the revised section.",
+        instructions + " Perform one preservation-gated, high-variation scholarly naturalness edit. Return only the revised section.",
         json.dumps(payload, ensure_ascii=False, indent=2),
         max_output_tokens=_humanizer_batch_token_budget(int(diagnostic.get("word_count") or 0)),
     )
@@ -1716,7 +1721,11 @@ def _refine_humanizer_batch_with_model(
         return batch_text
     candidate = _polish_generated_text(candidate)
     candidate, _ = humanize_scholarly_text(candidate, mode="balanced")
-    valid, _issues = validate_humanizer_preservation(batch_text, candidate, max_word_change_ratio=0.045)
+    valid, _issues = validate_humanizer_preservation(
+        batch_text,
+        candidate,
+        max_word_change_ratio=float(humanizer_variation_profile()["model_word_change_limit"]),
+    )
     return candidate if valid else batch_text
 
 
@@ -1744,24 +1753,31 @@ def _human_academic_revision_pass(
     has_style_context = any(str(controls.get(k) or "").strip() for k in [
         "preferred_style", "writing_sample", "phrases_to_avoid", "supervisor_comments"
     ])
-    threshold = int(os.getenv("PROJECTREADY_HUMANIZER_MODEL_THRESHOLD", "94") or 90)
+    threshold = int(os.getenv("PROJECTREADY_HUMANIZER_MODEL_THRESHOLD", "97") or 97)
     current_score = int(local_report.get("score") or 0)
-    should_call_model = mode == "deep" or has_style_context or current_score < threshold
+    variation_profile = humanizer_variation_profile()
+    variation_ready = variation_targets_met(local_report, variation_profile)
+    should_call_model = mode == "deep" or has_style_context or current_score < threshold or not variation_ready
     if not should_call_model:
         return local_draft
 
-    batch_words = int(os.getenv("PROJECTREADY_HUMANIZER_BATCH_WORDS", "2400") or 2400)
+    batch_words = int(os.getenv("PROJECTREADY_HUMANIZER_BATCH_WORDS", "1800") or 1800)
     batches = build_humanizer_batches(local_draft, max_words=batch_words)
     if not batches:
         return local_draft
 
-    balanced_cap = int(os.getenv("PROJECTREADY_HUMANIZER_MAX_BATCHES_BALANCED", "4") or 4)
-    deep_cap = int(os.getenv("PROJECTREADY_HUMANIZER_MAX_BATCHES_DEEP", "12") or 12)
+    balanced_cap = int(os.getenv("PROJECTREADY_HUMANIZER_MAX_BATCHES_BALANCED", "6") or 6)
+    deep_cap = int(os.getenv("PROJECTREADY_HUMANIZER_MAX_BATCHES_DEEP", "16") or 16)
     eligible_indices = [
         index for index, batch in enumerate(batches)
         if not batch.get("protected")
         and int((batch.get("diagnostic") or {}).get("word_count") or 0) >= 120
-        and (mode == "deep" or has_style_context or int((batch.get("diagnostic") or {}).get("score") or 100) < threshold)
+        and (
+            mode == "deep"
+            or has_style_context
+            or int((batch.get("diagnostic") or {}).get("score") or 100) < threshold
+            or not variation_targets_met(batch.get("diagnostic") or {}, variation_profile)
+        )
     ]
     if mode == "balanced":
         eligible_indices.sort(key=lambda index: int((batches[index].get("diagnostic") or {}).get("score") or 100))

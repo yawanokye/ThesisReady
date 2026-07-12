@@ -14,8 +14,10 @@ from app.scholarly_humanizer import (
     analyse_scholarly_style,
     build_humanizer_batches,
     humanize_scholarly_text,
+    humanizer_variation_profile,
     scholarly_humanizer_prompt_rules,
     validate_humanizer_preservation,
+    variation_targets_met,
 )
 
 _REVISION_BLUE = (0, 112, 192)
@@ -776,27 +778,38 @@ def _humanize_strengthened_chapter_with_model(
     if mode not in {"balanced", "deep"} or not client or not text.strip():
         return text
 
-    threshold = _env_int("PROJECTREADY_HUMANIZER_MODEL_THRESHOLD", 94, minimum=60, maximum=99)
+    threshold = _env_int("PROJECTREADY_HUMANIZER_MODEL_THRESHOLD", 97, minimum=60, maximum=99)
     overall = analyse_scholarly_style(text)
+    variation_profile = humanizer_variation_profile()
     style_context = any(str(payload.get(key) or "").strip() for key in (
         "revision_goals", "supervisor_comments", "school_guidelines"
     ))
-    if mode == "balanced" and not style_context and int(overall.get("score") or 100) >= threshold:
+    if (
+        mode == "balanced"
+        and not style_context
+        and int(overall.get("score") or 100) >= threshold
+        and variation_targets_met(overall, variation_profile)
+    ):
         return text
 
-    batch_words = _env_int("PROJECTREADY_HUMANIZER_BATCH_WORDS", 2400, minimum=800, maximum=5000)
+    batch_words = _env_int("PROJECTREADY_HUMANIZER_BATCH_WORDS", 1800, minimum=800, maximum=5000)
     batches = build_humanizer_batches(text, max_words=batch_words)
     eligible = [
         index for index, batch in enumerate(batches)
         if not batch.get("protected")
         and int((batch.get("diagnostic") or {}).get("word_count") or 0) >= 120
-        and (mode == "deep" or style_context or int((batch.get("diagnostic") or {}).get("score") or 100) < threshold)
+        and (
+            mode == "deep"
+            or style_context
+            or int((batch.get("diagnostic") or {}).get("score") or 100) < threshold
+            or not variation_targets_met(batch.get("diagnostic") or {}, variation_profile)
+        )
     ]
     if mode == "balanced":
         eligible.sort(key=lambda index: int((batches[index].get("diagnostic") or {}).get("score") or 100))
-        eligible = eligible[:_env_int("PROJECTREADY_HUMANIZER_MAX_BATCHES_BALANCED", 4, minimum=1, maximum=10)]
+        eligible = eligible[:_env_int("PROJECTREADY_HUMANIZER_MAX_BATCHES_BALANCED", 6, minimum=1, maximum=12)]
     else:
-        eligible = eligible[:_env_int("PROJECTREADY_HUMANIZER_MAX_BATCHES_DEEP", 12, minimum=1, maximum=24)]
+        eligible = eligible[:_env_int("PROJECTREADY_HUMANIZER_MAX_BATCHES_DEEP", 16, minimum=1, maximum=24)]
     if not eligible:
         return text
 
@@ -812,6 +825,7 @@ def _humanize_strengthened_chapter_with_model(
             "academic_level": level,
             "chapter_type": chapter_type,
             "style_diagnostic": batch.get("diagnostic") or {},
+            "variation_profile": variation_profile,
             "revision_direction": str(payload.get("revision_goals") or "").strip(),
             "supervisor_direction": str(payload.get("supervisor_comments") or "").strip(),
             "rules": [
@@ -820,8 +834,10 @@ def _humanize_strengthened_chapter_with_model(
                 "Preserve every heading, citation, reference, date, statistic, objective, research question, hypothesis, table, equation and bracketed action item exactly.",
                 "Do not add evidence, citations, findings, examples, interpretations, recommendations or new sections.",
                 "Preserve the order of ideas and the strength of claims.",
+                "Increase controlled perplexity through context-sensitive lexical and syntactic variety without rare-synonym substitution.",
+                "Increase controlled burstiness through a purposeful mix of short, medium and longer synthesis sentences and varied paragraph movement.",
                 "Improve directness, sentence movement, paragraph rhythm and logical transitions without rare-synonym substitution.",
-                "Keep the word count within four percent of the supplied section.",
+                "Keep the word count within six percent of the supplied section.",
                 "Return only the revised section with its headings and no report.",
             ],
             "section": original,
@@ -830,18 +846,26 @@ def _humanize_strengthened_chapter_with_model(
             response = client.responses.create(
                 model=model,
                 max_output_tokens=_humanizer_batch_output_tokens(int(batch.get("word_count") or 0)),
-                instructions="Perform a conservative, evidence-preserving scholarly naturalness edit. Return only the revised section.",
+                instructions="Perform an evidence-preserving, high-variation scholarly naturalness edit. Return only the revised section.",
                 input=json.dumps(prompt, ensure_ascii=False, indent=2),
             )
             candidate = _response_output_text(response)
             candidate, _ = humanize_scholarly_text(candidate, mode="balanced") if candidate else (original, {})
-            valid, _issues = validate_humanizer_preservation(original, candidate, max_word_change_ratio=0.045)
+            valid, _issues = validate_humanizer_preservation(
+                original,
+                candidate,
+                max_word_change_ratio=float(variation_profile["model_word_change_limit"]),
+            )
             output.append(candidate if candidate and valid else original)
         except Exception:
             output.append(original)
 
     candidate = "\n\n".join(part.strip() for part in output if part.strip()).strip()
-    valid, _issues = validate_humanizer_preservation(text, candidate, max_word_change_ratio=0.045)
+    valid, _issues = validate_humanizer_preservation(
+        text,
+        candidate,
+        max_word_change_ratio=float(variation_profile["model_word_change_limit"]),
+    )
     return candidate if valid else text
 
 
