@@ -3,7 +3,10 @@ from pathlib import Path
 from app.scholarly_humanizer import (
     analyse_scholarly_style,
     humanize_scholarly_text,
+    humanizer_variation_profile,
+    scholarly_humanizer_prompt_rules,
     validate_humanizer_preservation,
+    variation_targets_met,
 )
 
 
@@ -120,3 +123,49 @@ Mensah, A. (2024). Example study.
     assert len(batches) >= 3
     assert any(batch["protected"] for batch in batches)
     assert all(batch["word_count"] > 0 for batch in batches)
+
+
+def test_high_perplexity_and_burstiness_are_default_targets(monkeypatch):
+    monkeypatch.delenv("PROJECTREADY_HUMANIZER_PERPLEXITY_LEVEL", raising=False)
+    monkeypatch.delenv("PROJECTREADY_HUMANIZER_BURSTINESS_LEVEL", raising=False)
+    profile = humanizer_variation_profile()
+    assert profile["perplexity_level"] == "high"
+    assert profile["burstiness_level"] == "high"
+    assert profile["lexical_diversity_target"] >= 0.60
+    assert profile["sentence_length_cv_target"] >= 0.45
+
+
+def test_diagnostic_reports_variation_metrics():
+    text = (
+        "Clear evidence matters. "
+        "The first estimate remains cautious because the sample is limited and the institutional context differs across schools. "
+        "A longer synthesis sentence then connects the empirical pattern, the theoretical explanation and the practical implication without overstating causality. "
+        "Results vary. "
+        "Different methods produce different forms of evidence, especially when measurement choices alter the meaning of the construct being assessed."
+    )
+    report = analyse_scholarly_style(text)
+    assert "lexical_diversity_msttr" in report
+    assert "sentence_length_cv" in report
+    assert "paragraph_length_cv" in report
+    assert "short_sentence_ratio" in report
+    assert "long_sentence_ratio" in report
+    assert isinstance(report["variation_targets_met"], bool)
+
+
+def test_humanizer_prompt_requires_high_controlled_variation():
+    rules = " ".join(scholarly_humanizer_prompt_rules()).lower()
+    assert "high controlled perplexity" in rules
+    assert "high controlled burstiness" in rules
+    assert "rare synonyms" in rules
+
+
+def test_variation_gate_rejects_uniform_report():
+    profile = humanizer_variation_profile()
+    weak = {
+        "lexical_diversity_msttr": 0.30,
+        "sentence_length_cv": 0.10,
+        "paragraph_length_cv": 0.10,
+        "short_sentence_ratio": 0.0,
+        "long_sentence_ratio": 0.0,
+    }
+    assert variation_targets_met(weak, profile) is False
