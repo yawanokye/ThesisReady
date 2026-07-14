@@ -459,18 +459,15 @@ def payment_environment() -> Dict[str, Any]:
     environment.update({
         "provider_routing": "paystack_africa_stripe_elsewhere",
         "warning": "Live payment mode is active. African billing countries use Paystack and other countries use Stripe.",
-        "internal_access_configured": internal_access_configured(),
     })
     return environment
 
 
-@api_router.post("/api/payments/internal-access")
+@api_router.post("/api/payments/internal-access", include_in_schema=False)
 def activate_internal_access(payload: InternalAccessRequest) -> Dict[str, Any]:
-    """Issue a signed internal developer credential.
-
-    This is not trial access. It requires an allow-listed developer email and
-    the six-digit internal key configured in server environment variables.
-    """
+    """Legacy direct internal-access endpoint, disabled on production by default."""
+    if str(os.getenv("PROJECTREADY_ENABLE_LEGACY_INTERNAL_ACCESS_ENDPOINT", "0")).strip().lower() not in {"1", "true", "yes", "on"}:
+        raise HTTPException(status_code=404, detail="Resource not found.")
     try:
         return issue_internal_access(
             email=_valid_email(payload.email),
@@ -481,7 +478,7 @@ def activate_internal_access(payload: InternalAccessRequest) -> Dict[str, Any]:
             chapter_title=payload.chapter_title,
         )
     except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
+        raise HTTPException(status_code=404, detail="Resource not found.") from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

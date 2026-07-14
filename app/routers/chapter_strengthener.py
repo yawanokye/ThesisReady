@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import nullcontext
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -71,6 +72,9 @@ def _paid_context(
     chapter_title: str,
     action: str,
 ):
+    preauthorised = getattr(request.state, "preauthorized_claim", None)
+    if preauthorised:
+        return nullcontext(preauthorised)
     credentials = credentials_from_headers(request.headers)
     return paid_chapter_action(
         purchase_id=credentials["purchase_id"],

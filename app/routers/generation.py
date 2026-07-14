@@ -42,6 +42,11 @@ def _paid_action_context(
     chapter_title: str,
     action: str,
 ):
+    preauthorised = getattr(request.state, "preauthorized_claim", None)
+    if preauthorised:
+        # Background jobs reserve the entitlement before entering the queue.
+        # The worker completes or rolls it back only after the whole job ends.
+        return nullcontext(preauthorised)
     credentials = credentials_from_headers(request.headers)
     return paid_chapter_action(
         purchase_id=credentials["purchase_id"],
@@ -510,7 +515,8 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
 
     chapter_title = str(chapter.get("chapter_title") or f"Chapter {payload.chapter_number}")
     credentials = credentials_from_headers(request.headers)
-    has_paid_credential = bool(credentials["purchase_id"] and credentials["access_token"])
+    preauthorised_claim = getattr(request.state, "preauthorized_claim", None)
+    has_paid_credential = bool(credentials["purchase_id"] and credentials["access_token"]) or bool(preauthorised_claim)
     action = "revision" if revision_mode else "draft"
 
     if revision_mode or has_paid_credential:
@@ -542,6 +548,7 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
 
     def _generate_and_save() -> dict[str, Any]:
         generation_warning = ""
+        provider_fallback_used = False
         try:
             draft, source = generate_chapter(
                 profile=project["profile"],
@@ -552,6 +559,7 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
                 use_ai=payload.use_ai,
             )
         except Exception as exc:
+            provider_fallback_used = True
             generation_warning = f"AI generation could not complete safely; a structured local fallback was returned. Details: {str(exc)[:180]}"
             draft, source = generate_chapter(
                 profile=project["profile"],
@@ -562,6 +570,14 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
                 use_ai=False,
             )
             source = source + "_after_error"
+
+        if str(source).startswith("local_template_fallback"):
+            provider_fallback_used = True
+
+        if bool(getattr(request.state, "background_job", False)) and access_mode == "paid" and provider_fallback_used:
+            raise RuntimeError(
+                "The AI provider did not complete the paid chapter request. The background job will retry, and the entitlement will be returned if all attempts fail."
+            )
 
         drafts = project.get("drafts", {})
         drafts[str(payload.chapter_number)] = draft
