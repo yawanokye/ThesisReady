@@ -480,3 +480,84 @@ body.workspace-clarity-theme > .hero .lead {
   font-size: 1.08rem;
   line-height: 1.55;
 }
+
+/* 2026-07-14 commercial workspace: progressive disclosure and background jobs. */
+.workspace-section-heading {
+  align-items: flex-start;
+  gap: 1.25rem;
+}
+.optional-master-toggle {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+details.optional-fields {
+  margin: 1rem 0;
+  border: 1px solid #d8e0ea;
+  border-radius: 14px;
+  background: #fbfcfe;
+  overflow: clip;
+}
+details.optional-fields > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .9rem 1rem;
+  font-weight: 800;
+  color: #26364d;
+  user-select: none;
+}
+details.optional-fields > summary::-webkit-details-marker { display: none; }
+details.optional-fields > summary::before {
+  content: "+";
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 1.55rem;
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 999px;
+  background: #e8eef7;
+  color: #234f9e;
+  font-size: 1.05rem;
+  line-height: 1;
+}
+details.optional-fields[open] > summary::before { content: "−"; }
+details.optional-fields > summary .optional-summary-state::after {
+  content: "Show more";
+  font-weight: 700;
+  font-size: .78rem;
+  color: #66758a;
+}
+details.optional-fields[open] > summary .optional-summary-state::after { content: "Show less"; }
+.optional-fields-body {
+  border-top: 1px solid #e3e8ef;
+  padding: 1rem;
+  background: #fff;
+}
+details.compact-optional { margin: .75rem 0; }
+details.prompt-options {
+  margin: .75rem 0 0;
+  background: #fff;
+}
+details.prompt-options > summary { padding: .7rem .8rem; font-size: .9rem; }
+details.prompt-options > .optional-fields-body { padding: .8rem; }
+.background-job-panel {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid #cdd9e8;
+  border-radius: 14px;
+  background: #f7f9fc;
+}
+.background-job-panel progress {
+  width: 100%;
+  height: .8rem;
+  margin: .8rem 0 .35rem;
+  accent-color: #234f9e;
+}
+.background-job-panel strong { text-transform: capitalize; }
+@media (max-width: 760px) {
+  .workspace-section-heading { flex-direction: column; }
+  .optional-master-toggle { width: 100%; }
+}

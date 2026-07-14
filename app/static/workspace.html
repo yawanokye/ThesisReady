@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ProjectReady AI | Guided Thesis and Dissertation Development Workspace</title>
   <link rel="stylesheet" href="/static/styles.css?v=20260629-integrity-v3" />
-  <link rel="stylesheet" href="/static/workspace-ui-clarity.css?v=20260710-plain-hero-tabs-v1" />
+  <link rel="stylesheet" href="/static/workspace-ui-clarity.css?v=20260714-commercial-worker-v1" />
   <link rel="stylesheet" href="/static/projectready-suite.css?v=20260710-nav-tabs-v1" />
   <link rel="stylesheet" href="/static/projectready_payments.css?v=20260709-live-payments-v2" />
 </head>
@@ -55,8 +55,13 @@
 
   <main class="layout">
     <section class="card">
-      <h2>1. Set up your research project</h2>
-      <p class="section-kicker">Complete the blue-highlighted fields with your own project information. The platform uses them to guide chapter depth, structure and evidence requirements.</p>
+      <div class="row-between workspace-section-heading">
+        <div>
+          <h2>1. Set up your research project</h2>
+          <p class="section-kicker">Complete the essential fields first. Open the optional groups only when you have more evidence, style guidance, recovery details or school-specific instructions.</p>
+        </div>
+        <button id="toggleOptionalFieldsBtn" type="button" class="secondary-action optional-master-toggle" aria-expanded="false">Show more optional fields</button>
+      </div>
       <div class="form-cluster core-cluster">
         <div class="cluster-title">Core profile and routing</div>
       <label class="priority-field"><span class="field-label">Project title</span>
@@ -74,25 +79,27 @@
       </label>
       <p id="levelDepthHint" class="hint level-hint" hidden></p>
 
-      <div class="page-target-panel" id="pageTargetPanel">
-        <div class="cluster-title">Chapter depth and page target</div>
-        <p class="hint">Use the default level-based target, or set a custom page range for the active chapter. Very long chapters, especially PhD literature reviews, are developed in staged section batches instead of one shallow pass.</p>
-        <div class="two-col-form">
-          <label><span class="field-label">Page target mode</span>
-            <select id="pageTargetMode">
-              <option value="default" selected>Use default target for the selected level and chapter</option>
-              <option value="custom">Set a custom page range for this chapter</option>
-            </select>
-          </label>
-          <label><span class="field-label">Custom page range</span>
-            <span class="page-range-inputs">
-              <input id="customPageMin" type="number" min="1" max="150" placeholder="Min" disabled />
-              <input id="customPageMax" type="number" min="1" max="180" placeholder="Max" disabled />
-            </span>
-          </label>
+      <details class="optional-fields" data-optional-group id="pageTargetDetails">
+        <summary><span>Chapter depth and custom page target</span><small class="optional-summary-state"></small></summary>
+        <div class="optional-fields-body page-target-panel" id="pageTargetPanel">
+          <p class="hint">Use the default level-based target, or set a custom page range for the active chapter. Very long chapters, especially PhD literature reviews, are developed in staged section batches instead of one shallow pass.</p>
+          <div class="two-col-form">
+            <label><span class="field-label">Page target mode</span>
+              <select id="pageTargetMode">
+                <option value="default" selected>Use default target for the selected level and chapter</option>
+                <option value="custom">Set a custom page range for this chapter</option>
+              </select>
+            </label>
+            <label><span class="field-label">Custom page range</span>
+              <span class="page-range-inputs">
+                <input id="customPageMin" type="number" min="1" max="150" placeholder="Min" disabled />
+                <input id="customPageMax" type="number" min="1" max="180" placeholder="Max" disabled />
+              </span>
+            </label>
+          </div>
+          <p id="pageTargetStatus" class="hint">Default target will be used unless you set a custom range.</p>
         </div>
-        <p id="pageTargetStatus" class="hint">Default target will be used unless you set a custom range.</p>
-      </div>
+      </details>
 
       <label class="priority-field"><span class="field-label">Thesis/dissertation/project format</span>
         <select id="thesis_format">
@@ -120,42 +127,54 @@
 
       <div class="form-cluster evidence-cluster">
         <div class="cluster-title">Format, evidence and study context</div>
-      <label>School-specific format notes
-        <textarea id="format_notes" rows="3" placeholder="Paste or describe your school format, required headings, word limits, citation style, or supervisor instructions. Leave blank if the default structure is suitable."></textarea>
-      </label>
+      <details class="optional-fields compact-optional" data-optional-group>
+        <summary><span>School-specific format notes</span><small class="optional-summary-state"></small></summary>
+        <div class="optional-fields-body">
+          <label>School-specific format notes
+            <textarea id="format_notes" rows="3" placeholder="Paste or describe your school format, required headings, word limits, citation style, or supervisor instructions. Leave blank if the default structure is suitable."></textarea>
+          </label>
+        </div>
+      </details>
       <label>Research area
         <input id="research_area" placeholder="e.g. Financial literacy" />
       </label>
       <label>Study context
         <textarea id="study_context" rows="3" placeholder="Describe the setting, population, and why the topic matters"></textarea>
       </label>
-      <label>Verified references, facts and statistics for the study
-        <textarea id="citation_evidence_notes" rows="4" placeholder="Paste verified sources, statistics, report details, DOI links, policy evidence, institutional records, or key citation notes. The app will use these to support claims and the problem statement."></textarea>
-      </label>
-
-      <div class="autofill-panel" id="chapterOneAutofillPanel">
-        <h3>Autofill from Introduction or Chapter One</h3>
-        <p class="hint">Upload an existing Introduction or Chapter One to extract likely title, research area, context, objectives, questions and variables. Review every field after autofill.</p>
-        <div class="two-col-form">
-          <label><span class="field-label">Introduction / Chapter One file</span>
-            <input id="chapterOneAutofillFile" type="file" accept=".docx,.pdf,.txt,.md" />
+      <details class="optional-fields" data-optional-group>
+        <summary><span>Evidence notes and Chapter One autofill</span><small class="optional-summary-state"></small></summary>
+        <div class="optional-fields-body">
+          <label>Verified references, facts and statistics for the study
+            <textarea id="citation_evidence_notes" rows="4" placeholder="Paste verified sources, statistics, report details, DOI links, policy evidence, institutional records, or key citation notes. The app will use these to support claims and the problem statement."></textarea>
           </label>
-          <label><span class="field-label">Autofill behaviour</span>
-            <select id="chapterOneAutofillMode">
-              <option value="fill_empty" selected>Fill empty fields only</option>
-              <option value="replace">Replace matching fields after extraction</option>
-            </select>
-          </label>
+          <div class="autofill-panel" id="chapterOneAutofillPanel">
+            <h3>Autofill from Introduction or Chapter One</h3>
+            <p class="hint">Upload an existing Introduction or Chapter One to extract likely title, research area, context, objectives, questions and variables. Review every field after autofill.</p>
+            <div class="two-col-form">
+              <label><span class="field-label">Introduction / Chapter One file</span>
+                <input id="chapterOneAutofillFile" type="file" accept=".docx,.pdf,.txt,.md" />
+              </label>
+              <label><span class="field-label">Autofill behaviour</span>
+                <select id="chapterOneAutofillMode">
+                  <option value="fill_empty" selected>Fill empty fields only</option>
+                  <option value="replace">Replace matching fields after extraction</option>
+                </select>
+              </label>
+            </div>
+            <div class="actions compact-actions">
+              <button id="chapterOneAutofillBtn" type="button" class="secondary-action">Autofill project fields</button>
+            </div>
+            <p id="chapterOneAutofillStatus" class="status"></p>
+            <pre id="chapterOneAutofillPreview" class="preview-box"></pre>
+          </div>
         </div>
-        <div class="actions compact-actions">
-          <button id="chapterOneAutofillBtn" type="button" class="secondary-action">Autofill project fields</button>
-        </div>
-        <p id="chapterOneAutofillStatus" class="status"></p>
-        <pre id="chapterOneAutofillPreview" class="preview-box"></pre>
-      </div>
+      </details>
       </div>
 
-      <div class="source-box human-input-box">
+      <details class="optional-fields" data-optional-group>
+        <summary><span>Researcher contribution and writing direction</span><small class="optional-summary-state"></small></summary>
+        <div class="optional-fields-body">
+        <div class="source-box human-input-box">
         <h3>Researcher contribution and writing direction</h3>
         <p class="hint">These fields make the working draft reflect the researcher's own context, evidence, argument and supervisor direction. The platform encourages the student to provide as much information as possible, but it can also prepare a provisional draft for consideration, with missing evidence and decisions clearly marked for confirmation.</p>
         <label>Working-draft stage
@@ -192,10 +211,15 @@
           </select>
         </label>
         <label class="inline"><input type="checkbox" id="humanRevisionPass" checked /> Run the selective academic quality model pass when the draft still needs it</label>
-        <p class="hint">The protected humanizer removes generic or mechanical phrasing, reduces repeated sentence frames, improves paragraph movement and follows the student's supplied writing direction without changing citations, statistics, headings, tables or evidence. Balanced mode refines only the weakest sections to control cost. Deep mode works section by section, including very long chapters, so depth is not compressed.</p>
+        <p class="hint">The protected humanizer uses high controlled perplexity and burstiness to create richer lexical and syntactic variation, a purposeful mix of short, medium and longer sentences, and less predictable paragraph movement. It does not use random synonyms or artificial errors, and it preserves citations, statistics, headings, tables, action items and evidence. Balanced mode refines the weakest sections to control cost. Deep mode works section by section, including very long chapters.</p>
       </div>
+        </div>
+      </details>
 
-      <div class="source-box literature-source-box" id="integrity-tools">
+      <details class="optional-fields" data-optional-group>
+        <summary><span>Find and attach literature sources</span><small class="optional-summary-state"></small></summary>
+        <div class="optional-fields-body">
+        <div class="source-box literature-source-box" id="integrity-tools">
         <h3>Find literature sources for this study</h3>
         <p class="hint">Search open scholarly metadata sources and attach only highly or partly relevant papers before drafting. The requested number is a maximum, not a quota, so the app may return fewer records rather than include unrelated papers. Verify all sources before final submission.</p>
         <label class="priority-field"><span class="field-label">Optional source search terms</span>
@@ -219,25 +243,35 @@
         <p id="sourceStatus" class="status"></p>
         <div id="sourceResults" class="source-results"></div>
       </div>
+        </div>
+      </details>
 
       <div class="form-cluster method-cluster">
-        <div class="cluster-title">Variables, approach and objectives</div>
-      <label>Key constructs / variables, one per line
-        <textarea id="variables_constructs" rows="3" placeholder="e.g. Post-choice regret&#10;Student dissatisfaction&#10;Student expectations"></textarea>
-      </label>
-      <label class="priority-field"><span class="field-label">Research approach</span>
-        <select id="research_approach">
-          <option>Quantitative</option>
-          <option>Qualitative</option>
-          <option>Mixed methods</option>
-        </select>
-      </label>
-      <label>Objectives, one per line
-        <textarea id="objectives" rows="4" placeholder="Examine the effect of X on Y&#10;Assess the role of Z"></textarea>
-      </label>
+        <div class="cluster-title">Research approach and objectives</div>
+        <label class="priority-field"><span class="field-label">Research approach</span>
+          <select id="research_approach">
+            <option>Quantitative</option>
+            <option>Qualitative</option>
+            <option>Mixed methods</option>
+          </select>
+        </label>
+        <label class="priority-field"><span class="field-label">Objectives, one per line</span>
+          <textarea id="objectives" rows="4" placeholder="Examine the effect of X on Y&#10;Assess the role of Z"></textarea>
+        </label>
+        <details class="optional-fields compact-optional" data-optional-group>
+          <summary><span>Key constructs or variables</span><small class="optional-summary-state"></small></summary>
+          <div class="optional-fields-body">
+            <label>Key constructs / variables, one per line
+              <textarea id="variables_constructs" rows="3" placeholder="e.g. Post-choice regret&#10;Student dissatisfaction&#10;Student expectations"></textarea>
+            </label>
+          </div>
+        </details>
       </div>
 
-      <div class="form-cluster recovery-cluster">
+      <details class="optional-fields" data-optional-group>
+        <summary><span>Project recovery and return access</span><small class="optional-summary-state"></small></summary>
+        <div class="optional-fields-body">
+        <div class="form-cluster recovery-cluster">
         <div class="cluster-title">Project recovery</div>
         <p class="hint">Save an email and a 6-digit PIN with the project. The PIN is securely hashed. No paid email service is required.</p>
         <div class="source-controls">
@@ -259,6 +293,8 @@
           <div id="workspaceRecoveryResults" class="source-results"></div>
         </details>
       </div>
+        </div>
+      </details>
 
       <div class="academic-integrity-panel" id="academicIntegrityPanel">
         <h3>Academic integrity and user responsibility</h3>
@@ -331,7 +367,10 @@
         <pre id="previousChapterPreview" class="preview-box"></pre>
       </div>
 
-      <div class="upload-box revision-box">
+      <details class="optional-fields" data-optional-group>
+        <summary><span>Quick strengthening within the Thesis Workspace</span><small class="optional-summary-state"></small></summary>
+        <div class="optional-fields-body">
+        <div class="upload-box revision-box">
         <h3>Quick strengthening in the workspace</h3>
         <p class="hint"><a href="/chapter-strengthener">Open the Comprehensive Chapter Strengthener</a> for level-based depth targets, citation-density strengthening, supervisor response matrix and blue/black/red DOCX comparison.</p>
         <p class="hint">Use this when you already have your own chapter. Upload it, add revision instructions, and the app will strengthen the existing work while preserving confirmed content. Substantive new insertions are marked in red in the preview and DOCX export.</p>
@@ -348,6 +387,8 @@
         <p id="revisionStatus" class="status"></p>
         <pre id="revisionPreview" class="preview-box"></pre>
       </div>
+        </div>
+      </details>
       <div class="upload-box" id="resultsUploadBox" hidden>
         <h3>Upload results output</h3>
         <p class="hint">This option appears only for the Results/Data Analysis and Discussion chapter. Upload SPSS/Excel/CSV/Word/PDF/text output so the app can use the actual results in the write-up.</p>
@@ -360,9 +401,14 @@
         <p id="uploadStatus" class="status"></p>
         <pre id="uploadPreview" class="preview-box"></pre>
       </div>
-      <label class="priority-field"><span class="field-label">Extra instructions</span>
-        <textarea id="extraInstructions" rows="2" placeholder="e.g. Use a quantitative explanatory design and British English"></textarea>
-      </label>
+      <details class="optional-fields compact-optional" data-optional-group>
+        <summary><span>Extra chapter instructions</span><small class="optional-summary-state"></small></summary>
+        <div class="optional-fields-body">
+          <label><span class="field-label">Extra instructions</span>
+            <textarea id="extraInstructions" rows="2" placeholder="e.g. Use a quantitative explanatory design and British English"></textarea>
+          </label>
+        </div>
+      </details>
       <div class="pr-access-panel" id="chapterAccessPanel">
         <div>
           <strong id="chapterPlanTitle">Chapter access</strong>
@@ -387,6 +433,12 @@
         <button id="downloadCheckBtn" disabled>Export compliance report DOCX</button>
       </div>
       <p id="draftStatus" class="status"></p>
+      <div id="backgroundJobPanel" class="background-job-panel" hidden>
+        <div class="row-between"><strong id="backgroundJobStage">Queued</strong><span id="backgroundJobPercent">0%</span></div>
+        <progress id="backgroundJobProgress" max="100" value="0"></progress>
+        <p id="backgroundJobMessage" class="hint">Your request is waiting for a background worker.</p>
+        <button id="cancelBackgroundJobBtn" type="button" class="secondary-action">Cancel queued request</button>
+      </div>
       <div class="working-draft-notice"><strong>Working-draft status:</strong> This output must be independently reviewed, source-checked, revised and approved where required before academic submission.</div>
       <textarea id="draftOutput" rows="18" placeholder="Your editable AI-assisted working draft will appear here"></textarea>
       <div class="preview-heading">Formatted working-draft preview</div>
@@ -412,8 +464,7 @@
       </div>
     </section>
   </main>
-
-  <script src="/static/projectready_payments.js?v=20260709-live-payments-v2"></script>
-  <script src="/static/app.js?v=20260709-ui-restore-v1"></script>
+  <script src="/static/projectready_payments.js?v=20260714-commercial-v1"></script>
+  <script src="/static/app.js?v=20260714-commercial-worker-v1"></script>
 </body>
 </html>

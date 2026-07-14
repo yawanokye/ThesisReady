@@ -10,10 +10,11 @@ let alignmentUploadAttached = false;
 let savedProjectDrafts = {};
 let draftRequestInFlight = false;
 let customPageTargets = {};
+let activeBackgroundJob = null;
 
 const $ = (id) => document.getElementById(id);
 
-const APP_STATIC_VERSION = "20260709-ui-restore-v1";
+const APP_STATIC_VERSION = "20260714-commercial-worker-v1";
 const CURRENT_PROJECT_STORAGE_KEY = "projectready-current-project";
 
 const levelDepthGuidance = {
@@ -104,7 +105,7 @@ function collectCustomPageTargetsForProfile() {
 }
 
 async function api(path, options = {}) {
-  const actionRoute = /\/(draft|check)$/.test(path);
+  const actionRoute = /\/(draft|check|draft-jobs)$/.test(path);
   const paymentHeaders = actionRoute && window.ProjectReadyPayments && currentProjectId
     ? ProjectReadyPayments.paymentHeaders(currentProjectId, currentChapter)
     : {};
@@ -664,12 +665,21 @@ function renderAnswers() {
   for (const section of currentSections.filter(s => selected.has(s.section_id))) {
     const div = document.createElement("div");
     div.className = "question-card";
-    const questions = (section.guiding_questions || []).map((q, idx) => `
+    const prompts = section.guiding_questions || [];
+    const first = prompts[0] ? `
+      <label>${prompts[0]}
+        <textarea data-section="${section.section_id}" data-question="q1" rows="2"></textarea>
+      </label>` : "";
+    const additional = prompts.slice(1).map((q, idx) => `
       <label>${q}
-        <textarea data-section="${section.section_id}" data-question="q${idx + 1}" rows="2"></textarea>
-      </label>
-    `).join("");
-    div.innerHTML = `<h3>${section.section_title}</h3>${questions}`;
+        <textarea data-section="${section.section_id}" data-question="q${idx + 2}" rows="2"></textarea>
+      </label>`).join("");
+    const optional = additional ? `
+      <details class="optional-fields prompt-options">
+        <summary><span>Show more guidance fields</span><small class="optional-summary-state"></small></summary>
+        <div class="optional-fields-body">${additional}</div>
+      </details>` : "";
+    div.innerHTML = `<h3>${section.section_title}</h3>${first}${optional}`;
     box.appendChild(div);
   }
 }
@@ -952,6 +962,121 @@ function showDraftQualityHint(text, metrics = null) {
   }
 }
 
+function backgroundJobStorageKey(projectId = currentProjectId, chapter = currentChapter) {
+  return `projectready-background-job:${projectId || "unknown"}:chapter-${chapter || 0}`;
+}
+
+function setBackgroundJobPanel(job = null) {
+  const panel = $("backgroundJobPanel");
+  if (!panel) return;
+  panel.hidden = !job;
+  if (!job) return;
+  const progress = Math.max(0, Math.min(Number(job.progress || 0), 100));
+  if ($("backgroundJobProgress")) $("backgroundJobProgress").value = progress;
+  if ($("backgroundJobPercent")) $("backgroundJobPercent").textContent = `${progress}%`;
+  if ($("backgroundJobStage")) $("backgroundJobStage").textContent = String(job.stage || job.status || "Queued").replaceAll("_", " ");
+  if ($("backgroundJobMessage")) $("backgroundJobMessage").textContent = job.message || "Your request is being processed in the background.";
+  if ($("cancelBackgroundJobBtn")) $("cancelBackgroundJobBtn").hidden = !["queued", "retrying"].includes(job.status);
+}
+
+function rememberBackgroundJob(data) {
+  activeBackgroundJob = data;
+  if (data?.job?.id && data?.job_token) {
+    localStorage.setItem(backgroundJobStorageKey(data.job.project_id, data.job.chapter_number), JSON.stringify(data));
+  }
+}
+
+function forgetBackgroundJob(job = activeBackgroundJob) {
+  if (job?.job?.project_id) localStorage.removeItem(backgroundJobStorageKey(job.job.project_id, job.job.chapter_number));
+  activeBackgroundJob = null;
+  setBackgroundJobPanel(null);
+}
+
+async function readBackgroundJob(data) {
+  const response = await fetch(`/api/jobs/${data.job.id}`, {
+    headers: {"X-ProjectReady-Job-Token": data.job_token},
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.detail || "The background request could not be checked.");
+  return body.job;
+}
+
+async function pollBackgroundJob(data) {
+  rememberBackgroundJob(data);
+  let delay = 1500;
+  while (true) {
+    const job = await readBackgroundJob(data);
+    data.job = job;
+    rememberBackgroundJob(data);
+    setBackgroundJobPanel(job);
+    if ($("draftStatus")) $("draftStatus").textContent = job.message || `Background request: ${job.status}.`;
+    if (job.status === "completed") {
+      forgetBackgroundJob(data);
+      return job.result || {};
+    }
+    if (job.status === "failed") {
+      forgetBackgroundJob(data);
+      throw new Error(job.error || "The background request could not be completed. Your paid entitlement was returned where applicable.");
+    }
+    if (job.status === "cancelled") {
+      forgetBackgroundJob(data);
+      throw new Error("The queued request was cancelled.");
+    }
+    await new Promise(resolve => window.setTimeout(resolve, delay));
+    delay = Math.min(5000, Math.round(delay * 1.25));
+  }
+}
+
+function applyDraftResult(result) {
+  hideAccessRequiredNotice();
+  $("draftOutput").value = result.draft || "";
+  savedProjectDrafts[String(currentChapter)] = result.draft || "";
+  renderDraftPreview(result.draft || "");
+  showDraftQualityHint(result.draft || "", result.generation_metrics || null);
+  if (result.warning) {
+    $("draftStatus").textContent = result.warning + " Review the working draft and complete every placeholder before export.";
+  }
+  $("downloadDraftBtn").disabled = false;
+}
+
+async function resumeBackgroundDraftIfAvailable() {
+  if (!currentProjectId) return;
+  const keys = Object.keys(localStorage).filter(key => key.startsWith(`projectready-background-job:${currentProjectId}:`));
+  if (!keys.length) return;
+  try {
+    const data = JSON.parse(localStorage.getItem(keys[0]) || "null");
+    if (!data?.job?.id || !data?.job_token) return;
+    currentChapter = Number(data.job.chapter_number || currentChapter);
+    if ($("chapterSelect")?.querySelector(`option[value="${currentChapter}"]`)) {
+      $("chapterSelect").value = String(currentChapter);
+      renderSections();
+    }
+    draftRequestInFlight = true;
+    if ($("draftBtn")) { $("draftBtn").disabled = true; $("draftBtn").textContent = "Background request running…"; }
+    const result = await pollBackgroundJob(data);
+    applyDraftResult(result);
+    await updatePaymentPanel();
+  } catch (error) {
+    handleWorkspaceError(error, "draftStatus");
+  } finally {
+    draftRequestInFlight = false;
+    if ($("draftBtn")) { $("draftBtn").disabled = false; $("draftBtn").textContent = "Develop working draft"; }
+  }
+}
+
+async function cancelActiveBackgroundJob() {
+  const data = activeBackgroundJob;
+  if (!data?.job?.id || !data?.job_token) return;
+  const response = await fetch(`/api/jobs/${data.job.id}/cancel`, {
+    method: "POST",
+    headers: {"X-ProjectReady-Job-Token": data.job_token},
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.detail || "The queued request could not be cancelled.");
+  forgetBackgroundJob(data);
+  if ($("draftStatus")) $("draftStatus").textContent = body.job?.message || "The queued request was cancelled.";
+}
+
 async function generateDraft() {
   if (draftRequestInFlight) return;
   draftRequestInFlight = true;
@@ -959,7 +1084,7 @@ async function generateDraft() {
   const originalButtonText = draftButton?.textContent || "Develop working draft";
   if (draftButton) {
     draftButton.disabled = true;
-    draftButton.textContent = "Checking access...";
+    draftButton.textContent = "Queueing request…";
   }
   try {
     if (!currentProjectId) await createProject();
@@ -976,57 +1101,49 @@ async function generateDraft() {
     delete profileSnapshot.recovery_pin;
     delete profileSnapshot.recovery_email;
     const payload = {
-    chapter_number: currentChapter,
-    selected_section_ids: selectedSectionIds(),
-    answers: collectAnswers(),
-    extra_instructions: $("extraInstructions").value.trim(),
-    use_ai: $("useAi") ? $("useAi").checked : true,
-    revision_mode: revisionMode,
-    revision_instructions: $("revisionInstructions") ? $("revisionInstructions").value.trim() : "",
-    revision_text: uploadedRevisionText,
-    revision_filename: uploadedRevisionFilename,
-    previous_chapters_context: $("previousChaptersContext") ? $("previousChaptersContext").value.trim() : "",
-    other_chapter_title: $("otherChapterTitle") ? $("otherChapterTitle").value.trim() : "",
-    other_chapter_instructions: $("otherChapterInstructions") ? $("otherChapterInstructions").value.trim() : "",
-    draft_maturity: $("draftMaturity") ? $("draftMaturity").value : "Supervisor-ready draft",
-    student_contribution: {
+      chapter_number: currentChapter,
+      selected_section_ids: selectedSectionIds(),
+      answers: collectAnswers(),
+      extra_instructions: $("extraInstructions").value.trim(),
+      use_ai: $("useAi") ? $("useAi").checked : true,
+      revision_mode: revisionMode,
+      revision_instructions: $("revisionInstructions") ? $("revisionInstructions").value.trim() : "",
+      revision_text: uploadedRevisionText,
+      revision_filename: uploadedRevisionFilename,
+      previous_chapters_context: $("previousChaptersContext") ? $("previousChaptersContext").value.trim() : "",
+      other_chapter_title: $("otherChapterTitle") ? $("otherChapterTitle").value.trim() : "",
+      other_chapter_instructions: $("otherChapterInstructions") ? $("otherChapterInstructions").value.trim() : "",
       draft_maturity: $("draftMaturity") ? $("draftMaturity").value : "Supervisor-ready draft",
-      central_argument: $("centralArgument") ? $("centralArgument").value.trim() : "",
-      local_context_notes: $("localContextNotes") ? $("localContextNotes").value.trim() : "",
-      evidence_anchors: $("evidenceAnchors") ? $("evidenceAnchors").value.trim() : "",
-      supervisor_comments: $("supervisorComments") ? $("supervisorComments").value.trim() : "",
-      preferred_style: $("preferredStyle") ? $("preferredStyle").value.trim() : "",
-      writing_sample: $("writingSample") ? $("writingSample").value.trim() : "",
-      phrases_to_avoid: $("preferredStyle") ? $("preferredStyle").value.trim() : "",
+      student_contribution: {
+        draft_maturity: $("draftMaturity") ? $("draftMaturity").value : "Supervisor-ready draft",
+        central_argument: $("centralArgument") ? $("centralArgument").value.trim() : "",
+        local_context_notes: $("localContextNotes") ? $("localContextNotes").value.trim() : "",
+        evidence_anchors: $("evidenceAnchors") ? $("evidenceAnchors").value.trim() : "",
+        supervisor_comments: $("supervisorComments") ? $("supervisorComments").value.trim() : "",
+        preferred_style: $("preferredStyle") ? $("preferredStyle").value.trim() : "",
+        writing_sample: $("writingSample") ? $("writingSample").value.trim() : "",
+        phrases_to_avoid: $("preferredStyle") ? $("preferredStyle").value.trim() : "",
+        human_revision_pass: $("humanRevisionPass") ? $("humanRevisionPass").checked : true,
+        humanizer_mode: $("humanizerMode") ? $("humanizerMode").value : "balanced"
+      },
       human_revision_pass: $("humanRevisionPass") ? $("humanRevisionPass").checked : true,
-      humanizer_mode: $("humanizerMode") ? $("humanizerMode").value : "balanced"
-    },
-    human_revision_pass: $("humanRevisionPass") ? $("humanRevisionPass").checked : true,
-    humanizer_mode: $("humanizerMode") ? $("humanizerMode").value : "balanced",
-    academic_integrity_confirmed: $("academicIntegrityDeclaration") ? $("academicIntegrityDeclaration").checked : false,
-    user_contribution_confirmed: $("userContributionDeclaration") ? $("userContributionDeclaration").checked : false,
-    draft_consideration_warnings: considerationWarnings,
-    allow_provisional_drafting: true,
-    profile_updates: profileSnapshot,
-    ...currentSourcePayload()
-  };
-  if (revisionMode) {
-    $("draftStatus").textContent = "Strengthening your existing chapter...";
-  } else if (considerationWarnings.length) {
-    $("draftStatus").textContent = `Developing a provisional working draft for consideration. Missing or limited inputs will be marked with placeholders: ${considerationWarnings.join("; ")}.`;
-  } else {
-    $("draftStatus").textContent = "Developing the working draft from your research inputs...";
-  }
-    const result = await api(`/api/projects/${currentProjectId}/draft`, { method: "POST", body: JSON.stringify(payload) });
-    hideAccessRequiredNotice();
-    $("draftOutput").value = result.draft;
-    savedProjectDrafts[String(currentChapter)] = result.draft || "";
-  renderDraftPreview(result.draft);
-  showDraftQualityHint(result.draft, result.generation_metrics || null);
-  if (result.warning) {
-    $("draftStatus").textContent = result.warning + " Review the working draft and complete every placeholder before export.";
-  }
-  $("downloadDraftBtn").disabled = false;
+      humanizer_mode: $("humanizerMode") ? $("humanizerMode").value : "balanced",
+      academic_integrity_confirmed: $("academicIntegrityDeclaration") ? $("academicIntegrityDeclaration").checked : false,
+      user_contribution_confirmed: $("userContributionDeclaration") ? $("userContributionDeclaration").checked : false,
+      draft_consideration_warnings: considerationWarnings,
+      allow_provisional_drafting: true,
+      profile_updates: profileSnapshot,
+      ...currentSourcePayload()
+    };
+    $("draftStatus").textContent = revisionMode
+      ? "Queueing the chapter-strengthening request…"
+      : "Queueing the working-draft request. You may leave this page after it enters the background queue.";
+    const queued = await api(`/api/projects/${currentProjectId}/draft-jobs`, {method:"POST", body:JSON.stringify(payload)});
+    rememberBackgroundJob(queued);
+    setBackgroundJobPanel(queued.job);
+    if (draftButton) draftButton.textContent = "Background request running…";
+    const result = await pollBackgroundJob(queued);
+    applyDraftResult(result);
     await updatePaymentPanel();
   } finally {
     draftRequestInFlight = false;
@@ -1036,7 +1153,6 @@ async function generateDraft() {
     }
   }
 }
-
 
 function fillFieldFromSuggestion(fieldId, value, mode = "fill_empty") {
   const field = $(fieldId);
@@ -1302,6 +1418,26 @@ function renderDraftPreview(value) {
   preview.innerHTML = highlightPlaceholders(value || "");
 }
 
+function syncOptionalMasterToggle() {
+  const groups = Array.from(document.querySelectorAll("details[data-optional-group]"));
+  const button = $("toggleOptionalFieldsBtn");
+  if (!button || !groups.length) return;
+  const allOpen = groups.every(group => group.open);
+  button.textContent = allOpen ? "Show less" : "Show more optional fields";
+  button.setAttribute("aria-expanded", allOpen ? "true" : "false");
+}
+
+function initialiseOptionalFields() {
+  const groups = Array.from(document.querySelectorAll("details[data-optional-group]"));
+  groups.forEach(group => group.addEventListener("toggle", syncOptionalMasterToggle));
+  $("toggleOptionalFieldsBtn")?.addEventListener("click", () => {
+    const open = !groups.every(group => group.open);
+    groups.forEach(group => { group.open = open; });
+    syncOptionalMasterToggle();
+  });
+  syncOptionalMasterToggle();
+}
+
 function download(path) {
   window.location.href = path;
 }
@@ -1314,6 +1450,7 @@ $("createProjectBtn").addEventListener("click", () => createProject().catch(err 
 if ($("saveRecoveryBtn")) $("saveRecoveryBtn").addEventListener("click", () => saveCurrentProjectRecovery().catch(err => handleWorkspaceError(err, "projectStatus")));
 if ($("recoverProjectBtn")) $("recoverProjectBtn").addEventListener("click", () => recoverWorkspaceProjects().catch(err => handleWorkspaceError(err, "projectStatus")));
 $("draftBtn").addEventListener("click", () => generateDraft().catch(err => handleWorkspaceError(err, "draftStatus")));
+if ($("cancelBackgroundJobBtn")) $("cancelBackgroundJobBtn").addEventListener("click", () => cancelActiveBackgroundJob().catch(err => handleWorkspaceError(err, "draftStatus")));
 if ($("pageTargetMode")) $("pageTargetMode").addEventListener("change", updateCustomPageTargetFromInputs);
 if ($("customPageMin")) $("customPageMin").addEventListener("input", updateCustomPageTargetFromInputs);
 if ($("customPageMax")) $("customPageMax").addEventListener("input", updateCustomPageTargetFromInputs);
@@ -1362,6 +1499,7 @@ async function initialiseWorkspace() {
     currentProjectId = returnedProject;
     localStorage.setItem(CURRENT_PROJECT_STORAGE_KEY, returnedProject);
   }
+  if (window.ProjectReadySessionBootstrap?.ready) await window.ProjectReadySessionBootstrap.ready;
   await loadTemplate();
   await restoreCurrentProject();
   const returnedChapter = Number(params.get("chapter") || 0);
@@ -1422,7 +1560,8 @@ async function initialiseWorkspace() {
   await updatePaymentPanel();
 }
 
-initialiseWorkspace().catch(err => {
+initialiseOptionalFields();
+initialiseWorkspace().then(resumeBackgroundDraftIfAvailable).catch(err => {
   document.body.innerHTML = `<pre>Failed to load app: ${escapeHtml(err.message)}</pre>`;
 });
 

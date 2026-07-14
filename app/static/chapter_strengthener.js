@@ -22,6 +22,8 @@ let currentProject = null;
 let lastResult = null;
 let strengthenerTemplate = null;
 let customNewSections = [];
+let activeStrengthenerJob = null;
+let strengthenerJobInFlight = false;
 
 function message(text, kind = '') {
   statusBox.textContent = text || '';
@@ -30,7 +32,8 @@ function message(text, kind = '') {
 
 function setBusy(busy) {
   reviseBtn.disabled = busy;
-  reviseBtn.textContent = busy ? 'Strengthening working chapter…' : 'Strengthen my working chapter';
+  reviseBtn.textContent = busy ? 'Background request running…' : 'Strengthen my working chapter';
+  if (byId('clearBtn')) byId('clearBtn').disabled = busy;
 }
 
 function selectedSourceMode() {
@@ -555,52 +558,153 @@ const registrationProfile = window.ProjectReadyPayments?.readRegistrationProfile
 if (registrationProfile?.email) {
   if (!byId('recoverEmail').value) byId('recoverEmail').value = registrationProfile.email;
   if (!byId('externalRecoveryEmail').value) byId('externalRecoveryEmail').value = registrationProfile.email;
-  if (byId('strengthenerDeveloperEmail') && !byId('strengthenerDeveloperEmail').value) byId('strengthenerDeveloperEmail').value = registrationProfile.email;
 }
 
-function updateStrengthenerDeveloperStatus(text, kind = '') {
-  const status = byId('strengthenerDeveloperAccessStatus');
-  if (!status) return;
-  status.textContent = text || '';
-  status.className = `status ${kind}`.trim();
+
+
+function strengthenerJobStorageKey(project = projectId(), chapter = chapterNumber()) {
+  return `projectready-strengthener-job:${project || 'unknown'}:chapter-${chapter || 0}`;
 }
 
-async function activateStrengthenerDeveloperAccess() {
-  if (!window.ProjectReadyPayments?.activateInternalAccess) {
-    updateStrengthenerDeveloperStatus('Developer access tools are not loaded on this page.', 'error');
+function renderStrengthenerJob(job = null) {
+  const panel = byId('strengthenerJobPanel');
+  if (!panel) return;
+  panel.hidden = !job;
+  if (!job) return;
+  const progress = Math.max(0, Math.min(Number(job.progress || 0), 100));
+  byId('strengthenerJobProgress').value = progress;
+  byId('strengthenerJobPercent').textContent = `${progress}%`;
+  byId('strengthenerJobStage').textContent = String(job.stage || job.status || 'Queued').replaceAll('_', ' ');
+  byId('strengthenerJobMessage').textContent = job.message || 'Your chapter-strengthening request is being processed in the background.';
+  byId('cancelStrengthenerJobBtn').hidden = !['queued', 'retrying'].includes(job.status);
+}
+
+function rememberStrengthenerJob(data) {
+  activeStrengthenerJob = data;
+  if (data?.job?.id && data?.job_token) {
+    localStorage.setItem(strengthenerJobStorageKey(data.job.project_id, data.job.chapter_number), JSON.stringify(data));
+  }
+}
+
+function forgetStrengthenerJob(data = activeStrengthenerJob) {
+  if (data?.job?.project_id) {
+    localStorage.removeItem(strengthenerJobStorageKey(data.job.project_id, data.job.chapter_number));
+  }
+  activeStrengthenerJob = null;
+  renderStrengthenerJob(null);
+}
+
+async function readStrengthenerJob(data) {
+  const response = await fetch(`/api/jobs/${encodeURIComponent(data.job.id)}`, {
+    headers: { 'X-ProjectReady-Job-Token': data.job_token },
+    cache: 'no-store',
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.detail || 'The background strengthening request could not be checked.');
+  return body.job;
+}
+
+async function pollStrengthenerJob(data) {
+  rememberStrengthenerJob(data);
+  let delay = 1500;
+  while (true) {
+    const job = await readStrengthenerJob(data);
+    data.job = job;
+    rememberStrengthenerJob(data);
+    renderStrengthenerJob(job);
+    message(job.message || `Background request: ${job.status}.`);
+    if (job.status === 'completed') {
+      forgetStrengthenerJob(data);
+      return job.result || {};
+    }
+    if (job.status === 'failed') {
+      forgetStrengthenerJob(data);
+      throw new Error(job.error || 'The background strengthening request could not be completed. Your paid revision entitlement was returned where applicable.');
+    }
+    if (job.status === 'cancelled') {
+      forgetStrengthenerJob(data);
+      throw new Error('The queued strengthening request was cancelled.');
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, delay));
+    delay = Math.min(5000, Math.round(delay * 1.25));
+  }
+}
+
+function applyStrengthenerResult(data) {
+  lastResult = data;
+  revisedChapter.value = data.revised_chapter_text || '';
+  strengtheningReport.value = data.strengthening_report || '';
+  supervisorMatrix.value = data.supervisor_response_matrix || '';
+  supervisorMatrixPanel.hidden = !supervisorMatrix.value.trim();
+  copyMatrixBtn.disabled = supervisorMatrixPanel.hidden;
+
+  const sourceCount = Number(data.source_bank_count || 0);
+  const scopeText = data.strengthening_scope === 'selected_sections' ? 'Selected-section output' : 'Complete selected chapter';
+  const isolatedText = data.scope_metadata?.chapter_isolated
+    ? ` A complete thesis was uploaded and Chapter ${data.scope_metadata.selected_chapter_number} was isolated before strengthening.`
+    : '';
+  revisionMeta.innerHTML = `<strong>${data.mode === 'ai_revision' ? 'Revision completed' : 'Fallback output returned'}.</strong> ${scopeText}. ${sourceCount} scholarly record(s) passed to the revision workflow. Estimated length: ${Number(data.estimated_pages || 0).toLocaleString()} pages and ${Number(data.word_count || 0).toLocaleString()} words. Citation density: ${Number(data.citations_per_1000_words || 0).toLocaleString()} per 1,000 words. Target: ${data.target_page_range || ''} pages and ${data.target_citation_density || ''}.${isolatedText} ${data.revision_colour_note || ''}`;
+
+  enableOutputs(Boolean(revisedChapter.value.trim()));
+  const errors = Array.isArray(data.provider_errors) ? data.provider_errors.filter(Boolean) : [];
+  const saveMessage = data.saved_as_section_output
+    ? ' The selected-section output was saved in the Chapter Strengthener record without replacing the complete project chapter.'
+    : (data.saved_to_project ? ' The strengthened chapter was saved to the project.' : '');
+  message(errors.length
+    ? `Revision completed with ${errors.length} provider warning(s). Review the report and action items.`
+    : `Working revision completed.${saveMessage} Review the working revision, report, sources, facts and all action items before export or academic use.`);
+  updateAccessSummary();
+}
+
+async function resumeStrengthenerJobIfAvailable() {
+  if (!projectId() || strengthenerJobInFlight) return;
+  const prefix = `projectready-strengthener-job:${projectId()}:`;
+  const key = Object.keys(localStorage).find((item) => item.startsWith(prefix));
+  if (!key) return;
+  let data = null;
+  try {
+    data = JSON.parse(localStorage.getItem(key) || 'null');
+  } catch (_error) {
+    localStorage.removeItem(key);
     return;
   }
-  const email = byId('strengthenerDeveloperEmail')?.value.trim() || '';
-  const key = byId('strengthenerDeveloperKey')?.value.trim() || '';
-  const activeProjectId = projectId();
-  const activeChapterNumber = chapterNumber();
-  const activeChapterTitle = byId('chapterTitle').value.trim() || byId('chapterType').value;
+  if (!data?.job?.id || !data?.job_token) return;
+  strengthenerJobInFlight = true;
+  setBusy(true);
+  enableOutputs(false);
   try {
-    updateStrengthenerDeveloperStatus('Checking developer access…');
-    const internal = await ProjectReadyPayments.activateInternalAccess({
-      email,
-      key,
-      productArea: 'chapter_strengthener',
-      projectId: activeProjectId,
-      chapterNumber: activeChapterNumber,
-      chapterTitle: activeChapterTitle,
-    });
-    updateStrengthenerDeveloperStatus(
-      activeProjectId
-        ? 'Developer access activated for this Chapter Strengthener project.'
-        : 'Developer access activated for Chapter Strengthener. It will apply after a project is loaded or created.',
-      'success'
-    );
-    if (byId('strengthenerDeveloperKey')) byId('strengthenerDeveloperKey').value = '';
-    updateAccessSummary();
+    const result = await pollStrengthenerJob(data);
+    applyStrengthenerResult(result);
   } catch (error) {
-    updateStrengthenerDeveloperStatus(error.message || 'Developer access could not be activated.', 'error');
+    message(error.message || 'The background strengthening request could not be resumed.', 'error');
+  } finally {
+    strengthenerJobInFlight = false;
+    setBusy(false);
   }
 }
 
-byId('activateStrengthenerDeveloperAccessBtn')?.addEventListener('click', activateStrengthenerDeveloperAccess);
+async function cancelActiveStrengthenerJob() {
+  const data = activeStrengthenerJob;
+  if (!data?.job?.id || !data?.job_token) return;
+  const response = await fetch(`/api/jobs/${encodeURIComponent(data.job.id)}/cancel`, {
+    method: 'POST',
+    headers: { 'X-ProjectReady-Job-Token': data.job_token },
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.detail || 'The queued strengthening request could not be cancelled.');
+  forgetStrengthenerJob(data);
+  message(body.job?.message || 'The queued strengthening request was cancelled.');
+  setBusy(false);
+  strengthenerJobInFlight = false;
+}
 
-loadProject();
+byId('cancelStrengthenerJobBtn')?.addEventListener('click', async () => {
+  try {
+    await cancelActiveStrengthenerJob();
+  } catch (error) {
+    message(error.message || 'The queued request could not be cancelled.', 'error');
+  }
+});
 
 function enableOutputs(enabled) {
   copyChapterBtn.disabled = !enabled;
@@ -610,6 +714,7 @@ function enableOutputs(enabled) {
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
+  if (strengthenerJobInFlight) return;
   const payload = payloadFromForm();
   if (!payload.academic_integrity_confirmed || !payload.user_contribution_confirmed) {
     message('Confirm both academic-integrity and user-contribution declarations before strengthening the chapter.', 'error');
@@ -632,20 +737,22 @@ form.addEventListener('submit', async (event) => {
     return;
   }
 
+  strengthenerJobInFlight = true;
   setBusy(true);
   enableOutputs(false);
   copyMatrixBtn.disabled = true;
-  message('Preparing the chapter-strengthening workflow…');
+  message('Preparing the chapter-strengthening request…');
 
   try {
+    await Promise.resolve(window.ProjectReadySessionBootstrap?.ready);
     if (selectedSourceMode() === 'external' && (!projectId() || currentProject?.profile?.project_kind !== 'external_revision')) {
       message('Creating the recoverable revision-only project…');
       await createExternalRevisionProject(payload);
     }
     if (!projectId()) throw new Error('Connect, recover or create a project before strengthening this chapter.');
 
-    message('Strengthening the chapter and checking academic alignment…');
-    const response = await fetch(`/api/projects/${encodeURIComponent(projectId())}/chapter-strengthener/revise`, {
+    message('Queueing the chapter-strengthening request. You may leave this page after it enters the background queue.');
+    const response = await fetch(`/api/projects/${encodeURIComponent(projectId())}/chapter-strengthener/jobs`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -654,34 +761,31 @@ form.addEventListener('submit', async (event) => {
       },
       body: JSON.stringify(payload),
     });
-    const data = await response.json();
-    if (!response.ok) await handleProtectedError(response, data, 'Chapter strengthening failed.');
-
-    lastResult = data;
-    revisedChapter.value = data.revised_chapter_text || '';
-    strengtheningReport.value = data.strengthening_report || '';
-    supervisorMatrix.value = data.supervisor_response_matrix || '';
-    supervisorMatrixPanel.hidden = !supervisorMatrix.value.trim();
-    copyMatrixBtn.disabled = supervisorMatrixPanel.hidden;
-
-    const sourceCount = Number(data.source_bank_count || 0);
-    const scopeText = data.strengthening_scope === 'selected_sections' ? 'Selected-section output' : 'Complete selected chapter';
-    const isolatedText = data.scope_metadata?.chapter_isolated ? ` A complete thesis was uploaded and Chapter ${data.scope_metadata.selected_chapter_number} was isolated before strengthening.` : '';
-    revisionMeta.innerHTML = `<strong>${data.mode === 'ai_revision' ? 'Revision completed' : 'Fallback output returned'}.</strong> ${scopeText}. ${sourceCount} scholarly record(s) passed to the revision workflow. Estimated length: ${Number(data.estimated_pages || 0).toLocaleString()} pages and ${Number(data.word_count || 0).toLocaleString()} words. Citation density: ${Number(data.citations_per_1000_words || 0).toLocaleString()} per 1,000 words. Target: ${data.target_page_range || ''} pages and ${data.target_citation_density || ''}.${isolatedText} ${data.revision_colour_note || ''}`;
-
-    enableOutputs(Boolean(revisedChapter.value.trim()));
-    const errors = Array.isArray(data.provider_errors) ? data.provider_errors.filter(Boolean) : [];
-    const saveMessage = data.saved_as_section_output
-      ? ' The selected-section output was saved in the Chapter Strengthener record without replacing the complete project chapter.'
-      : (data.saved_to_project ? ' The strengthened chapter was saved to the project.' : '');
-    message(errors.length ? `Revision completed with ${errors.length} provider warning(s). Review the report and action items.` : `Working revision completed.${saveMessage} Review the working revision, report, sources, facts and all action items before export or academic use.`);
-    updateAccessSummary();
+    const queued = await response.json().catch(() => ({}));
+    if (!response.ok) await handleProtectedError(response, queued, 'Chapter strengthening could not be queued.');
+    rememberStrengthenerJob(queued);
+    renderStrengthenerJob(queued.job);
+    const result = await pollStrengthenerJob(queued);
+    applyStrengthenerResult(result);
   } catch (error) {
     message(error.message || 'Chapter strengthening failed.', 'error');
   } finally {
+    strengthenerJobInFlight = false;
     setBusy(false);
   }
 });
+
+async function initialiseStrengthener() {
+  try {
+    await Promise.resolve(window.ProjectReadySessionBootstrap?.ready);
+  } catch (_error) {
+    // Public users continue without a authorised session.
+  }
+  await loadProject();
+  await resumeStrengthenerJobIfAvailable();
+}
+
+initialiseStrengthener().catch((error) => message(error.message || 'The Chapter Strengthener could not be initialised.', 'error'));
 
 async function copyText(value, successMessage) {
   if (!value.trim()) return;

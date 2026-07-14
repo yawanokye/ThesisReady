@@ -233,37 +233,6 @@ async function recoverTopicAccess(purchaseId, email, { quiet = false } = {}) {
   return data;
 }
 
-async function activateTopicInternalAccess() {
-  const button = $("activateTopicInternalBtn");
-  const email = ($("topicInternalEmail")?.value || $("topicPaymentEmail")?.value || "").trim();
-  const key = ($("topicInternalKey")?.value || "").trim();
-  if (!email || !email.includes("@")) throw new Error("Enter the approved developer email.");
-  if (!/^\d{6}$/.test(key)) throw new Error("Enter the six-digit internal access key.");
-  if (button) button.disabled = true;
-  try {
-    $("topicAccessStatus").textContent = "Checking developer access...";
-    const data = await api("/api/payments/internal-access", {
-      method: "POST",
-      body: JSON.stringify({
-        email,
-        key,
-        product_area: "topic_ideas",
-        project_id: "topic-ideas-internal",
-        chapter_number: 99,
-        chapter_title: "Topic Ideas Access"
-      }),
-    });
-    saveTopicCredential(data);
-    updateGenerationControls(true);
-    const select = $("maxIdeas");
-    if (select && Number(select.value || 0) < 5) select.value = "12";
-    setTopicAccessState("ready", "Developer access activated. Choose 5, 8, 10 or 12 ideas.");
-    $("ideaStatus").textContent = "Internal developer access is active for Topic Ideas.";
-  } finally {
-    if (button) button.disabled = false;
-  }
-}
-
 async function restoreTopicAccessFromForm() {
   const button = $("restoreTopicAccessBtn");
   const purchaseId = $("topicRecoveryPurchaseId")?.value.trim() || readTopicCredential()?.purchase_id || "";
@@ -666,21 +635,16 @@ window.addEventListener("DOMContentLoaded", async () => {
   $("unlockFromPreviewBtn").addEventListener("click", startTopicIdeasCheckout);
   $("checkTopicAccessBtn").addEventListener("click", () => checkTopicAccess());
   $("restoreTopicAccessBtn").addEventListener("click", restoreTopicAccessFromForm);
-  $("activateTopicInternalBtn")?.addEventListener("click", async () => {
-    try {
-      await activateTopicInternalAccess();
-    } catch (error) {
-      updateGenerationControls(false);
-      setTopicAccessState("free", error.message || "Developer access could not be activated.");
-    }
-  });
-
+  try {
+    await Promise.resolve(window.ProjectReadySessionBootstrap?.ready);
+  } catch (_error) {
+    // Public users continue without a authorised session.
+  }
   restoreTopicFormDraft();
   await loadTopicAccessPlan();
   updateGenerationControls(false);
   const profile = registrationProfile();
   if (profile?.email && !$("topicPaymentEmail").value) $("topicPaymentEmail").value = profile.email;
-  if (profile?.email && $("topicInternalEmail") && !$("topicInternalEmail").value) $("topicInternalEmail").value = profile.email;
 
   const params = new URLSearchParams(window.location.search);
   const returnedPurchaseId = params.get("purchase_id") || "";
