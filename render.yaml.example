@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: projectready-web
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: projectready-postgres
+          property: connectionString
+      - key: PROJECTREADY_BACKGROUND_JOBS_ENABLED
+        value: "1"
+
+  - type: worker
+    name: projectready-worker
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m app.jobs.worker
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: projectready-postgres
+          property: connectionString
+      - key: PROJECTREADY_BACKGROUND_JOBS_ENABLED
+        value: "1"
+
+databases:
+  - name: projectready-postgres
