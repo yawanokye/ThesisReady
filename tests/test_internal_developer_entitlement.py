@@ -78,13 +78,13 @@ def test_restricted_portal_issues_cookie_and_module_access(monkeypatch, tmp_path
         assert "frame-ancestors 'none'" in page.headers.get("content-security-policy", "")
 
         denied = client.post(
-            "/api/internal/session",
+            PORTAL_PATH + "/api/session",
             json={"email": "aadam@ucc.edu.gh", "key": "654321"},
         )
         assert denied.status_code == 404
 
         activated = client.post(
-            "/api/internal/session",
+            PORTAL_PATH + "/api/session",
             json={"email": "aadam@ucc.edu.gh", "key": "123456"},
         )
         assert activated.status_code == 200
@@ -96,7 +96,7 @@ def test_restricted_portal_issues_cookie_and_module_access(monkeypatch, tmp_path
         public_workspace = client.get("/workspace")
         assert "module-session.js" not in public_workspace.text
 
-        module = client.post("/api/internal/module-access", json={})
+        module = client.post(PORTAL_PATH + "/api/module-access", json={})
         assert module.status_code == 200
         credential = module.json()
         assert credential["provider"] == "internal_admin"
@@ -172,3 +172,13 @@ def test_public_frontend_contains_no_developer_access_controls():
     assert "activateInternalAccess" not in public_text
     assert "/api/payments/internal-access" not in public_text
     assert "PROJECTREADY_INTERNAL_PORTAL_PATH" not in public_text
+
+
+def test_portal_assets_use_private_scoped_api_paths():
+    portal_js = (ROOT / "app/internal_assets/portal.js").read_text()
+    module_js = (ROOT / "app/internal_assets/module_session.js").read_text()
+    assert "/api/internal/session" not in portal_js
+    assert "/api/internal/jobs" not in portal_js
+    assert "portalBase" in portal_js
+    assert "portalBase" in module_js
+    assert "/api/internal/module-access" not in module_js
