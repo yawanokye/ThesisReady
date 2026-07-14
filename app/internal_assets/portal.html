@@ -1,1 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow,noarchive" />
+  <title>Restricted Operations Portal</title>
+  <link rel="stylesheet" href="{{PORTAL_PATH}}/portal.css?v=20260714-commercial-v2" />
+</head>
+<body>
+  <main class="portal-shell">
+    <section class="portal-card" id="loginCard">
+      <p class="eyebrow">Restricted operations</p>
+      <h1>Internal access portal</h1>
+      <p>Authorised access only. Sessions are time-limited and are not linked from the public application.</p>
+      <form id="portalLoginForm">
+        <label>Approved email
+          <input id="portalEmail" type="email" autocomplete="username" required />
+        </label>
+        <label>Six-digit access key
+          <input id="portalKey" type="password" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="current-password" required />
+        </label>
+        <button type="submit">Open restricted portal</button>
+      </form>
+      <p id="loginStatus" class="status"></p>
+    </section>
 
+    <section class="portal-card" id="dashboardCard" hidden>
+      <div class="portal-heading">
+        <div><p class="eyebrow">Internal session</p><h1>Developer operations</h1></div>
+        <button id="logoutBtn" type="button" class="secondary">Close session</button>
+      </div>
+      <p id="sessionStatus" class="status"></p>
+      <div class="module-grid">
+        <a href="{{PORTAL_PATH}}/workspace">Thesis Workspace</a>
+        <a href="{{PORTAL_PATH}}/chapter-strengthener">Chapter Strengthener</a>
+        <a href="{{PORTAL_PATH}}/topic-ideas">Topic Ideas</a>
+      </div>
+      <div class="jobs-heading"><h2>Recent background jobs</h2><button id="refreshJobsBtn" class="secondary" type="button">Refresh</button></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Created</th><th>Type</th><th>Project</th><th>Status</th><th>Progress</th><th>Action</th></tr></thead>
+          <tbody id="jobsBody"></tbody>
+        </table>
+      </div>
+      <p id="jobsStatus" class="status"></p>
+    </section>
+  </main>
+  <script src="{{PORTAL_PATH}}/portal.js?v=20260714-commercial-v2"></script>
+</body>
+</html>
