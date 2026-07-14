@@ -1,6 +1,9 @@
 (() => {
   "use strict";
   const $ = id => document.getElementById(id);
+  const scriptUrl = new URL(document.currentScript?.src || window.location.href, window.location.origin);
+  const portalBase = scriptUrl.pathname.replace(/\/portal\.js$/, "").replace(/\/$/, "");
+  const endpoint = suffix => `${portalBase}/api/${String(suffix || "").replace(/^\//, "")}`;
 
   async function api(path, options = {}) {
     const response = await fetch(path, {
@@ -20,7 +23,7 @@
 
   async function loadSession() {
     try {
-      const data = await api("/api/internal/session");
+      const data = await api(endpoint("session"));
       showDashboard(true);
       $("sessionStatus").textContent = `Restricted session active for ${data.email}.`;
       await loadJobs();
@@ -40,7 +43,7 @@
   async function loadJobs() {
     $("jobsStatus").textContent = "Loading background jobs…";
     try {
-      const data = await api("/api/internal/jobs?limit=60");
+      const data = await api(endpoint("jobs?limit=60"));
       const body = $("jobsBody");
       body.innerHTML = "";
       for (const job of data.jobs || []) {
@@ -48,10 +51,10 @@
         const actions = document.createElement("td");
         actions.className = "job-actions";
         if (["queued", "retrying"].includes(job.status)) {
-          actions.appendChild(actionButton("Cancel", async () => { await api(`/api/internal/jobs/${job.id}/cancel`, {method:"POST"}); await loadJobs(); }));
+          actions.appendChild(actionButton("Cancel", async () => { await api(endpoint(`jobs/${job.id}/cancel`), {method:"POST"}); await loadJobs(); }));
         }
         if (["failed", "cancelled"].includes(job.status)) {
-          actions.appendChild(actionButton("Retry", async () => { await api(`/api/internal/jobs/${job.id}/retry`, {method:"POST"}); await loadJobs(); }));
+          actions.appendChild(actionButton("Retry", async () => { await api(endpoint(`jobs/${job.id}/retry`), {method:"POST"}); await loadJobs(); }));
         }
         row.innerHTML = `<td>${String(job.created_at || "").replace("T", " ").slice(0,19)}</td><td>${job.job_type || ""}</td><td>${(job.project_id || "").slice(0,12)} · Ch ${job.chapter_number || ""}</td><td>${job.status || ""}<br><small>${job.stage || ""}</small></td><td>${job.progress || 0}%</td>`;
         row.appendChild(actions);
@@ -67,14 +70,14 @@
     event.preventDefault();
     $("loginStatus").textContent = "Checking restricted access…";
     try {
-      await api("/api/internal/session", {method:"POST", body:JSON.stringify({email:$("portalEmail").value.trim(), key:$("portalKey").value.trim()})});
+      await api(endpoint("session"), {method:"POST", body:JSON.stringify({email:$("portalEmail").value.trim(), key:$("portalKey").value.trim()})});
       $("portalKey").value = "";
       await loadSession();
     } catch (error) {
       $("loginStatus").textContent = error.message || "Access unavailable.";
     }
   });
-  $("logoutBtn").addEventListener("click", async () => { await api("/api/internal/session", {method:"DELETE"}); showDashboard(false); });
+  $("logoutBtn").addEventListener("click", async () => { await api(endpoint("session"), {method:"DELETE"}); showDashboard(false); });
   $("refreshJobsBtn").addEventListener("click", loadJobs);
   loadSession();
 })();

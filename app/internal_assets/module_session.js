@@ -1,8 +1,10 @@
 (() => {
   "use strict";
+  const scriptUrl = new URL(document.currentScript?.src || window.location.href, window.location.origin);
+  const portalBase = scriptUrl.pathname.replace(/\/module-session\.js$/, "").replace(/\/$/, "");
 
   async function activate() {
-    const response = await fetch("/api/internal/module-access", {
+    const response = await fetch(`${portalBase}/api/module-access`, {
       method: "POST",
       credentials: "same-origin",
       headers: {"Content-Type": "application/json"},
