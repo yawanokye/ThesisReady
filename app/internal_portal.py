@@ -213,7 +213,7 @@ def _internal_module_page(request: Request, filename: str, module_script: str) -
     if not internal_session_or_none(request):
         raise HTTPException(status_code=404, detail="Resource not found.")
     html = (PUBLIC_STATIC_DIR / filename).read_text(encoding="utf-8")
-    bootstrap = f'<script src="{PORTAL_PATH}/module-session.js?v=20260714-commercial-v2"></script>\n  '
+    bootstrap = f'<script src="{PORTAL_PATH}/module-session.js?v=20260714-commercial-v3"></script>\n  '
     target = f'<script src="/static/{module_script}'
     if target not in html:
         raise HTTPException(status_code=500, detail="Internal module page is unavailable.")
@@ -236,6 +236,7 @@ def internal_topic_ideas_page(request: Request) -> HTMLResponse:
     return _internal_module_page(request, "topic_ideas.html", "topic_ideas.js")
 
 
+@router.post(PORTAL_PATH + "/api/session")
 @router.post("/api/internal/session")
 def create_internal_session(payload: InternalLoginRequest, request: Request) -> JSONResponse:
     _require_configured()
@@ -268,6 +269,7 @@ def create_internal_session(payload: InternalLoginRequest, request: Request) -> 
     return response
 
 
+@router.get(PORTAL_PATH + "/api/session")
 @router.get("/api/internal/session")
 def internal_session_status(request: Request) -> dict[str, Any]:
     session = internal_session_or_none(request)
@@ -284,6 +286,7 @@ def internal_session_status(request: Request) -> dict[str, Any]:
     }
 
 
+@router.delete(PORTAL_PATH + "/api/session")
 @router.delete("/api/internal/session")
 def close_internal_session(request: Request) -> Response:
     response = JSONResponse({"ok": True, "message": "Restricted internal session closed."})
@@ -291,6 +294,7 @@ def close_internal_session(request: Request) -> Response:
     return response
 
 
+@router.post(PORTAL_PATH + "/api/module-access")
 @router.post("/api/internal/module-access")
 def internal_module_access(request: Request) -> dict[str, Any]:
     session = internal_session_or_none(request)
@@ -307,6 +311,7 @@ def internal_module_access(request: Request) -> dict[str, Any]:
     }
 
 
+@router.get(PORTAL_PATH + "/api/jobs")
 @router.get("/api/internal/jobs")
 def internal_jobs(request: Request, limit: int = 50) -> dict[str, Any]:
     if not internal_session_or_none(request):
@@ -315,6 +320,7 @@ def internal_jobs(request: Request, limit: int = 50) -> dict[str, Any]:
     return {"ok": True, "jobs": list_jobs(limit=limit)}
 
 
+@router.post(PORTAL_PATH + "/api/jobs/{job_id}/cancel")
 @router.post("/api/internal/jobs/{job_id}/cancel")
 def internal_cancel_job(job_id: str, request: Request) -> dict[str, Any]:
     if not internal_session_or_none(request):
@@ -327,6 +333,7 @@ def internal_cancel_job(job_id: str, request: Request) -> dict[str, Any]:
     return {"ok": True, "job": cancel_job(job_id)}
 
 
+@router.post(PORTAL_PATH + "/api/jobs/{job_id}/retry")
 @router.post("/api/internal/jobs/{job_id}/retry")
 def internal_retry_job(job_id: str, request: Request) -> dict[str, Any]:
     if not internal_session_or_none(request):
