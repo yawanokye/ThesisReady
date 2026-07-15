@@ -313,6 +313,11 @@ async function restoreCurrentProject() {
     if ($("title")) $("title").value = project.title || profile.title || "";
     if ($("level") && profile.level) $("level").value = profile.level;
     if ($("thesis_format") && profile.thesis_format) $("thesis_format").value = profile.thesis_format;
+    if ($("format_notes")) $("format_notes").value = profile.format_notes || "";
+    if ($("expectedChapters")) $("expectedChapters").value = profile.expected_chapters || 5;
+    if ($("backgroundStructure")) $("backgroundStructure").value = profile.background_structure || "continuous_narrative";
+    if ($("purposeStatementStyle")) $("purposeStatementStyle").value = profile.purpose_statement_style || "concise_general_objective";
+    if ($("automaticSourceSupport")) $("automaticSourceSupport").checked = profile.automatic_source_support !== false;
     if ($("research_area")) $("research_area").value = profile.research_area || "";
     if ($("study_context")) $("study_context").value = profile.study_context || "";
     const contribution = profile.student_contribution || {};
@@ -704,6 +709,9 @@ function collectProfile() {
     reference_currency_rule: "Aim for at least 70% of substantive references from the last five years. Where current references do not exist for a specific issue, use the most relevant credible available sources, including foundational theories, classic models, and essential older studies.",
     thesis_format: $("thesis_format") ? $("thesis_format").value : "Standard five-chapter thesis/dissertation",
     format_notes: $("format_notes") ? $("format_notes").value.trim() : "",
+    background_structure: $("backgroundStructure") ? $("backgroundStructure").value : "continuous_narrative",
+    purpose_statement_style: $("purposeStatementStyle") ? $("purposeStatementStyle").value : "concise_general_objective",
+    automatic_source_support: $("automaticSourceSupport") ? $("automaticSourceSupport").checked : true,
     research_area: $("research_area").value.trim(),
     study_context: $("study_context").value.trim(),
     citation_evidence_notes: $("citation_evidence_notes") ? $("citation_evidence_notes").value.trim() : "",
@@ -726,7 +734,7 @@ function collectProfile() {
     variables: {
       raw_variables: lines($("variables_constructs") ? $("variables_constructs").value : "")
     },
-    expected_chapters: 7,
+    expected_chapters: $("expectedChapters") ? Math.max(3, Math.min(9, Number($("expectedChapters").value || 5))) : 5,
     other_chapter_title: $("otherChapterTitle") ? $("otherChapterTitle").value.trim() : "",
     other_chapter_instructions: $("otherChapterInstructions") ? $("otherChapterInstructions").value.trim() : "",
     objectives: lines($("objectives").value),

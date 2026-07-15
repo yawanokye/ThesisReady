@@ -133,6 +133,27 @@
           <label>School-specific format notes
             <textarea id="format_notes" rows="3" placeholder="Paste or describe your school format, required headings, word limits, citation style, or supervisor instructions. Leave blank if the default structure is suitable."></textarea>
           </label>
+          <div class="two-col-form">
+            <label><span class="field-label">Expected number of chapters</span>
+              <input id="expectedChapters" type="number" min="3" max="9" value="5" />
+            </label>
+            <label><span class="field-label">Chapter One background format</span>
+              <select id="backgroundStructure">
+                <option value="continuous_narrative" selected>Continuous background, no internal subheadings</option>
+                <option value="thematic_subsections">Thematic background with lower-level subheadings</option>
+                <option value="follow_school_guideline">Follow the school-specific notes above</option>
+              </select>
+            </label>
+            <label><span class="field-label">Purpose of the Study style</span>
+              <select id="purposeStatementStyle">
+                <option value="concise_general_objective" selected>Short, similar to the general objective</option>
+                <option value="concise_paragraph">Concise paragraph</option>
+                <option value="expanded_rationale">Expanded purpose with brief rationale</option>
+              </select>
+            </label>
+          </div>
+          <label class="inline"><input type="checkbox" id="automaticSourceSupport" checked /> Automatically find relevant scholarly sources when the attached evidence bank is too small</label>
+          <p class="hint">The app completes what it can from the project profile and relevant sources. It leaves a red action only for material information that cannot be inferred or retrieved safely.</p>
         </div>
       </details>
       <label>Research area
@@ -211,7 +232,7 @@
           </select>
         </label>
         <label class="inline"><input type="checkbox" id="humanRevisionPass" checked /> Run the selective academic quality model pass when the draft still needs it</label>
-        <p class="hint">The protected humanizer has three options: Light, Balanced(recoomended) and Deep.</p>
+        <p class="hint">The protected humanizer uses high controlled perplexity and burstiness to create richer lexical and syntactic variation, a purposeful mix of short, medium and longer sentences, and less predictable paragraph movement. It does not use random synonyms or artificial errors, and it preserves citations, statistics, headings, tables, action items and evidence. Balanced mode refines the weakest sections to control cost. Deep mode works section by section, including very long chapters.</p>
       </div>
         </div>
       </details>

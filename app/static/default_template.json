@@ -30,7 +30,10 @@
                 "Signal knowledge gaps without fully stating the problem too early.",
                 "End with a smooth transition to the statement of the problem.",
                 "Include relevant and accurate in-text citations for substantive claims.",
-                "Use verified facts and statistics to establish the context where available. If figures are not supplied, insert a placeholder rather than inventing them."
+                "Use verified facts and statistics to establish the context where available. If figures are not supplied, insert a placeholder rather than inventing them.",
+                "Follow the project background-format control. When continuous narrative is selected, write one coherent Background to the Study without internal numbered or titled subheadings.",
+                "Complete general and contextual explanation from the title, objectives, study profile and verified evidence bank before requesting additional user information.",
+                "Use an action item only for a material fact that cannot be inferred or retrieved safely, and do not repeat the same action in later sections."
               ]
             },
             {
@@ -54,7 +57,8 @@
                 "End with a precise research focus.",
                 "Support the problem statement with relevant accurate statistics, facts, policy evidence, or empirical evidence.",
                 "Include accurate in-text citations for every major factual claim.",
-                "Do not invent figures or citations; use bracketed placeholders where verified evidence is needed."
+                "Support substantive claims with directly relevant and accurate citations from the supplied or automatically retrieved evidence bank.",
+                "Complete what can be responsibly established from available sources before creating an action item."
               ]
             },
             {
@@ -68,7 +72,10 @@
               "rules": [
                 "State the overall intent of the study in one clear paragraph.",
                 "Ensure the purpose flows directly from the problem statement.",
-                "Do not introduce variables not already in the study profile."
+                "Do not introduce variables not already in the study profile.",
+                "Follow the project purpose-style control. When concise-general-objective is selected, state the purpose in one clear sentence closely aligned with the general objective.",
+                "Do not turn the purpose section into another background, problem statement or literature review.",
+                "Do not request confirmation of generated wording when a defensible purpose can be derived from the approved title and objectives."
               ]
             },
             {
@@ -129,7 +136,9 @@
               "rules": [
                 "Address theory, practice, and policy where applicable.",
                 "Avoid exaggerated claims.",
-                "Link significance to the study problem, context, and expected findings."
+                "Link significance to the study problem, context, and expected findings.",
+                "Support substantive claims with directly relevant and accurate citations from the supplied or automatically retrieved evidence bank.",
+                "Complete what can be responsibly established from available sources before creating an action item."
               ]
             },
             {
@@ -192,7 +201,8 @@
               ],
               "rules": [
                 "Make the stated chapter structure match the actual project structure.",
-                "Describe each chapter briefly and accurately."
+                "Describe each chapter briefly and accurately.",
+                "Use the expected chapter count and selected thesis format from the project profile. Do not ask whether the work has five or seven chapters when that value is already supplied."
               ]
             }
           ]

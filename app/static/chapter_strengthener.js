@@ -270,6 +270,8 @@ function payloadFromForm() {
     data_and_results: byId('dataResults').value.trim(),
     contribution_claim: byId('contributionClaim').value.trim(),
     school_guidelines: byId('schoolGuidelines').value.trim(),
+    background_structure: byId('strengthenerBackgroundStructure') ? byId('strengthenerBackgroundStructure').value : 'continuous_narrative',
+    purpose_statement_style: byId('strengthenerPurposeStyle') ? byId('strengthenerPurposeStyle').value : 'concise_general_objective',
     citation_style: byId('citationStyle').value,
     revision_level: byId('revisionLevel').value,
     humanizer_mode: byId('strengthenerHumanizerMode') ? byId('strengthenerHumanizerMode').value : 'balanced',
@@ -396,6 +398,8 @@ function fillFromProject(project) {
   byId('variablesConstructs').value = asLines(profile.variables) || byId('variablesConstructs').value;
   byId('methodology').value = profile.research_approach || byId('methodology').value;
   byId('schoolGuidelines').value = profile.format_notes || byId('schoolGuidelines').value;
+  if (byId('strengthenerBackgroundStructure')) byId('strengthenerBackgroundStructure').value = profile.background_structure || 'continuous_narrative';
+  if (byId('strengthenerPurposeStyle')) byId('strengthenerPurposeStyle').value = profile.purpose_statement_style || 'concise_general_objective';
   byId('sourceSearchTerms').value = profile.source_search_terms || byId('sourceSearchTerms').value;
   byId('studyStage').value = profile.study_stage || byId('studyStage').value;
   byId('theoryFramework').value = profile.theory_framework || byId('theoryFramework').value;
