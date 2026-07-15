@@ -54,20 +54,23 @@ CHAPTER_PAGE_TARGETS: dict[str, dict[int, tuple[int, int]]] = {
 # Planning guides, not mechanical quotas. Citations must still pass the relevance
 # and source-integrity checks before they are inserted.
 CITATION_DENSITY_TARGETS: dict[str, dict[int, tuple[int, int]]] = {
+    # These are citation-occurrence planning ranges per 1,000 substantive words.
+    # They are intentionally stronger than the earlier defaults, but remain subject
+    # to a strict relevance gate and do not permit invented or decorative citations.
     "bachelors": {
-        1: (5, 7), 2: (10, 14), 3: (3, 5), 4: (3, 5), 5: (2, 4),
+        1: (8, 10), 2: (12, 16), 3: (4, 6), 4: (4, 7), 5: (3, 5),
     },
     "nonresearch_masters": {
-        1: (6, 8), 2: (12, 16), 3: (4, 6), 4: (4, 6), 5: (3, 5),
+        1: (9, 12), 2: (14, 18), 3: (5, 7), 4: (5, 8), 5: (4, 6),
     },
     "research_masters": {
-        1: (7, 10), 2: (14, 18), 3: (5, 7), 4: (5, 8), 5: (4, 6),
+        1: (10, 14), 2: (16, 21), 3: (6, 9), 4: (6, 10), 5: (5, 7),
     },
     "professional_doctorate": {
-        1: (8, 11), 2: (15, 20), 3: (6, 9), 4: (6, 9), 5: (4, 7),
+        1: (11, 15), 2: (18, 23), 3: (7, 10), 4: (7, 11), 5: (5, 8),
     },
     "phd": {
-        1: (10, 14), 2: (16, 22), 3: (7, 10), 4: (7, 11), 5: (5, 8),
+        1: (12, 16), 2: (20, 26), 3: (8, 12), 4: (8, 13), 5: (6, 9),
     },
 }
 
@@ -398,6 +401,76 @@ def _reference_currency_requirements() -> dict[str, Any]:
             "Do not fabricate citations or reference-list entries. Use sources supplied by the student or sources that can be stated with confidence. "
             "If no credible source details are available, insert a clear bracketed placeholder such as "
             f"[insert verified recent source if available, {start_year}-{current_year}] or [insert credible available source]."
+        ),
+    }
+
+
+def _institutional_format_requirements(profile: dict[str, Any], chapter_number: int) -> dict[str, Any]:
+    """Resolve school-format controls without forcing one universal Chapter One style."""
+    format_notes = str(profile.get("format_notes") or "").strip()
+    notes_lower = format_notes.lower()
+
+    background_structure = str(profile.get("background_structure") or "continuous_narrative").strip().lower()
+    if any(term in notes_lower for term in ("without subheading", "no subheading", "continuous background", "en bloc", "single block")):
+        background_structure = "continuous_narrative"
+    elif any(term in notes_lower for term in ("background subheading", "background subsection", "thematic background")):
+        background_structure = "thematic_subsections"
+    if background_structure not in {"continuous_narrative", "thematic_subsections", "follow_school_guideline"}:
+        background_structure = "continuous_narrative"
+
+    purpose_style = str(profile.get("purpose_statement_style") or "concise_general_objective").strip().lower()
+    if any(term in notes_lower for term in ("purpose same as general objective", "short purpose", "concise purpose")):
+        purpose_style = "concise_general_objective"
+    elif any(term in notes_lower for term in ("expanded purpose", "purpose rationale")):
+        purpose_style = "expanded_rationale"
+    if purpose_style not in {"concise_general_objective", "concise_paragraph", "expanded_rationale"}:
+        purpose_style = "concise_general_objective"
+
+    expected_chapters = int(profile.get("expected_chapters") or 5)
+    expected_chapters = max(3, min(9, expected_chapters))
+    return {
+        "chapter_number": int(chapter_number or 0),
+        "background_structure": background_structure,
+        "purpose_statement_style": purpose_style,
+        "expected_chapters": expected_chapters,
+        "rules": [
+            "Use the project profile, title, objectives, selected method and available evidence to complete every element that can be responsibly derived.",
+            "Create an ACTION REQUIRED item only for a material fact or institutional decision that cannot be inferred, retrieved or drafted safely.",
+            "Do not ask the user to confirm wording merely because it was generated. Draft a defensible version for consideration.",
+            "Do not repeat the same missing population, location, study-period, instrument or chapter-structure action in several sections. State it once at the first relevant point.",
+            "Never leave broken phrases such as 'among in, Ghana'. Rewrite the sentence generically and add one precise action only if the missing detail is essential.",
+            f"Use the configured {expected_chapters}-chapter structure when writing Organisation of the Study; do not ask whether the work has five or seven chapters when this value is available.",
+        ],
+        "background_rules": (
+            [
+                "Write Background to the Study as one continuous, coherent section under its main heading.",
+                "Do not create numbered or titled subdimensions inside the background.",
+                "Move from broad context to the exact study setting through paragraph transitions rather than subheadings.",
+            ]
+            if background_structure == "continuous_narrative"
+            else [
+                "Thematic lower-level subheadings may be used inside Background to the Study when they improve clarity and match the school format.",
+                "Keep the sequence coherent from broad context to the exact study setting.",
+            ]
+        ),
+        "purpose_rules": (
+            [
+                "Write Purpose of the Study as one concise sentence closely aligned with the general objective.",
+                "A second short sentence may clarify the population or context only when that information is available.",
+                "Do not add a literature review, justification, citation cluster or extended rationale under the purpose heading.",
+            ]
+            if purpose_style == "concise_general_objective"
+            else (
+                [
+                    "Write Purpose of the Study as one concise paragraph of about two to four sentences.",
+                    "State the overall intent first, then briefly clarify scope without repeating the problem statement.",
+                ]
+                if purpose_style == "concise_paragraph"
+                else [
+                    "Write Purpose of the Study as a developed paragraph that states the overall intent and briefly explains how it follows from the problem.",
+                    "Keep it focused and avoid turning it into another background or problem section.",
+                ]
+            )
         ),
     }
 
@@ -839,7 +912,7 @@ def _student_contribution_requirements(profile: dict[str, Any]) -> dict[str, Any
         "paragraph_development_protocol": [
             "Before writing each substantive paragraph, identify the paragraph purpose, the evidence or user input available, the interpretation required, and the link to the study objective.",
             "Use the student's project-specific context, evidence anchors, supervisor comments, and preferred style wherever supplied.",
-            "If the user has not supplied enough evidence for a confident claim, use a clear bracketed attention placeholder instead of writing a generic unsupported claim.",
+            "If a confident claim cannot be supported after checking the project profile, supplied evidence and source bank, qualify or omit it. Add one precise ACTION REQUIRED item only when a material user-only fact is essential.",
             "Avoid over-polished, perfectly balanced, template-like prose. Use natural scholarly reasoning, varied sentence structure, and context-specific transitions.",
             "Use controlled scholarly variation in practical terms: vary rhythm, sentence openings and paragraph shape only when the argument requires it, while preserving clarity, evidence and disciplinary precision.",
             "Where a writing sample is supplied, use it only to infer broad tone, sentence rhythm and level of directness; do not copy wording or imitate personal details.",
@@ -932,7 +1005,7 @@ def _chapter_specific_requirements(chapter_number: int) -> list[str]:
         return common + [
             "Frame the statement of the problem through evidence, contradiction, gap, or unresolved practical concern rather than beginning with 'The research problem is that...'.",
             "Use connected paragraphs that move from context to evidence, evidence to gap, and gap to research focus.",
-            "Use accurate statistics and factual evidence where supplied or confidently known. Where statistics are needed but not supplied, insert a bracketed placeholder rather than inventing figures.",
+            "Use accurate statistics and factual evidence from supplied or automatically retrieved sources where available. If an exact figure remains unavailable, write the defensible non-numeric point and add one precise ACTION REQUIRED item only when the figure is essential.",
         ]
 
     if chapter_number == 2:
@@ -1069,6 +1142,7 @@ def build_drafting_prompt(
         "level_based_model_quality_route": _model_route_for_prompt(profile, chapter_number),
         "reference_currency_requirements": _reference_currency_requirements(),
         "citation_and_evidence_requirements": _citation_and_evidence_requirements(chapter_number),
+        "institutional_format_requirements": _institutional_format_requirements(profile, chapter_number),
         "human_scholarly_style_requirements": _human_scholarly_style_requirements(seed=hash(profile.get("title", "")) & 0xFFFFFFFF),
         "student_contribution_and_style_controls": _student_contribution_requirements(profile),
         "draft_grounding_and_provisional_mode": _has_meaningful_user_inputs(profile, answers),
@@ -1090,24 +1164,27 @@ def build_drafting_prompt(
             "In all generated chapters, use protected scholarly variation: natural sentence and paragraph rhythm, context-specific transitions and moderate lexical variety without sacrificing clarity, evidence, APA accuracy or methodological precision.",
             "Use the student's central argument, local context notes, evidence anchors, supervisor comments, preferred writing style and supplied writing sample as style/context guidance; do not copy the writing sample verbatim unless the user has written it as content to include.",
             "Use an evidence-to-paragraph method: each substantive paragraph should have a purpose, a claim grounded in supplied evidence or source-bank material, interpretation, and a clear link to the objective or chapter argument.",
-            "Before producing a long paragraph, ask internally whether the user supplied enough context, evidence or source support for that paragraph. If not, write a shorter defensible paragraph and insert a precise bracketed attention placeholder for the missing evidence.",
+            "Before producing a long paragraph, check whether the project profile, attached evidence, automatically retrieved sources or defensible general knowledge support it. Complete what can be responsibly completed. If a material claim still lacks support, shorten or qualify it and add one precise ACTION REQUIRED item only when the user must supply something unavailable to the system.",
             "Make the writing high-quality and human-supervised by adding discipline-specific reasoning, careful qualifications, context-specific transitions and clear links between evidence and the student's own objectives.",
             "Where the user has supplied limited information, still prepare a draft for the user's consideration, but label uncertainty through bracketed attention placeholders and avoid pretending the draft is fully grounded.",
-            "In provisional drafting, write a useful structure and sample scholarly paragraphs from the available title, level, chapter type and broad topic, then mark every unsupported claim, source, statistic, context detail, method decision or result with a precise bracketed confirmation placeholder.",
-            "Do not block chapter development merely because student inputs are limited. Encourage completion through placeholders and action notes inside the draft, not through refusal.",
+            "In provisional drafting, develop the strongest defensible draft from the title, research area, objectives, study design, context, available source bank and automatically retrieved evidence. Do not turn every missing detail into a placeholder.",
+            "Reserve ACTION REQUIRED items for unique, material inputs that only the user, supervisor or institution can provide, such as the exact study population, site, sample, approved instrument, ethics approval, study period or actual results. Do not repeat an action already stated earlier.",
             "Respect the selected draft maturity: a structured draft can be more schematic; a supervisor-ready or revised academic draft must be more developed, but still grounded in user-supplied evidence and sources.",
             "Avoid very short sentences except where they are necessary for emphasis, transition, or clarity.",
             "Do not write sentences that say the work, chapter, section, depth, or argument is designed to meet the selected level of the project, thesis, or dissertation.",
             "Use the reference_currency_requirements: aim for at least 70% of substantive references within the stated recent-reference window, but where current sources do not exist, use the strongest credible available sources instead.",
             "Use the citation_and_evidence_requirements: include relevant, accurate in-text citations across all substantive write-up sections, especially literature, methodology justification, discussion, and problem framing.",
+            "Follow institutional_format_requirements. For Chapter One, apply its background_structure and purpose_statement_style exactly, and use expected_chapters for Organisation of the Study.",
+            "Do not create an action asking the user to approve a general objective, purpose statement, chapter count or basic wording that can be derived from the project profile. Draft it cleanly for the user's consideration.",
             "For Chapter Two and every later chapter, use previous_chapters_for_alignment to check consistency with earlier chapters before writing. Align concepts, variables, theories, objectives, research questions, hypotheses, methodology and terminology with the supplied earlier chapters.",
             "Do not copy large passages from previous_chapters_for_alignment. Use it to detect contradictions, omissions and missing links. Where alignment cannot be confirmed, insert a precise bracketed attention placeholder such as [confirm alignment with Chapter One objective wording].",
             "Use retrieved_sources as an additional evidence bank where the user has run the source finder. Do not replace the project profile, user-provided evidence, uploaded files, or placeholders; enrich the draft with relevant retrieved sources.",
             "When retrieved_sources contains sources marked highly_relevant or partly_relevant, review them carefully and integrate those that directly support the chapter argument. Do not cite not_relevant sources, and do not cite any source merely to increase citation count.",
             "Every chapter must end with a References section that includes complete reference entries for every source cited in the chapter, using available reference_entry_hint/apa_hint details from the source bank and user-supplied evidence notes. If source search results were attached, add a short Source Use Audit after the References section.",
-            "Increase in-text citation density: Chapter Two should be citation-rich; Chapter One should cite evidence for context, problem and gaps; Chapter Three should cite methodological authorities where appropriate; Chapter Four discussion should cite theory and prior studies.",
+            "Increase in-text citation density in line with the level-specific planning range. Chapter Two should be citation-rich; Chapter One should cite evidence for context, concepts, policy, the problem and the gap; Chapter Three should cite methodological and measurement authorities where appropriate; Chapter Four discussion should cite theory and directly comparable studies.",
+            "If the user did not manually attach sources, use the automatically enriched source bank when available. A source may be cited more than once only when it directly supports each claim. Never use a citation merely as decoration.",
             "Run a claim-evidence pass before finalising. Every substantive factual, historical, policy, contextual, theoretical or empirical claim must be supported by a directly relevant and accurate citation from the supplied or retrieved evidence bank. Do not leave long substantive paragraphs without support.",
-            "For Chapter One, aim for 8-12 relevant citation occurrences per 1,000 words at Masters level and 10-14 at doctoral level, while prioritising accuracy and relevance over numerical padding.",
+            "For Chapter One, follow the level-specific citation range in chapter_page_word_and_citation_targets. Support substantive contextual, theoretical, policy, historical and empirical claims throughout the section, not only at paragraph endings. Accuracy and direct relevance remain more important than numerical padding.",
             "Do not embed instructions, confirmations or missing-evidence commentary inside academic prose. Put each unresolved item on its own bracketed line beginning [ACTION REQUIRED: ...] immediately after the sentence or paragraph that requires the action, so the full instruction is exported in red at the exact point of need.",
             "If retrieved_sources do not provide enough support for a required claim, insert a bracketed placeholder such as [insert verified source for this claim] rather than guessing.",
             "For Chapter One, make the Background and Statement of the Problem factual and evidence-led. Use relevant accurate statistics, policy evidence, institutional evidence, or empirical findings to support the problem where supplied or confidently known.",

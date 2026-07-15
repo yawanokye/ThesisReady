@@ -20,6 +20,35 @@ _META_RE = re.compile(
 )
 _ACTION_APPENDIX_RE = re.compile(r"(?im)^#{0,3}\s*USER ACTIONS REQUIRED\s*$")
 
+_DERIVABLE_CONFIRMATION_RE = re.compile(
+    r"^(?:confirm|verify)\s+(?:the\s+)?(?:approved|final|supervisor-approved|institution-approved)?\s*"
+    r"(?:wording\s+(?:of|for)\s+)?(?:general objective|specific objectives?|research questions?|purpose of the study|study title)\b",
+    flags=re.IGNORECASE,
+)
+
+
+def _action_dedupe_key(action: str) -> str:
+    """Collapse repeated requests for the same user-only fact across a chapter."""
+    value = re.sub(r"[^a-z0-9]+", " ", action.lower()).strip()
+    categories = [
+        ("study_population", r"\b(study|target)?\s*(population|respondent group|participant group)\b"),
+        ("study_location", r"\b(study )?(location|area|site|district|region|municipality|community)\b"),
+        ("study_period", r"\b(study|data collection|sample)?\s*(period|dates?|time frame|timeframe)\b"),
+        ("sample_size", r"\b(sample size|number of respondents|number of participants)\b"),
+        ("sampling_method", r"\b(sampling method|sampling technique|sampling procedure)\b"),
+        ("instrument", r"\b(questionnaire|instrument|scale|measurement items?)\b"),
+        ("ethics", r"\b(ethics|ethical approval|consent|approval number)\b"),
+        ("chapter_structure", r"\b(five|seven|number of chapters|chapter structure|chapter sequence)\b"),
+        ("hypotheses_requirement", r"\b(hypotheses|required hypotheses|department requires hypotheses)\b"),
+    ]
+    for label, pattern in categories:
+        if re.search(pattern, value, flags=re.IGNORECASE):
+            return label
+    # Source actions remain claim-specific because different paragraphs can need
+    # different evidence. Normalise only wording that does not change meaning.
+    value = re.sub(r"\b(?:verified|current|appropriate|accurate|relevant)\b", "", value)
+    return re.sub(r"\s+", " ", value).strip()
+
 
 def _clean_residue(text: str) -> str:
     value = re.sub(r"\s+", " ", text or "").strip()
@@ -97,8 +126,10 @@ def detach_action_items(text: str) -> str:
         # Place each unique action immediately after the paragraph from which it was removed.
         for match in matches:
             action = _normalise_action(match.group("body"))
-            key = action.casefold()
-            if not action or key in seen:
+            if not action or _DERIVABLE_CONFIRMATION_RE.search(action):
+                continue
+            key = _action_dedupe_key(action)
+            if key in seen:
                 continue
             seen.add(key)
             action_number += 1

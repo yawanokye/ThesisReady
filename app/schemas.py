@@ -16,6 +16,9 @@ class ProjectCreate(BaseModel):
     reference_currency_rule: str = ""
     thesis_format: str = "Standard five-chapter thesis/dissertation"
     format_notes: str = ""
+    background_structure: str = "continuous_narrative"
+    purpose_statement_style: str = "concise_general_objective"
+    automatic_source_support: bool = True
     research_area: str = ""
     study_context: str = ""
     citation_evidence_notes: str = ""
@@ -159,6 +162,8 @@ class ChapterRevisionRequest(BaseModel):
     data_and_results: str = ""
     contribution_claim: str = ""
     school_guidelines: str = ""
+    background_structure: str = "continuous_narrative"
+    purpose_statement_style: str = "concise_general_objective"
     citation_style: str = "APA 7th"
     revision_level: str = "Comprehensive chapter strengthening"
     revision_goals: str = ""

@@ -83,29 +83,29 @@ CHAPTER_PAGE_TARGETS: dict[str, dict[str, tuple[int, int]]] = {
 
 CITATION_DENSITY_TARGETS: dict[str, dict[str, tuple[int, int]]] = {
     "bachelors": {
-        "introduction": (5, 7), "literature_review": (10, 14),
-        "methodology": (3, 5), "results_discussion": (3, 5),
-        "conclusion": (2, 4), "other": (4, 7),
-    },
-    "non_research_masters": {
-        "introduction": (6, 8), "literature_review": (12, 16),
-        "methodology": (4, 6), "results_discussion": (4, 6),
+        "introduction": (8, 10), "literature_review": (12, 16),
+        "methodology": (4, 6), "results_discussion": (4, 7),
         "conclusion": (3, 5), "other": (5, 8),
     },
-    "research_masters": {
-        "introduction": (7, 10), "literature_review": (14, 18),
+    "non_research_masters": {
+        "introduction": (9, 12), "literature_review": (14, 18),
         "methodology": (5, 7), "results_discussion": (5, 8),
-        "conclusion": (4, 6), "other": (6, 10),
+        "conclusion": (4, 6), "other": (6, 9),
+    },
+    "research_masters": {
+        "introduction": (10, 14), "literature_review": (16, 21),
+        "methodology": (6, 9), "results_discussion": (6, 10),
+        "conclusion": (5, 7), "other": (7, 11),
     },
     "professional_doctorate": {
-        "introduction": (8, 11), "literature_review": (15, 20),
-        "methodology": (6, 9), "results_discussion": (6, 9),
-        "conclusion": (4, 7), "other": (7, 11),
+        "introduction": (11, 15), "literature_review": (18, 23),
+        "methodology": (7, 10), "results_discussion": (7, 11),
+        "conclusion": (5, 8), "other": (8, 12),
     },
     "phd": {
-        "introduction": (10, 14), "literature_review": (16, 22),
-        "methodology": (7, 10), "results_discussion": (7, 11),
-        "conclusion": (5, 8), "other": (8, 13),
+        "introduction": (12, 16), "literature_review": (20, 26),
+        "methodology": (8, 12), "results_discussion": (8, 13),
+        "conclusion": (6, 9), "other": (9, 14),
     },
 }
 
@@ -1022,6 +1022,8 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
                 "study_context": str(payload.get("context") or "").strip(),
                 "citation_style": str(payload.get("citation_style") or "APA 7th").strip(),
                 "school_format": str(payload.get("school_guidelines") or "").strip(),
+                "background_structure": str(payload.get("background_structure") or "continuous_narrative").strip(),
+                "purpose_statement_style": str(payload.get("purpose_statement_style") or "concise_general_objective").strip(),
                 "target_pages": f"{page_min}-{page_max}",
                 "target_citations_per_1000_words": f"{citation_min}-{citation_max}",
                 "allow_missing_section_insertions": bool(payload.get("allow_missing_section_insertions", True)),
@@ -1075,10 +1077,13 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
                 "Do not invent citations, references, data, analyses, instruments, ethics approvals, permissions, institutional rules, tables, figures or results.",
                 "Retain valid existing citations. Do not alter author names or publication years unless the supplied evidence confirms a correction.",
                 "Use retrieved metadata only when the title or abstract directly supports the claim. Never turn metadata into evidence for a result not reported by the source.",
-                "Increase citation density where the chapter and academic level require it, but avoid citation padding and do not attach citations to unsupported claims.",
+                "Increase citation density according to the level- and chapter-specific target, but avoid citation padding and do not attach citations to unsupported claims.",
                 "Run a claim-evidence audit. Support every substantive factual, historical, policy, contextual, theoretical and empirical claim with a directly relevant and accurate source from the existing citations or verified source bank.",
-                "For Chapter One, target about 8-12 relevant citation occurrences per 1,000 words at Masters level and 10-14 at doctoral level, without forcing citations onto objectives, questions or purely organisational sentences.",
+                "For Chapter One, follow target_citations_per_1000_words in the project profile. Distribute accurate citations across the background, problem, significance and other evidence-led sections, while keeping objectives, questions, purpose and purely organisational sentences citation-light.",
                 "Do not leave comments or user instructions inside the scholarly narrative. Put every unresolved action on a separate line beginning [ACTION REQUIRED: ...] immediately after the affected paragraph or list. Do not collect actions at the end of the chapter.",
+                "Complete every correction that can be responsibly made from the chapter, project profile, earlier chapters and verified source bank. Do not create an action merely to ask the user to approve generated wording.",
+                "Reserve ACTION REQUIRED items for unique material facts or institutional decisions that cannot be inferred or retrieved, such as the exact study population, site, sample, instrument, ethics approval, study period or actual results. State each missing input once at its first relevant location.",
+                "For an Introduction chapter, if background_structure is continuous_narrative, keep Background to the Study under one main heading without internal numbered subheadings. If purpose_statement_style is concise_general_objective, write Purpose of the Study as one concise sentence aligned with the general objective and do not add an extended rationale.",
                 "Do not add mediation, moderation, causality, longitudinal design, multilevel structure, robustness tests or measurement validation unless they are justified by the approved study and available data.",
                 "Do not present a recommended analysis as completed. Use a concise bracketed action item such as [conduct and report the required diagnostic test] when essential evidence is missing.",
                 "Preserve chapter numbering and school-specific headings where supplied. Add a missing expected heading only when the chapter type, school guidelines, previous chapters or supervisor comments clearly require it.",
