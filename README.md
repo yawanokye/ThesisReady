@@ -59,7 +59,7 @@ cp .env.example .env
 Open `.env` and add your OpenAI API key:
 ```bash
 OPENAI_API_KEY=your_key_here
-OPENAI_MODEL=gpt-5.5
+OPENAI_MODEL=gpt-5.6-terra
 # Render production, single instance with persistent disk mounted at /var/data:
 DATABASE_URL=/var/data/projectready.db
 # Local development fallback when DATABASE_URL is blank:
@@ -145,18 +145,16 @@ Each paid chapter includes one guided working draft, one strengthening revision,
 
 ### Render database
 
-For the simplest single-instance deployment, attach a Render persistent disk at `/var/data` and set `DATABASE_URL=/var/data/projectready.db`. The application now uses this same durable SQLite file for projects, recovery records, purchases, payment events and entitlement usage. Do not use `DATABASE_URL=projectready.db` in production because that writes to Render's temporary source filesystem.
-
-Render PostgreSQL remains the recommended option when you need multiple service instances or higher concurrency. In that case, set the PostgreSQL internal connection URL as `DATABASE_URL`.
+The commercial web service and background worker must share one Render PostgreSQL database. Set the same PostgreSQL internal connection URL as `DATABASE_URL` on both services. SQLite remains suitable only for local development or a single-process test deployment. Do not use separate SQLite files when the background worker is enabled because the web service and worker would not share jobs, projects or entitlements.
 
 ### Required production variables
 
 ```text
 APP_BASE_URL=https://projectreadyai.com
-DATABASE_URL=/var/data/projectready.db
+DATABASE_URL=<Render PostgreSQL internal connection URL>
 PAYSTACK_SECRET_KEY=<Paystack live secret key>
-STRIPE_SECRET_KEY=<Stripe live secret key>
-STRIPE_WEBHOOK_SECRET=<Stripe endpoint signing secret>
+STRIPE_LIVE_SECRET_KEY=<Stripe live secret key>
+STRIPE_LIVE_WEBHOOK_SECRET=<Stripe endpoint signing secret>
 ```
 
 Configure fixed GHS Paystack amounts with:

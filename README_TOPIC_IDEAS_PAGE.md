@@ -71,9 +71,9 @@ Recommended optional settings:
 
 ```text
 PROJECTREADY_TOPIC_IDEAS_USE_AI=1
-OPENAI_TOPIC_IDEA_MODEL=gpt-5.4
-OPENAI_TOPIC_IDEA_RESEARCH_MODEL=gpt-5.5
-OPENAI_TOPIC_IDEA_DOCTORAL_MODEL=gpt-5.5
+OPENAI_TOPIC_IDEA_MODEL=gpt-5.6-luna
+OPENAI_TOPIC_IDEA_RESEARCH_MODEL=gpt-5.6-terra
+OPENAI_TOPIC_IDEA_DOCTORAL_MODEL=gpt-5.6-terra
 ```
 
 The page uses the existing `OPENAI_API_KEY`. It does not add any new package dependency.

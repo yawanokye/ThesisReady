@@ -10,8 +10,14 @@ services:
         fromDatabase:
           name: projectready-postgres
           property: connectionString
+      - key: OPENAI_API_KEY
+        sync: false
       - key: PROJECTREADY_BACKGROUND_JOBS_ENABLED
         value: "1"
+      - key: PROJECTREADY_WORKER_LEASE_SECONDS
+        value: "7200"
+      - key: PROJECTREADY_WORKER_HEARTBEAT_SECONDS
+        value: "90"
 
   - type: worker
     name: projectready-worker
@@ -23,8 +29,16 @@ services:
         fromDatabase:
           name: projectready-postgres
           property: connectionString
+      - key: OPENAI_API_KEY
+        sync: false
       - key: PROJECTREADY_BACKGROUND_JOBS_ENABLED
         value: "1"
+      - key: PROJECTREADY_WORKER_LEASE_SECONDS
+        value: "7200"
+      - key: PROJECTREADY_WORKER_HEARTBEAT_SECONDS
+        value: "90"
+      - key: PROJECTREADY_WORKER_ID
+        value: projectready-worker-1
 
 databases:
   - name: projectready-postgres

@@ -76,21 +76,21 @@ Those records are not used in the article body, citations, tables or reference l
 
 Default routing is level-based:
 
-- Bachelor: `OPENAI_ARTICLE_BACHELOR_MODEL`, default `gpt-5.4`
-- Non-Research Masters: `OPENAI_ARTICLE_MASTERS_MODEL`, default `gpt-5.4`
-- Research Masters/MPhil or review/conceptual article: `OPENAI_ARTICLE_RESEARCH_MODEL`, default `gpt-5.5`
-- PhD/DBA/Professional Doctorate: `OPENAI_ARTICLE_DOCTORAL_MODEL`, default `gpt-5.5`
+- Bachelor: `OPENAI_ARTICLE_BACHELOR_MODEL`, default `gpt-5.6-terra`
+- Non-Research Masters: `OPENAI_ARTICLE_MASTERS_MODEL`, default `gpt-5.6-terra`
+- Research Masters/MPhil or review/conceptual article: `OPENAI_ARTICLE_RESEARCH_MODEL`, default `gpt-5.6-terra`
+- PhD/DBA/Professional Doctorate: `OPENAI_ARTICLE_DOCTORAL_MODEL`, default `gpt-5.6-sol`
 
 ## Recommended environment variables
 
 ```text
 PROJECTREADY_ARTICLE_USE_AI=1
 PROJECTREADY_ARTICLE_SOURCE_LIMIT=24
-OPENAI_ARTICLE_BACHELOR_MODEL=gpt-5.4
-OPENAI_ARTICLE_MASTERS_MODEL=gpt-5.4
-OPENAI_ARTICLE_RESEARCH_MODEL=gpt-5.5
-OPENAI_ARTICLE_DOCTORAL_MODEL=gpt-5.5
-OPENAI_FALLBACK_MODEL=gpt-5.4-mini
+OPENAI_ARTICLE_BACHELOR_MODEL=gpt-5.6-terra
+OPENAI_ARTICLE_MASTERS_MODEL=gpt-5.6-terra
+OPENAI_ARTICLE_RESEARCH_MODEL=gpt-5.6-terra
+OPENAI_ARTICLE_DOCTORAL_MODEL=gpt-5.6-sol
+OPENAI_FALLBACK_MODEL=gpt-5.6-luna
 ```
 
 No new Python package dependency is required. The DOCX export uses `python-docx`, which is already part of the existing ProjectReady AI dependency set.
