@@ -53,12 +53,12 @@ def _select_article_model(level: str, article_type: str = "") -> str:
     is_research_masters = "research masters" in level_l or "mphil" in level_l
     is_review_article = any(token in type_l for token in ["systematic", "scoping", "meta-analysis", "meta analysis", "review article", "literature review", "conceptual"])
     if is_doctoral:
-        return os.getenv("OPENAI_ARTICLE_DOCTORAL_MODEL", os.getenv("OPENAI_DOCTORAL_DRAFT_MODEL", "gpt-5.5")).strip()
+        return os.getenv("OPENAI_ARTICLE_DOCTORAL_MODEL", os.getenv("OPENAI_DOCTORAL_DRAFT_MODEL", "gpt-5.6-sol")).strip()
     if is_research_masters or is_review_article:
-        return os.getenv("OPENAI_ARTICLE_RESEARCH_MODEL", os.getenv("OPENAI_RESEARCH_MASTERS_DRAFT_MODEL", "gpt-5.5")).strip()
+        return os.getenv("OPENAI_ARTICLE_RESEARCH_MODEL", os.getenv("OPENAI_RESEARCH_MASTERS_DRAFT_MODEL", "gpt-5.6-terra")).strip()
     if "non-research" in level_l or "master" in level_l:
-        return os.getenv("OPENAI_ARTICLE_MASTERS_MODEL", "gpt-5.4").strip()
-    return os.getenv("OPENAI_ARTICLE_BACHELOR_MODEL", os.getenv("OPENAI_BACHELOR_DRAFT_MODEL", "gpt-5.4")).strip()
+        return os.getenv("OPENAI_ARTICLE_MASTERS_MODEL", "gpt-5.6-terra").strip()
+    return os.getenv("OPENAI_ARTICLE_BACHELOR_MODEL", os.getenv("OPENAI_BACHELOR_DRAFT_MODEL", "gpt-5.6-terra")).strip()
 
 
 def _article_kind(article_type: str) -> str:

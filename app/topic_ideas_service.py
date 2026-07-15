@@ -43,9 +43,9 @@ def _env_float(name: str, default: float, minimum: float, maximum: float) -> flo
 def _topic_provider() -> str:
     provider = os.getenv(
         "PROJECTREADY_TOPIC_IDEA_PROVIDER",
-        "deepseek",
+        "openai",
     ).strip().lower()
-    return provider if provider in {"deepseek", "openai"} else "deepseek"
+    return provider if provider in {"deepseek", "openai"} else "openai"
 
 
 def _safe_get_topic_client(provider: str | None = None):
@@ -137,18 +137,18 @@ def _select_topic_model(level: str, provider: str | None = None) -> str:
     ):
         return os.getenv(
             "OPENAI_TOPIC_IDEA_DOCTORAL_MODEL",
-            os.getenv("OPENAI_DOCTORAL_DRAFT_MODEL", "gpt-5.5"),
+            os.getenv("OPENAI_DOCTORAL_DRAFT_MODEL", "gpt-5.6-terra"),
         ).strip()
 
     if "research masters" in level_l or "mphil" in level_l:
         return os.getenv(
             "OPENAI_TOPIC_IDEA_RESEARCH_MODEL",
-            os.getenv("OPENAI_RESEARCH_MASTERS_DRAFT_MODEL", "gpt-5.5"),
+            os.getenv("OPENAI_RESEARCH_MASTERS_DRAFT_MODEL", "gpt-5.6-terra"),
         ).strip()
 
     return os.getenv(
         "OPENAI_TOPIC_IDEA_MODEL",
-        os.getenv("OPENAI_BACHELOR_DRAFT_MODEL", "gpt-5.4"),
+        os.getenv("OPENAI_BACHELOR_DRAFT_MODEL", "gpt-5.6-luna"),
     ).strip()
 def _build_topic_search_profile(payload: dict[str, Any]) -> dict[str, Any]:
     objectives = []

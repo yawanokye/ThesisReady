@@ -541,12 +541,13 @@ def _select_draft_model(profile: dict[str, Any], chapter_number: int) -> tuple[s
     Default principle:
     - support work can use cheaper models elsewhere;
     - paid chapter drafting should use a strong writing model;
-    - Research Masters/MPhil and PhD/DBA/Doctoral default to GPT-5.5;
-    - Bachelors and Non-Research Masters default to GPT-5.4 unless overridden.
+    - GPT-5.6 Terra handles most paid drafting because it balances quality and cost;
+    - GPT-5.6 Sol is reserved for doctoral drafting and selective high-complexity review;
+    - GPT-5.6 Luna is used only for low-cost support and fallback tasks when configured.
     """
     routing = os.getenv("PROJECTREADY_MODEL_ROUTING", "level_based").strip().lower()
     if routing in {"manual", "off", "legacy"}:
-        return os.getenv("OPENAI_MODEL", "gpt-5.5").strip(), "manual"
+        return os.getenv("OPENAI_MODEL", "gpt-5.6-terra").strip(), "manual"
 
     level = _normalise_academic_level(profile)
     chapter_number = int(chapter_number or 0)
@@ -556,21 +557,21 @@ def _select_draft_model(profile: dict[str, Any], chapter_number: int) -> tuple[s
         return os.getenv("OPENAI_SUPPLEMENTARY_GUIDE_MODEL", "").strip(), f"{level}:supplementary_guide"
 
     if level == "doctoral":
-        return os.getenv("OPENAI_DOCTORAL_DRAFT_MODEL", "gpt-5.5").strip(), "doctoral"
+        return os.getenv("OPENAI_DOCTORAL_DRAFT_MODEL", "gpt-5.6-sol").strip(), "doctoral"
 
     if level == "research_masters":
-        return os.getenv("OPENAI_RESEARCH_MASTERS_DRAFT_MODEL", "gpt-5.5").strip(), "research_masters"
+        return os.getenv("OPENAI_RESEARCH_MASTERS_DRAFT_MODEL", "gpt-5.6-terra").strip(), "research_masters"
 
     if level == "nonresearch_masters":
         # Allow users to uplift Chapter 2/3/4 for non-research masters without changing the whole plan.
         if _is_core_research_chapter(chapter_number) and os.getenv("OPENAI_NONRESEARCH_MASTERS_CORE_MODEL", "").strip():
             return os.getenv("OPENAI_NONRESEARCH_MASTERS_CORE_MODEL", "").strip(), "nonresearch_masters:core"
-        return os.getenv("OPENAI_NONRESEARCH_MASTERS_DRAFT_MODEL", "gpt-5.4").strip(), "nonresearch_masters"
+        return os.getenv("OPENAI_NONRESEARCH_MASTERS_DRAFT_MODEL", "gpt-5.6-terra").strip(), "nonresearch_masters"
 
     # Bachelor should still be a good paid draft, not a low-tier model.
     if _is_core_research_chapter(chapter_number) and os.getenv("OPENAI_BACHELOR_CORE_MODEL", "").strip():
         return os.getenv("OPENAI_BACHELOR_CORE_MODEL", "").strip(), "bachelors:core"
-    return os.getenv("OPENAI_BACHELOR_DRAFT_MODEL", "gpt-5.4").strip(), "bachelors"
+    return os.getenv("OPENAI_BACHELOR_DRAFT_MODEL", "gpt-5.6-terra").strip(), "bachelors"
 
 
 def _select_revision_model(profile: dict[str, Any], chapter_number: int, draft_model: str) -> str:
@@ -580,8 +581,8 @@ def _select_revision_model(profile: dict[str, Any], chapter_number: int, draft_m
         return draft_model
     if routing in {"level_based", "level"}:
         return _select_draft_model(profile, chapter_number)[0]
-    if routing in {"premium", "gpt55", "gpt-5.5"}:
-        return os.getenv("OPENAI_REVIEW_MODEL", "gpt-5.5").strip()
+    if routing in {"premium", "sol", "gpt56-sol", "gpt-5.6-sol"}:
+        return os.getenv("OPENAI_REVIEW_MODEL", "gpt-5.6-sol").strip()
     return os.getenv("OPENAI_REVISION_MODEL", draft_model).strip()
 
 
@@ -2327,11 +2328,11 @@ def generate_chapter(
             "exclude not_relevant, and add a Source Use Audit after References. Do not add any AI-detection or humanisation notes. "
             "For the Supplementary Methods and Analysis Guide, use sample outputs only as structural guides, not as content templates. "
             "Do not hard-code sample topics, sources, constructs, item wording or contexts. Use only the current project profile and source bank. "
-            "Apply the level-based quality route: Bachelor outputs must still be complete paid thesis drafts; non-research Masters outputs must be stronger and professionally applied; Research Masters/MPhil outputs must show deeper research synthesis; PhD/DBA/doctoral outputs must be GPT-5.5-level doctoral prose with advanced critique and defensible contribution. "
+            "Apply the level-based quality route: Bachelor outputs must still be complete paid thesis drafts; non-research Masters outputs must be stronger and professionally applied; Research Masters/MPhil outputs must show deeper research synthesis; PhD/DBA/doctoral outputs must show advanced critique, defensible contribution and doctoral-level scholarly judgement. "
             "Just produce normal scholarly prose."
         )
 
-        chunk_threshold = int(os.getenv("PROJECTREADY_CHUNKED_GENERATION_THRESHOLD_WORDS", "9000") or 9000)
+        chunk_threshold = int(os.getenv("PROJECTREADY_CHUNKED_GENERATION_THRESHOLD_WORDS", "4500") or 4500)
         chunked_generation = (
             int(chapter_number or 0) in {1, 2, 3, 4, 5}
             and int(length_requirements.get("target_words") or 0) > chunk_threshold
@@ -2388,9 +2389,10 @@ def generate_chapter(
 
             # 5. Refine weak sections in controlled batches. Long chapters are no longer
             # skipped or rewritten as one block, which protects depth and controls cost.
+            humanizer_model = os.getenv("OPENAI_HUMANIZER_MODEL", "gpt-5.6-terra").strip() or revision_model
             polished = _human_academic_revision_pass(
                 client=client,
-                model=revision_model,
+                model=humanizer_model,
                 instructions=instructions,
                 original_prompt=prompt,
                 draft=polished,

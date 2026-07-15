@@ -172,9 +172,9 @@ def _revision_model_candidates(level: str) -> list[str]:
     # next configured option is tried. Production should still set the explicit
     # env vars above for the models available to the account.
     if _level_key(level) in {"research_masters", "professional_doctorate", "phd"}:
-        candidates.extend(["gpt-5.5", "gpt-5.4", "gpt-4.1"])
+        candidates.extend(["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"])
     else:
-        candidates.extend(["gpt-5.4", "gpt-4.1"])
+        candidates.extend(["gpt-5.6-terra", "gpt-5.6-luna"])
     result: list[str] = []
     seen: set[str] = set()
     for value in candidates:
@@ -400,7 +400,7 @@ def _revision_model(level: str) -> str:
     return (
         os.getenv(specific)
         or os.getenv("OPENAI_CHAPTER_REVISION_MODEL")
-        or ("gpt-5.5" if key in {"research_masters", "professional_doctorate", "phd"} else "gpt-5.4")
+        or ("gpt-5.6-sol" if key in {"professional_doctorate", "phd"} else "gpt-5.6-terra")
     ).strip()
 
 
@@ -1158,9 +1158,10 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
     humanizer_mode = str(payload.get("humanizer_mode") or os.getenv("PROJECTREADY_HUMANIZER_MODE", "balanced") or "balanced").strip().lower()
     if mode == "ai_revision":
         revised_chapter, humanizer_report = humanize_scholarly_text(revised_chapter, mode=humanizer_mode)
+        humanizer_model = os.getenv("OPENAI_HUMANIZER_MODEL", "gpt-5.6-terra").strip() or model_used
         revised_chapter = _humanize_strengthened_chapter_with_model(
             client,
-            model_used,
+            humanizer_model,
             revised_chapter,
             mode=humanizer_mode,
             level=level,
