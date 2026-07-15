@@ -15,6 +15,7 @@ from app.compliance import check_chapter
 from app.database import get_conn, row_to_dict
 from app.export import export_chapter_docx, export_compliance_docx, export_instrument_docx, export_methods_supplement_docx
 from app.result_uploads import extract_result_file
+from app.source_support import ensure_automatic_source_support
 from app.schemas import ComplianceRequest, DraftRequest
 from app.template_store import get_chapter
 from app.payments.entitlements import is_free_generation_allowed
@@ -135,13 +136,15 @@ def _apply_profile_updates(project: dict[str, Any], payload: DraftRequest) -> No
     profile = project.get("profile") or {}
     allowed = {
         "title", "level", "academic_level_guidance", "reference_currency_rule",
-        "thesis_format", "format_notes", "research_area", "study_context",
+        "thesis_format", "format_notes", "background_structure", "purpose_statement_style",
+        "automatic_source_support", "research_area", "study_context",
         "citation_evidence_notes", "research_approach", "data_type", "variables",
         "objectives", "research_questions", "hypotheses", "notes",
         "other_chapter_title", "other_chapter_instructions", "draft_maturity",
         "student_contribution", "academic_integrity_confirmed",
         "user_contribution_confirmed", "allow_provisional_drafting",
         "draft_consideration_warnings", "custom_page_targets", "current_custom_page_target",
+        "expected_chapters",
     }
     for key in allowed:
         if key not in updates:
@@ -503,7 +506,7 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
             extra_instructions
             + "\n\nProvisional drafting advisories: "
             + "; ".join(str(item) for item in advisory_warnings)
-            + ". Prepare a useful draft for consideration and mark these gaps with bracketed placeholders for confirmation."
+            + ". Prepare the strongest defensible draft from the available information. Add one precise ACTION REQUIRED item for each unique material input that only the user or institution can supply, and do not repeat the same action across sections."
         ).strip()
 
     other_title = getattr(payload, "other_chapter_title", "") or project["profile"].get("other_chapter_title", "")
@@ -549,6 +552,22 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
     def _generate_and_save() -> dict[str, Any]:
         generation_warning = ""
         provider_fallback_used = False
+
+        # Enrich a thin evidence bank automatically. This reduces avoidable source
+        # placeholders when the student did not manually run the source finder, while
+        # preserving strict relevance and reference-verification rules.
+        source_support_summary = {}
+        if payload.use_ai:
+            source_support_summary = ensure_automatic_source_support(
+                project["profile"], payload.chapter_number
+            )
+            if source_support_summary.get("searched"):
+                with get_conn() as conn:
+                    conn.execute(
+                        "UPDATE projects SET profile_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                        (json.dumps(project.get("profile", {})), project_id),
+                    )
+                    conn.commit()
         try:
             draft, source = generate_chapter(
                 profile=project["profile"],
@@ -624,6 +643,7 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
             "access_mode": access_mode,
             "entitlement_action": action,
             "generation_metrics": metrics,
+            "automatic_source_support": source_support_summary,
             "working_draft_notice": "AI-assisted working draft. Review, verify and revise it before any academic use or submission.",
         }
 
