@@ -49,7 +49,7 @@ def test_prompt_contains_page_word_section_and_citation_targets():
     assert targets["target_page_range"] == "60-80"
     assert targets["minimum_words"] == 60 * 330
     assert targets["maximum_words"] == 80 * 330
-    assert targets["citation_occurrences_per_1000_words"] == {"minimum": 16, "target": 22}
+    assert targets["citation_occurrences_per_1000_words"] == {"minimum": 20, "target": 26}
     assert targets["section_word_budgets"]
     assert targets["long_chapter_strategy"]["enabled"] is True
     assert targets["long_chapter_strategy"]["mode"] == "long_chapter_staged_development"
@@ -86,3 +86,24 @@ def test_nonresearch_masters_keeps_its_own_page_band():
     assert requirements["length_level"] == "nonresearch_masters"
     assert requirements["target_page_range"] == "20-30"
 
+
+
+def test_chapter_one_institutional_format_controls_are_in_prompt():
+    profile = _profile("Bachelors")
+    profile.update({
+        "background_structure": "continuous_narrative",
+        "purpose_statement_style": "concise_general_objective",
+        "expected_chapters": 5,
+    })
+    prompt = json.loads(build_drafting_prompt(profile, 1, ["ch1_background", "ch1_purpose", "ch1_structure"]))
+    controls = prompt["institutional_format_requirements"]
+    assert controls["background_structure"] == "continuous_narrative"
+    assert controls["purpose_statement_style"] == "concise_general_objective"
+    assert controls["expected_chapters"] == 5
+    assert any("Do not create numbered or titled subdimensions" in rule for rule in controls["background_rules"])
+    assert any("one concise sentence" in rule for rule in controls["purpose_rules"])
+
+
+def test_bachelors_chapter_one_uses_stronger_citation_target():
+    req = _chapter_length_requirements(_profile("Bachelors"), 1, ["ch1_background", "ch1_problem"])
+    assert req["citation_occurrences_per_1000_words"] == {"minimum": 8, "target": 10}

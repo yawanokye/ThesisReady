@@ -23,7 +23,7 @@ def test_fallback_preserves_existing_chapter(monkeypatch):
 def test_planning_targets_follow_level_and_chapter():
     target = chapter_planning_targets("PhD", "2. Literature Review")
     assert target["page_range"] == {"minimum": 60, "maximum": 80}
-    assert target["citation_density_per_1000_words"] == {"minimum": 16, "maximum": 22}
+    assert target["citation_density_per_1000_words"] == {"minimum": 20, "maximum": 26}
 
 
 def test_retracted_attached_source_is_excluded(monkeypatch):

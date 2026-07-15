@@ -50,3 +50,21 @@ def test_complete_action_instruction_is_red_in_docx_run():
     assert run.text == "[ACTION REQUIRED 1: Insert the verified policy source.]"
     assert run.font.color.rgb is not None
     assert str(run.font.color.rgb) == "C00000"
+
+
+def test_repeated_population_and_location_actions_are_collapsed():
+    text = (
+        "Purpose paragraph. [insert study population].\n\n"
+        "Problem paragraph. [confirm target respondent group].\n\n"
+        "Context paragraph. [insert study location].\n\n"
+        "Scope paragraph. [confirm study area]."
+    )
+    out = detach_action_items(text)
+    assert out.count("[ACTION REQUIRED") == 2
+
+
+def test_generic_confirmation_of_generated_objective_is_not_retained():
+    out = detach_action_items(
+        "1.5 General Objective\n\nTo examine financial literacy.\n\n[confirm approved general objective]"
+    )
+    assert "ACTION REQUIRED" not in out
