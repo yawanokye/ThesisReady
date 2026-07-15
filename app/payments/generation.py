@@ -498,7 +498,7 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
             extra_instructions
             + "\n\nProvisional drafting advisories: "
             + "; ".join(str(item) for item in advisory_warnings)
-            + ". Prepare a useful draft for consideration and mark these gaps with bracketed placeholders for confirmation."
+            + ". Prepare the strongest defensible draft from the available information. Add one precise ACTION REQUIRED item for each unique material input that only the user or institution can supply, and do not repeat the same action across sections."
         ).strip()
 
     other_title = getattr(payload, "other_chapter_title", "") or project["profile"].get("other_chapter_title", "")
