@@ -24,7 +24,6 @@
                 "Recall the study focus without repeating the entire abstract.",
                 "Use formal British English and a natural scholarly style.",
                 "Use relevant accurate in-text citations for substantive claims.",
-                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
                 "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
@@ -46,8 +45,10 @@
                 "End with a smooth transition to the problem statement.",
                 "Use formal British English and a natural scholarly style.",
                 "Use relevant accurate in-text citations for substantive claims.",
-                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
-                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body.",
+                "Follow the project background-format control. When continuous narrative is selected, write one coherent Background to the Study without internal numbered or titled subheadings.",
+                "Complete general and contextual explanation from the title, objectives, study profile and verified evidence bank before requesting additional user information.",
+                "Use an action item only for a material fact that cannot be inferred or retrieved safely, and do not repeat the same action in later sections."
               ]
             },
             {
@@ -65,8 +66,9 @@
                 "Avoid broad context that is not linked to the study.",
                 "Use formal British English and a natural scholarly style.",
                 "Use relevant accurate in-text citations for substantive claims.",
-                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
-                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body.",
+                "Support substantive claims with directly relevant and accurate citations from the supplied or automatically retrieved evidence bank.",
+                "Complete what can be responsibly established from available sources before creating an action item."
               ]
             },
             {
@@ -87,8 +89,9 @@
                 "Situate the problem in the study context and end with a precise research focus.",
                 "Use formal British English and a natural scholarly style.",
                 "Use relevant accurate in-text citations for substantive claims.",
-                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
-                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body.",
+                "Support substantive claims with directly relevant and accurate citations from the supplied or automatically retrieved evidence bank.",
+                "Complete what can be responsibly established from available sources before creating an action item."
               ]
             },
             {
@@ -105,8 +108,9 @@
                 "Avoid vague claims such as 'few studies exist' unless supported by evidence.",
                 "Use formal British English and a natural scholarly style.",
                 "Use relevant accurate in-text citations for substantive claims.",
-                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
-                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body.",
+                "Support substantive claims with directly relevant and accurate citations from the supplied or automatically retrieved evidence bank.",
+                "Complete what can be responsibly established from available sources before creating an action item."
               ]
             },
             {
@@ -123,8 +127,10 @@
                 "Do not introduce variables or constructs not used elsewhere.",
                 "Use formal British English and a natural scholarly style.",
                 "Use relevant accurate in-text citations for substantive claims.",
-                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
-                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body.",
+                "Follow the project purpose-style control. When concise-general-objective is selected, state the purpose in one clear sentence closely aligned with the general objective.",
+                "Do not turn the purpose section into another background, problem statement or literature review.",
+                "Do not request confirmation of generated wording when a defensible purpose can be derived from the approved title and objectives."
               ]
             },
             {
@@ -142,7 +148,6 @@
                 "Make every objective traceable to the problem, gap and methodology.",
                 "Use formal British English and a natural scholarly style.",
                 "Use relevant accurate in-text citations for substantive claims.",
-                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
                 "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
@@ -159,7 +164,6 @@
                 "Ensure each question can be answered by the proposed method and data.",
                 "Use formal British English and a natural scholarly style.",
                 "Use relevant accurate in-text citations for substantive claims.",
-                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
                 "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
@@ -178,7 +182,6 @@
                 "Use clear, testable relationships between variables.",
                 "Use formal British English and a natural scholarly style.",
                 "Use relevant accurate in-text citations for substantive claims.",
-                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
                 "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
@@ -196,8 +199,9 @@
                 "Link significance to the problem, context and expected findings.",
                 "Use formal British English and a natural scholarly style.",
                 "Use relevant accurate in-text citations for substantive claims.",
-                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
-                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body.",
+                "Support substantive claims with directly relevant and accurate citations from the supplied or automatically retrieved evidence bank.",
+                "Complete what can be responsibly established from available sources before creating an action item."
               ]
             },
             {
@@ -212,7 +216,6 @@
                 "Mention population, location, variables/constructs, period and method where relevant.",
                 "Use formal British English and a natural scholarly style.",
                 "Use relevant accurate in-text citations for substantive claims.",
-                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
                 "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
@@ -229,7 +232,6 @@
                 "Distinguish delimitations from limitations.",
                 "Use formal British English and a natural scholarly style.",
                 "Use relevant accurate in-text citations for substantive claims.",
-                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
                 "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
@@ -246,7 +248,6 @@
                 "Explain mitigation steps where possible.",
                 "Use formal British English and a natural scholarly style.",
                 "Use relevant accurate in-text citations for substantive claims.",
-                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
                 "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
@@ -262,7 +263,6 @@
                 "Avoid unnecessary or generic assumptions.",
                 "Use formal British English and a natural scholarly style.",
                 "Use relevant accurate in-text citations for substantive claims.",
-                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
                 "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
@@ -278,7 +278,6 @@
                 "Use concise academic definitions and keep them consistent with later chapters.",
                 "Use formal British English and a natural scholarly style.",
                 "Use relevant accurate in-text citations for substantive claims.",
-                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
                 "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             },
@@ -295,8 +294,8 @@
                 "Describe each chapter briefly and accurately.",
                 "Use formal British English and a natural scholarly style.",
                 "Use relevant accurate in-text citations for substantive claims.",
-                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
-                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body.",
+                "Use the expected chapter count and selected thesis format from the project profile. Do not ask whether the work has five or seven chapters when that value is already supplied."
               ]
             },
             {
@@ -312,7 +311,6 @@
                 "Keep the section aligned with the chapter and project.",
                 "Use formal British English and a natural scholarly style.",
                 "Use relevant accurate in-text citations for substantive claims.",
-                "Do not invent facts, statistics, ethical approvals, results, sample sizes, or references; use red placeholders where information is required but unavailable.",
                 "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
               ]
             }
