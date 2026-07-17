@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import json
 import os
+import tempfile
 import uuid
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.topic_ideas_service import generate_topic_ideas
+from app.topic_ideas_export import export_topic_ideas_docx
 from app.payments.guard import PaymentRequiredError, credentials_from_headers, paid_chapter_action
 from app.payments.internal_access import is_internal_purchase_id, validate_internal_access
 from app.payments.store import get_purchase
@@ -32,6 +37,39 @@ class TopicIdeasRequest(BaseModel):
     trend_focus: str = ""
     max_ideas: int = Field(default=8, ge=2, le=PAID_MAXIMUM_IDEAS)
     include_older_foundational: bool = True
+
+
+class TopicIdeasExportRequest(BaseModel):
+    result: dict[str, Any] = Field(default_factory=dict)
+
+
+def _delete_export(path: str) -> None:
+    try:
+        Path(path).unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+@router.post("/export-docx", response_class=FileResponse)
+def export_topic_ideas(payload: TopicIdeasExportRequest, background_tasks: BackgroundTasks) -> FileResponse:
+    result = payload.result or {}
+    ideas = result.get("ideas") or []
+    if not isinstance(ideas, list) or not ideas:
+        raise HTTPException(status_code=400, detail="Generate topic ideas before exporting.")
+    if len(ideas) > PAID_MAXIMUM_IDEAS:
+        raise HTTPException(status_code=400, detail="A maximum of 12 topic ideas can be exported at once.")
+    if len(json.dumps(result, default=str)) > 2_500_000:
+        raise HTTPException(status_code=413, detail="The Topic Ideas export is too large. Generate a smaller set and try again.")
+
+    export_dir = Path(tempfile.gettempdir()) / "projectready-topic-ideas-exports"
+    path = export_topic_ideas_docx(result, export_dir)
+    background_tasks.add_task(_delete_export, str(path))
+    return FileResponse(
+        path,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        filename=path.name,
+        background=background_tasks,
+    )
 
 
 def _run_generation(payload: dict[str, Any]) -> dict[str, Any]:
