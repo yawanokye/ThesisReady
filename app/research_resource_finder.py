@@ -15,8 +15,8 @@ RESOURCE_TIMEOUT_SECONDS = max(4, int(os.getenv("TOPIC_RESOURCE_SEARCH_TIMEOUT_S
 MAX_DATASET_RESULTS = max(2, min(int(os.getenv("TOPIC_DATASET_RESULTS", "6") or 6), 10))
 MAX_INSTRUMENT_RESULTS = max(2, min(int(os.getenv("TOPIC_INSTRUMENT_RESULTS", "6") or 6), 10))
 MAX_TOPIC_SPECIFIC_RESULTS = max(1, min(int(os.getenv("TOPIC_SPECIFIC_RESOURCE_RESULTS", "4") or 4), 6))
-MIN_DATASET_RELEVANCE = float(os.getenv("TOPIC_DATASET_MIN_RELEVANCE", "5") or 5)
-MIN_INSTRUMENT_RELEVANCE = float(os.getenv("TOPIC_INSTRUMENT_MIN_RELEVANCE", "14") or 14)
+MIN_DATASET_RELEVANCE = float(os.getenv("TOPIC_DATASET_MIN_RELEVANCE", "22") or 22)
+MIN_INSTRUMENT_RELEVANCE = float(os.getenv("TOPIC_INSTRUMENT_MIN_RELEVANCE", "18") or 18)
 
 _INSTRUMENT_TERMS = re.compile(
     r"\b(scale|questionnaire|instrument|inventory|measure|measurement|psychometric|validation|validated|"
@@ -159,6 +159,9 @@ def _tokenise(value: Any) -> set[str]:
     stop = {
         "the", "and", "for", "with", "from", "into", "among", "between", "within", "study", "effect", "effects",
         "impact", "influence", "relationship", "analysis", "selected", "possible", "principal", "factors", "outcomes",
+        "this", "that", "these", "those", "their", "there", "which", "where", "when", "what", "will", "would",
+        "could", "should", "have", "has", "had", "are", "were", "was", "been", "being", "use", "using", "used",
+        "level", "levels", "relevant", "records", "data", "dataset", "research", "results", "across", "overall",
     }
     return {
         token for token in re.findall(r"[a-zA-Z][a-zA-Z0-9-]{2,}", _clean(value).lower())
@@ -225,12 +228,15 @@ def research_resource_modes(payload: dict[str, Any]) -> dict[str, bool]:
     data_type = _clean(payload.get("data_type")).lower()
 
     systematic = "systematic literature review" in methodology
+    # Secondary-data discovery is opt-in. A primary survey, qualitative study or
+    # an undecided data-access selection should not trigger broad repository searches.
+    # This prevents a topical word such as "training" or "performance" from pulling
+    # unrelated datasets into an otherwise primary-data idea.
     secondary = (
         methodology in _SECONDARY_METHOD_TERMS
         or any(term in methodology for term in ["secondary", "econometric", "time-series", "panel data"])
         or "secondary data available" in data_type
         or "both primary and secondary" in data_type
-        or data_type == "not sure"
     )
     instrument = (
         systematic
@@ -375,39 +381,90 @@ def _matched_constructs(record: dict[str, Any], constructs: list[str]) -> list[s
     return matches[:5]
 
 
+_GENERIC_RESOURCE_TERMS = {
+    "employee", "employees", "staff", "worker", "workers", "administrative", "administration", "public", "service",
+    "services", "support", "development", "training", "performance", "competence", "competency", "knowledge", "skills",
+    "work", "workplace", "job", "professional", "participation", "opportunity", "opportunities", "quality", "practice",
+    "practices", "management", "institution", "institutional", "organisation", "organization", "university", "ghana",
+}
+
+
+def _exact_construct_matches(record: dict[str, Any], constructs: list[str]) -> list[str]:
+    haystack = " ".join([
+        _clean(record.get("name") or record.get("title")),
+        _clean(record.get("description") or record.get("abstract")),
+        " ".join(record.get("subjects") or []),
+    ]).lower()
+    exact: list[str] = []
+    for construct in constructs:
+        phrase = _clean(construct).lower()
+        if not phrase:
+            continue
+        # Single generic words are too weak to validate a dataset. Multiword
+        # constructs such as "employee competence" or "administrative performance"
+        # carry much more topic information and may qualify as exact matches.
+        tokens = _tokenise(construct)
+        if phrase in haystack and (len(tokens) >= 2 or not tokens.issubset(_GENERIC_RESOURCE_TERMS)):
+            exact.append(construct)
+    return exact[:5]
+
+
+def _specific_overlap(record: dict[str, Any], scope: dict[str, Any]) -> set[str]:
+    hay_tokens = _tokenise(" ".join([
+        _clean(record.get("name") or record.get("title")),
+        _clean(record.get("description") or record.get("abstract")),
+        " ".join(record.get("subjects") or []),
+    ]))
+    topic_terms = set(scope.get("subject_terms") or set()) - _GENERIC_RESOURCE_TERMS
+    return topic_terms & hay_tokens
+
+
+def _context_overlap(record: dict[str, Any], scope: dict[str, Any]) -> set[str]:
+    hay_tokens = _tokenise(" ".join([
+        _clean(record.get("name") or record.get("title")),
+        _clean(record.get("description") or record.get("abstract")),
+        " ".join(record.get("subjects") or []),
+    ]))
+    context_tokens = _tokenise(" ".join([
+        _clean(scope.get("context")),
+        _clean(scope.get("country_region")),
+    ]))
+    return context_tokens & hay_tokens
+
+
 def _dataset_relevance(record: dict[str, Any], scope: dict[str, Any]) -> float:
     constructs = scope.get("constructs") or []
-    haystack = " ".join([
+    exact_matches = _exact_construct_matches(record, constructs)
+    matched_constructs = _matched_constructs(record, constructs)
+    specific_overlap = _specific_overlap(record, scope)
+    context_overlap = _context_overlap(record, scope)
+    title_overlap = (_tokenise(scope.get("title")) - _GENERIC_RESOURCE_TERMS) & _tokenise(" ".join([
         _clean(record.get("name")),
         _clean(record.get("description")),
         " ".join(record.get("subjects") or []),
-    ])
-    matches = _matched_constructs(record, constructs)
-    hay_tokens = _tokenise(haystack)
-    subject_overlap = set(scope.get("subject_terms") or set()) & hay_tokens
-    title_overlap = _tokenise(scope.get("title")) & hay_tokens
-    exact_construct_hits = sum(
-        1 for construct in constructs
-        if _clean(construct).lower() and _clean(construct).lower() in haystack.lower()
-    )
+    ]))
     return float(
-        len(matches) * 7
-        + exact_construct_hits * 7
-        + len(subject_overlap) * 2
-        + len(title_overlap)
+        len(exact_matches) * 18
+        + len(matched_constructs) * 5
+        + len(specific_overlap) * 5
+        + len(context_overlap) * 4
+        + len(title_overlap) * 3
         + (1 if record.get("doi") else 0)
     )
 
 
 def _dataset_is_topic_specific(record: dict[str, Any], scope: dict[str, Any]) -> bool:
-    matches = _matched_constructs(record, scope.get("constructs") or [])
-    hay_tokens = _tokenise(" ".join([
-        _clean(record.get("name")),
-        _clean(record.get("description")),
-        " ".join(record.get("subjects") or []),
-    ]))
-    subject_overlap = set(scope.get("subject_terms") or set()) & hay_tokens
-    return bool(matches) or len(subject_overlap) >= 2
+    constructs = scope.get("constructs") or []
+    exact_matches = _exact_construct_matches(record, constructs)
+    specific_overlap = _specific_overlap(record, scope)
+    context_overlap = _context_overlap(record, scope)
+
+    # A dataset must match a meaningful multiword construct, or combine several
+    # specific topic terms with the proposed population/geographic context. Generic
+    # words such as employee, development or performance cannot qualify on their own.
+    if exact_matches:
+        return bool(context_overlap or len(specific_overlap) >= 1)
+    return len(specific_overlap) >= 3 and len(context_overlap) >= 1
 
 
 def _official_portal_matches(payload: dict[str, Any], idea: dict[str, Any], limit: int = MAX_TOPIC_SPECIFIC_RESULTS) -> list[dict[str, Any]]:
@@ -422,11 +479,15 @@ def _official_portal_matches(payload: dict[str, Any], idea: dict[str, Any], limi
             " ".join(portal.get("tags") or []),
         ])
         portal_tokens = _tokenise(portal_text)
-        overlap = subject_terms & portal_tokens
-        matched_constructs = _matched_constructs(portal, constructs)
-        if not matched_constructs and len(overlap) < 2:
+        overlap = (subject_terms - _GENERIC_RESOURCE_TERMS) & portal_tokens
+        matched_constructs = _exact_construct_matches(portal, constructs)
+        context_tokens = _tokenise(" ".join([_clean(scope.get("context")), _clean(scope.get("country_region"))]))
+        context_match = context_tokens & portal_tokens
+        if not matched_constructs and len(overlap) < 3:
             continue
-        score = len(overlap) * 3 + len(matched_constructs) * 8
+        if context_tokens and not context_match and not matched_constructs:
+            continue
+        score = len(overlap) * 5 + len(matched_constructs) * 18 + len(context_match) * 3
         item = {k: v for k, v in portal.items() if k != "tags"}
         item["source_type"] = "Official data portal"
         item["discovery_database"] = "ProjectReady official-source catalogue"
@@ -543,8 +604,8 @@ def _topic_specific_data_directions(
             match_text = ", ".join(str(x) for x in matches[:3] if str(x).strip())
             if name:
                 directions.append(f"{name} records relevant to {match_text or focal}{location}")
-        if not secondary_sources:
-            directions.append(f"A verified secondary dataset containing measures of {focal} for {population}{location}")
+        # Do not manufacture a vague secondary-data recommendation. When the
+        # strict gate finds nothing useful, omit the secondary-data direction.
 
     if modes.get("instrument"):
         if modes.get("systematic"):
@@ -697,7 +758,9 @@ def discover_research_resources(
             "instrument_query": instrument_query,
             "secondary_data_sources": secondary_sources,
             "questionnaire_or_instrument_sources": selected_instruments,
-            "resource_note": "Only candidates that matched this idea's title, focal constructs and subject terms are shown. General sources are omitted. Confirm variables, population, geographic coverage, access conditions, validity, permissions and ethics before use.",
+            "show_secondary_data": bool(modes.get("secondary") and secondary_sources),
+            "show_instruments": bool(modes.get("instrument") and selected_instruments),
+            "resource_note": "Only strongly matched candidates are shown. If no defensible source is found, the section is omitted rather than filled with a general or weakly related record. Confirm variables, population, access conditions, validity, permissions and ethics before use.",
         }
         enriched.append(item)
         searched_databases.extend(idea_databases)

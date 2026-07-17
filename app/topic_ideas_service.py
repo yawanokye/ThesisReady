@@ -825,6 +825,11 @@ def generate_topic_ideas(payload: dict[str, Any]) -> dict[str, Any]:
     resource_search = resource_result.get("resource_search") or {}
 
     return {
+        "research_area": _clean(payload.get("research_area")),
+        "context": _clean(payload.get("context")),
+        "country_region": _clean(payload.get("country_region")),
+        "methodology": _clean(payload.get("methodology")),
+        "data_type": _clean(payload.get("data_type")),
         "query": search_result.get("query", ""),
         "searched_at": search_result.get("searched_at", ""),
         "recent_reference_window": search_result.get(
@@ -858,7 +863,8 @@ def generate_topic_ideas(payload: dict[str, Any]) -> dict[str, Any]:
             "Retracted or withdrawn records are excluded from the "
             "idea-generation context where detected. Named datasets and "
             "instrument sources are candidates from strict, idea-specific metadata "
-            "searches or official source catalogues. General resources are omitted, "
+            "searches or official source catalogues. Secondary datasets are searched only "
+            "when the selected methodology or data-access choice calls for them. Weak and general resources are omitted, "
             "and every candidate must be checked before adoption, adaptation or analysis."
         ),
     }
