@@ -17,6 +17,11 @@ _RETRACTION_TERMS = re.compile(
 )
 
 
+def _clean(value: Any) -> str:
+    """Normalise user and generated text for stable API output."""
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
 def _env_bool(name: str, default: bool = False) -> bool:
     raw = os.getenv(name)
     if raw is None:
