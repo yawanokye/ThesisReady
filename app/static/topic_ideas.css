@@ -136,7 +136,7 @@ body.topic-page {
   gap: 0.65rem;
   flex-wrap: wrap;
 }
-.topic-actions button, #copyIdeasBtn {
+.topic-actions button, #copyIdeasBtn, #exportIdeasBtn {
   border-radius: 999px;
   padding: 0.75rem 1rem;
   border: 1px solid transparent;
@@ -147,12 +147,13 @@ body.topic-page {
   background: var(--pr-blue);
   color: #fff;
 }
-.secondary-action, #copyIdeasBtn {
+.secondary-action, #copyIdeasBtn, #exportIdeasBtn {
   background: #fff;
   color: var(--pr-blue);
   border-color: #bfdbfe !important;
 }
-#copyIdeasBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+#copyIdeasBtn:disabled, #exportIdeasBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+.result-actions { display: flex; gap: 0.55rem; flex-wrap: wrap; justify-content: flex-end; }
 
 .result-head {
   display: flex;

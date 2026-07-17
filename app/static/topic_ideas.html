@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ProjectReady AI | Thesis Topic Ideas</title>
   <link rel="stylesheet" href="/static/styles.css?v=20260618-suite-ui-verified" />
-  <link rel="stylesheet" href="/static/topic_ideas.css?v=20260711-topic-specific-resources-v1" />
+  <link rel="stylesheet" href="/static/topic_ideas.css?v=20260717-strict-resources-docx-v2" />
   <link rel="stylesheet" href="/static/projectready-suite.css?v=20260710-nav-tabs-v1" />
 </head>
 <body class="topic-page suite-page ideas-suite">
@@ -170,9 +170,9 @@
         <div class="result-head">
           <div>
             <h2>2. Suggested titles, synopses and objectives</h2>
-            <p class="hint">The free preview shows 2 complete ideas. Unlocking provides a fuller set of up to 12 ideas to compare and select from. Each idea includes a synopsis, level-appropriate objectives, variables or constructs, and only secondary datasets or instruments that match that idea’s title and focal constructs. General resources are excluded.</p>
+            <p class="hint">The free preview shows 2 complete ideas. Unlocking provides a fuller set of up to 12 ideas to compare and select from. Each idea includes a synopsis, level-appropriate objectives, variables or constructs, and only strongly matched data or instrument candidates. Weak or general matches are omitted. Results can be exported to an editable DOCX file.</p>
           </div>
-          <button id="copyIdeasBtn" type="button" disabled>Copy results</button>
+          <div class="result-actions"><button id="copyIdeasBtn" type="button" disabled>Copy results</button><button id="exportIdeasBtn" type="button" disabled>Export DOCX</button></div>
         </div>
         <div id="ideaMeta" class="idea-meta"></div>
         <div id="ideaResults" class="idea-results empty-state">
@@ -195,10 +195,10 @@
 
     <section class="topic-card source-panel">
       <h2>3. Literature records used for trend grounding</h2>
-      <p class="hint">These records ground the trend and gap analysis. Dataset and instrument candidates are searched and screened separately for each idea. General matches are omitted. Verify every source, licence, instrument permission and measurement fit before use.</p>
+      <p class="hint">These records ground the trend and gap analysis. Secondary datasets are searched only when the selected methodology or data-access choice requires them. Weak matches are omitted. Verify every source, licence, instrument permission and measurement fit before use.</p>
       <div id="sourceRecords" class="source-records"></div>
     </section>
   </main>
-  <script src="/static/topic_ideas.js?v=20260714-commercial-v1"></script>
+  <script src="/static/topic_ideas.js?v=20260717-strict-resources-docx-v2"></script>
 </body>
 </html>

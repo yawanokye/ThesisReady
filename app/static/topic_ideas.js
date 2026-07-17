@@ -1,5 +1,6 @@
 const $ = (id) => document.getElementById(id);
 let lastIdeaText = "";
+let lastIdeaResult = null;
 const TOPIC_ACCESS_STORAGE_KEY = "projectready-topic-ideas-access-v1";
 const TOPIC_FORM_STORAGE_KEY = "projectready-topic-ideas-form-v1";
 const FREE_PREVIEW_IDEAS = 2;
@@ -414,22 +415,26 @@ function renderInstrumentSources(resources) {
 
 function renderResearchResources(idea) {
   const guidance = idea.research_resource_guidance || {};
-  const secondary = normaliseList(guidance.secondary_data_sources);
-  const instruments = normaliseList(guidance.questionnaire_or_instrument_sources);
-  if (!Object.keys(guidance).length) return "";
+  const secondary = guidance.show_secondary_data === false
+    ? []
+    : normaliseList(guidance.secondary_data_sources);
+  const instruments = guidance.show_instruments === false
+    ? []
+    : normaliseList(guidance.questionnaire_or_instrument_sources);
+  if (!secondary.length && !instruments.length) return "";
   const basis = normaliseList(guidance.search_basis);
   const topicScope = guidance.topic_scope || idea.title || "this proposed topic";
   return `
     <section class="idea-box resource-guidance-box">
       <div class="resource-guidance-head">
         <div>
-          <strong>Idea-specific research data and instrument sources</strong>
-          <p>Strict search scope: ${escapeHtml(topicScope)}. General resources are excluded.</p>
+          <strong>Verified topic-specific research resources</strong>
+          <p>Search scope: ${escapeHtml(topicScope)}. Weak or general matches are not displayed.</p>
         </div>
       </div>
       ${basis.length ? `<div class="idea-badge-row resource-basis">${basis.map(item => `<span class="badge">${escapeHtml(item)}</span>`).join("")}</div>` : ""}
-      <div class="resource-group"><h4>Topic-specific secondary data sources</h4>${renderSecondarySources(secondary)}</div>
-      <div class="resource-group"><h4>Topic-specific questionnaire, scale, interview guide or instrument sources</h4>${renderInstrumentSources(instruments)}</div>
+      ${secondary.length ? `<div class="resource-group"><h4>Strongly matched secondary-data candidates</h4>${renderSecondarySources(secondary)}</div>` : ""}
+      ${instruments.length ? `<div class="resource-group"><h4>Strongly matched questionnaire, scale, interview-guide or instrument candidates</h4>${renderInstrumentSources(instruments)}</div>` : ""}
       ${guidance.resource_note ? `<p class="resource-note">${escapeHtml(guidance.resource_note)}</p>` : ""}
     </section>
   `;
@@ -454,6 +459,7 @@ function renderObjectives(idea) {
 }
 
 function renderIdeas(result) {
+  lastIdeaResult = result;
   const meta = $("ideaMeta");
   const ideasBox = $("ideaResults");
   const sourceBox = $("sourceRecords");
@@ -477,6 +483,8 @@ function renderIdeas(result) {
     ideasBox.className = "idea-results empty-state";
     ideasBox.innerHTML = "<p>No ideas were returned. Refine the research area and try again.</p>";
     $("copyIdeasBtn").disabled = true;
+    if ($("exportIdeasBtn")) $("exportIdeasBtn").disabled = true;
+    lastIdeaResult = null;
     showFreePreviewUnlock(false);
     return;
   }
@@ -493,7 +501,7 @@ function renderIdeas(result) {
         <div class="idea-box"><strong>Current trend or gap</strong>${escapeHtml(idea.current_research_trend_or_gap || "")}</div>
         <div class="idea-box"><strong>Possible methodology</strong>${escapeHtml(idea.possible_methodology || "")}</div>
         <div class="idea-box"><strong>Variables or constructs</strong><div class="idea-badge-row">${listText(idea.possible_variables_or_constructs || [])}</div></div>
-        <div class="idea-box"><strong>Topic-specific data direction</strong><div class="idea-badge-row">${listText(idea.possible_data_sources || [])}</div></div>
+        ${normaliseList(idea.possible_data_sources).length ? `<div class="idea-box"><strong>Topic-specific data direction</strong><div class="idea-badge-row">${listText(idea.possible_data_sources || [])}</div></div>` : ""}
       </div>
       ${renderResearchResources(idea)}
       <div class="idea-box"><strong>Potential contribution</strong>${escapeHtml(idea.potential_contribution || "")}</div>
@@ -542,15 +550,59 @@ Trend/gap: ${idea.current_research_trend_or_gap || ""}
 Method: ${idea.possible_methodology || ""}
 Variables/constructs: ${variables}
 Topic-specific data direction: ${dataSources}
-Possible secondary data sources:
+${secondarySources !== "   None returned" ? `Strongly matched secondary data sources:
 ${secondarySources}
-Possible questionnaire or instrument sources:
+` : ""}${instrumentSources !== "   None returned" ? `Strongly matched questionnaire or instrument sources:
 ${instrumentSources}
-Contribution: ${idea.potential_contribution || ""}
+` : ""}Contribution: ${idea.potential_contribution || ""}
 Attention note: ${idea.attention_note || ""}
 `;
   }).join("\n");
   $("copyIdeasBtn").disabled = false;
+  if ($("exportIdeasBtn")) $("exportIdeasBtn").disabled = false;
+}
+
+async function exportIdeasDocx() {
+  if (!lastIdeaResult?.ideas?.length) return;
+  const button = $("exportIdeasBtn");
+  button.disabled = true;
+  const previousLabel = button.textContent;
+  button.textContent = "Preparing DOCX...";
+  $("ideaStatus").textContent = "Preparing an editable DOCX file of the topic ideas...";
+  try {
+    const response = await fetch("/api/topic-ideas/export-docx", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ result: lastIdeaResult }),
+    });
+    if (!response.ok) {
+      const raw = await response.text();
+      let message = raw || "DOCX export failed.";
+      try {
+        const data = JSON.parse(raw);
+        message = typeof data.detail === "string" ? data.detail : (data.detail?.message || message);
+      } catch (_) {}
+      throw new Error(message);
+    }
+    const blob = await response.blob();
+    const disposition = response.headers.get("content-disposition") || "";
+    const filenameMatch = disposition.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+    const filename = filenameMatch ? decodeURIComponent(filenameMatch[1].replaceAll('"', "")) : "projectready_topic_ideas.docx";
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    $("ideaStatus").textContent = "Topic ideas exported to an editable DOCX file.";
+  } catch (error) {
+    $("ideaStatus").textContent = `DOCX export error: ${error.message}`;
+  } finally {
+    button.disabled = false;
+    button.textContent = previousLabel;
+  }
 }
 
 async function generateIdeas(event) {
@@ -616,7 +668,9 @@ function clearIdeas() {
   $("sourceRecords").innerHTML = "";
   $("ideaStatus").textContent = "";
   lastIdeaText = "";
+  lastIdeaResult = null;
   $("copyIdeasBtn").disabled = true;
+  if ($("exportIdeasBtn")) $("exportIdeasBtn").disabled = true;
   showFreePreviewUnlock(false);
   updateGenerationControls(paidAccessReady);
 }
@@ -631,6 +685,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   $("ideaForm").addEventListener("submit", generateIdeas);
   $("clearIdeasBtn").addEventListener("click", clearIdeas);
   $("copyIdeasBtn").addEventListener("click", copyIdeas);
+  $("exportIdeasBtn")?.addEventListener("click", exportIdeasDocx);
   $("unlockTopicIdeasBtn").addEventListener("click", startTopicIdeasCheckout);
   $("unlockFromPreviewBtn").addEventListener("click", startTopicIdeasCheckout);
   $("checkTopicAccessBtn").addEventListener("click", () => checkTopicAccess());
