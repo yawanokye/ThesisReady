@@ -96,9 +96,9 @@ def test_mixed_methods_can_return_both_resource_types(monkeypatch):
         "_search_datacite_datasets",
         lambda query, limit: [
             {
-                "name": "Financial inclusion microdata",
+                "name": "Financial literacy and retirement planning microdata",
                 "provider": "Repository",
-                "description": "Financial access and income variables.",
+                "description": "Financial literacy, retirement planning and income stability variables for informal workers in Ghana.",
                 "url": "https://example.org/microdata",
                 "source_type": "Live dataset record",
                 "discovery_database": "DataCite",
@@ -171,7 +171,7 @@ def test_unrelated_dataset_and_country_only_portal_are_excluded(monkeypatch):
 
     assert guidance["secondary_data_sources"] == []
     assert all("Ghana Statistical Service" not in item for item in result["ideas"][0]["possible_data_sources"])
-    assert "financial literacy" in " ".join(result["ideas"][0]["possible_data_sources"]).lower()
+    assert result["ideas"][0]["possible_data_sources"] == []
 
 
 def test_unrelated_instrument_is_not_attached(monkeypatch):
@@ -245,3 +245,82 @@ def test_resource_queries_are_built_for_each_individual_idea(monkeypatch):
     assert "fraud awareness" in queries[1].lower()
     assert result["resource_search"]["strategy"] == "per_idea_strict"
     assert len(result["resource_search"]["per_idea_searches"]) == 2
+
+
+def test_not_sure_data_access_does_not_trigger_secondary_dataset_search(monkeypatch):
+    calls = {"datasets": 0}
+
+    def unexpected_dataset_search(query, limit):
+        calls["datasets"] += 1
+        return []
+
+    monkeypatch.setattr(finder, "_search_datacite_datasets", unexpected_dataset_search)
+    monkeypatch.setattr(finder, "_search_harvard_dataverse", unexpected_dataset_search)
+    monkeypatch.setattr(
+        finder,
+        "search_literature_sources",
+        lambda **kwargs: {"databases": [], "provider_errors": [], "sources": []},
+    )
+    payload = {
+        "research_area": "human development practices and employee performance",
+        "context": "administrative staff in a public university",
+        "country_region": "Ghana",
+        "methodology": "Quantitative survey",
+        "data_type": "Not sure",
+    }
+    result = finder.discover_research_resources(payload, [{
+        "title": "Employee competence and administrative performance in a Ghanaian public university",
+        "possible_variables_or_constructs": ["employee competence", "administrative performance"],
+    }])
+    guidance = result["ideas"][0]["research_resource_guidance"]
+    assert calls["datasets"] == 0
+    assert guidance["secondary_data_sources"] == []
+    assert guidance["show_secondary_data"] is False
+
+
+def test_generic_employee_or_performance_dataset_is_rejected(monkeypatch):
+    monkeypatch.setattr(
+        finder,
+        "_search_datacite_datasets",
+        lambda query, limit: [
+            {
+                "name": "Employee Ownership Trusts and Perpetual Purpose Trusts in the United States",
+                "provider": "Unrelated repository",
+                "description": "A working database of employee ownership and workplace democracy trusts in the United States.",
+                "url": "https://example.org/unrelated",
+                "source_type": "Live dataset record",
+                "discovery_database": "DataCite",
+                "access_note": "Check files.",
+            },
+            {
+                "name": "Throttling JavaScript background timers to improve performance",
+                "provider": "Software repository",
+                "description": "Browser timer performance and battery-life experiment.",
+                "url": "https://example.org/browser",
+                "source_type": "Live dataset record",
+                "discovery_database": "DataCite",
+                "access_note": "Check files.",
+            },
+        ],
+    )
+    monkeypatch.setattr(finder, "_search_harvard_dataverse", lambda query, limit: [])
+    payload = {
+        "research_area": "human development practices and employee performance",
+        "context": "administrative staff in a public university",
+        "country_region": "Ghana",
+        "methodology": "Secondary data",
+        "data_type": "Secondary data available",
+    }
+    idea = {
+        "title": "Employee competence and administrative performance in a Ghanaian public university",
+        "possible_variables_or_constructs": [
+            "employee competence",
+            "administrative performance",
+            "job knowledge",
+            "functional skills",
+        ],
+    }
+    result = finder.discover_research_resources(payload, [idea])
+    guidance = result["ideas"][0]["research_resource_guidance"]
+    assert guidance["secondary_data_sources"] == []
+    assert guidance["show_secondary_data"] is False
