@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.topic_ideas_service import generate_topic_ideas
-from app.payments.guard import PaymentRequiredError, credentials_from_headers, paid_chapter_action
+from app.payments.guard import PaymentRequiredError, credentials_from_request, paid_chapter_action
 from app.payments.internal_access import is_internal_purchase_id, validate_internal_access
 from app.payments.store import get_purchase
 
@@ -49,7 +49,7 @@ def _run_generation(payload: dict[str, Any]) -> dict[str, Any]:
 
 @router.post("")
 def create_topic_ideas(payload: TopicIdeasRequest, request: Request) -> dict[str, Any]:
-    credentials = credentials_from_headers(request.headers)
+    credentials = credentials_from_request(request)
     purchase_id = credentials["purchase_id"]
     access_token = credentials["access_token"]
 

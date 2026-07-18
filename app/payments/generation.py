@@ -18,7 +18,7 @@ from app.result_uploads import extract_result_file
 from app.schemas import ComplianceRequest, DraftRequest
 from app.template_store import get_chapter
 from app.payments.entitlements import is_free_generation_allowed
-from app.payments.guard import PaymentRequiredError, credentials_from_headers, paid_chapter_action
+from app.payments.guard import PaymentRequiredError, credentials_from_request, paid_chapter_action
 
 router = APIRouter(prefix="/api/projects", tags=["generation"])
 EXPORT_DIR = Path("exports")
@@ -42,7 +42,7 @@ def _paid_action_context(
     chapter_title: str,
     action: str,
 ):
-    credentials = credentials_from_headers(request.headers)
+    credentials = credentials_from_request(request)
     return paid_chapter_action(
         purchase_id=credentials["purchase_id"],
         access_token=credentials["access_token"],
@@ -509,7 +509,7 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
         extra_instructions = (extra_instructions + "\n\n" + f"Other chapter title: {other_title}\nUser-specified chapter requirements: {other_instructions}").strip()
 
     chapter_title = str(chapter.get("chapter_title") or f"Chapter {payload.chapter_number}")
-    credentials = credentials_from_headers(request.headers)
+    credentials = credentials_from_request(request)
     has_paid_credential = bool(credentials["purchase_id"] and credentials["access_token"])
     action = "revision" if revision_mode else "draft"
 

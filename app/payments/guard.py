@@ -24,6 +24,25 @@ def credentials_from_headers(headers: Any) -> Dict[str, str]:
     }
 
 
+def credentials_from_request(request: Any) -> Dict[str, str]:
+    """Read access credentials from a validated internal portal session or headers.
+
+    Restricted module pages use an HttpOnly, signed session cookie.  The main
+    application middleware validates that cookie and places the resulting
+    credential on ``request.state.internal_portal_session``.  Accepting that
+    server-side credential keeps developer access working even when browser
+    storage is unavailable, cleared, delayed, or blocked.  Public requests
+    continue to use the normal opaque payment headers.
+    """
+    session = getattr(getattr(request, "state", None), "internal_portal_session", None)
+    if isinstance(session, dict):
+        purchase_id = str(session.get("purchase_id") or "").strip()
+        access_token = str(session.get("access_token") or "").strip()
+        if purchase_id and access_token and is_internal_purchase_id(purchase_id):
+            return {"purchase_id": purchase_id, "access_token": access_token}
+    return credentials_from_headers(getattr(request, "headers", {}))
+
+
 @contextmanager
 def paid_chapter_action(
     *,
