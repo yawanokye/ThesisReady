@@ -536,6 +536,7 @@ function renderIdeas(result) {
     <strong>Search query:</strong> ${escapeHtml(result.query || "")}<br />
     <strong>Recent-reference window:</strong> ${escapeHtml(result.recent_reference_window || "")}<br />
     <strong>Trend databases:</strong> ${escapeHtml((result.databases || []).join(", "))}<br />
+    <strong>Literature records used for trend grounding:</strong> ${Number(result.trend_source_records_used || (result.source_records_used || []).length || 0)}${result.trend_source_records_available ? ` of ${Number(result.trend_source_records_available)} relevant records retrieved` : ""}<br />
     <strong>Resource-search databases:</strong> ${escapeHtml(((result.resource_search || {}).databases || []).join(", ") || "No additional database reached")}<br />
     <strong>Detected retracted/withdrawn records excluded:</strong> ${excluded}
   `;

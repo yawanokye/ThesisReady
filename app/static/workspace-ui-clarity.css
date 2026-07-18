@@ -561,3 +561,27 @@ details.prompt-options > .optional-fields-body { padding: .8rem; }
   .workspace-section-heading { flex-direction: column; }
   .optional-master-toggle { width: 100%; }
 }
+
+/* Keep the new-job control visible on every workspace state and screen width. */
+.project-start-actions {
+  display: flex !important;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+#clearWorkspaceBtn,
+.workspace-clear-action {
+  display: inline-flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  align-items: center;
+  justify-content: center;
+  min-width: 210px;
+}
+
+@media (max-width: 620px) {
+  .project-start-actions > button {
+    width: 100%;
+  }
+}

@@ -14,8 +14,121 @@ let activeBackgroundJob = null;
 
 const $ = (id) => document.getElementById(id);
 
-const APP_STATIC_VERSION = "20260714-commercial-worker-v1";
+const APP_STATIC_VERSION = "20260718-workspace-clear-visible-v2";
 const CURRENT_PROJECT_STORAGE_KEY = "projectready-current-project";
+
+const WORKSPACE_NEW_JOB_PARAM = "new_job";
+
+function ensureWorkspaceClearButton() {
+  let button = $("clearWorkspaceBtn");
+  if (button) {
+    button.hidden = false;
+    button.style.removeProperty("display");
+    return button;
+  }
+
+  const createButton = $("createProjectBtn");
+  if (!createButton) return null;
+
+  let actionRow = createButton.closest(".project-start-actions, .actions");
+  if (!actionRow) {
+    actionRow = document.createElement("div");
+    actionRow.className = "actions project-start-actions";
+    createButton.parentNode?.insertBefore(actionRow, createButton);
+    actionRow.appendChild(createButton);
+  }
+
+  button = document.createElement("button");
+  button.id = "clearWorkspaceBtn";
+  button.type = "button";
+  button.className = "secondary-action workspace-clear-action";
+  button.textContent = "Clear and start new job";
+  button.setAttribute("aria-label", "Clear all current thesis workspace entries and start a new job");
+  createButton.insertAdjacentElement("afterend", button);
+  return button;
+}
+
+function clearWorkspaceStoredJobState() {
+  currentProjectId = null;
+  activeBackgroundJob = null;
+  for (const storage of [sessionStorage, localStorage]) {
+    try { storage.removeItem(CURRENT_PROJECT_STORAGE_KEY); } catch (_) {}
+    try {
+      Object.keys(storage)
+        .filter((key) => key.startsWith("projectready-background-job:"))
+        .forEach((key) => storage.removeItem(key));
+    } catch (_) {}
+  }
+}
+
+function resetWorkspaceBrowserFields() {
+  document.querySelectorAll("input, textarea, select").forEach((field) => {
+    if (field.tagName === "SELECT") {
+      const defaultIndex = Array.from(field.options || []).findIndex((option) => option.defaultSelected);
+      field.selectedIndex = defaultIndex >= 0 ? defaultIndex : 0;
+      return;
+    }
+    if (field.type === "checkbox" || field.type === "radio") {
+      field.checked = field.defaultChecked;
+      return;
+    }
+    if (field.type === "file") {
+      field.value = "";
+      return;
+    }
+    field.value = field.defaultValue || "";
+  });
+
+  currentProjectId = null;
+  currentChapter = 1;
+  currentSections = [];
+  latestSourceSearchResult = null;
+  accumulatedSourceBank = [];
+  uploadedRevisionText = "";
+  uploadedRevisionFilename = "";
+  alignmentUploadAttached = false;
+  savedProjectDrafts = {};
+  draftRequestInFlight = false;
+  customPageTargets = {};
+  activeBackgroundJob = null;
+  setBackgroundJobPanel(null);
+
+  if ($("draftOutput")) $("draftOutput").value = "";
+  if ($("draftPreview")) $("draftPreview").textContent = "";
+  if ($("scoreBox")) $("scoreBox").textContent = "";
+  if ($("checkTable")) $("checkTable").querySelector("tbody").innerHTML = "";
+  if ($("sourceResults")) $("sourceResults").innerHTML = "";
+  if ($("workspaceRecoveryResults")) $("workspaceRecoveryResults").innerHTML = "";
+  if ($("previousChapterStatus")) $("previousChapterStatus").textContent = "";
+  if ($("revisionStatus")) $("revisionStatus").textContent = "";
+  if ($("resultsStatus")) $("resultsStatus").textContent = "";
+  if ($("sourceStatus")) $("sourceStatus").textContent = "";
+  if ($("draftStatus")) $("draftStatus").textContent = "";
+  if ($("downloadDraftBtn")) $("downloadDraftBtn").disabled = true;
+  if ($("downloadCheckBtn")) $("downloadCheckBtn").disabled = true;
+  if ($("saveRecoveryBtn")) $("saveRecoveryBtn").disabled = true;
+  if ($("projectStatus")) $("projectStatus").textContent = "Old project entries were cleared. Complete the new project profile to begin.";
+
+  if ($("chapterSelect")) {
+    $("chapterSelect").selectedIndex = 0;
+    currentChapter = Number($("chapterSelect").value || 1);
+  }
+  if (template && $("chapterSelect")) renderSections();
+  syncPageTargetControlsForChapter();
+  updateLevelHint();
+  updateChapterSpecificUi();
+}
+
+async function clearWorkspaceAndStartNewJob() {
+  if (activeBackgroundJob && ["queued", "retrying"].includes(activeBackgroundJob.job?.status)) {
+    try { await cancelActiveBackgroundJob(); } catch (_) {}
+  }
+  clearWorkspaceStoredJobState();
+  const clean = new URL("/workspace", window.location.origin);
+  clean.searchParams.set(WORKSPACE_NEW_JOB_PARAM, "1");
+  clean.searchParams.set("_", String(Date.now()));
+  window.location.replace(clean.pathname + clean.search);
+}
 
 const levelDepthGuidance = {
   "Bachelors": "Use clear undergraduate depth: accurate definitions, relevant context, basic critical discussion, and a defensible but not overly complex methodology.",
@@ -876,6 +989,7 @@ async function createProject() {
   $("projectStatus").textContent = result.recovery_enabled
     ? `Project created: ${result.id}. Recovery is enabled for the saved email and PIN.`
     : `Project created: ${result.id}. Add a recovery email and PIN to protect access if the ID is lost.`;
+  ensureWorkspaceClearButton();
   updateChapterSpecificUi();
   await updatePaymentPanel();
   return result.id;
@@ -1459,6 +1573,8 @@ if ($("saveRecoveryBtn")) $("saveRecoveryBtn").addEventListener("click", () => s
 if ($("recoverProjectBtn")) $("recoverProjectBtn").addEventListener("click", () => recoverWorkspaceProjects().catch(err => handleWorkspaceError(err, "projectStatus")));
 $("draftBtn").addEventListener("click", () => generateDraft().catch(err => handleWorkspaceError(err, "draftStatus")));
 if ($("cancelBackgroundJobBtn")) $("cancelBackgroundJobBtn").addEventListener("click", () => cancelActiveBackgroundJob().catch(err => handleWorkspaceError(err, "draftStatus")));
+const clearWorkspaceButton = ensureWorkspaceClearButton();
+if (clearWorkspaceButton) clearWorkspaceButton.addEventListener("click", () => clearWorkspaceAndStartNewJob().catch(err => handleWorkspaceError(err, "projectStatus")));
 if ($("pageTargetMode")) $("pageTargetMode").addEventListener("change", updateCustomPageTargetFromInputs);
 if ($("customPageMin")) $("customPageMin").addEventListener("input", updateCustomPageTargetFromInputs);
 if ($("customPageMax")) $("customPageMax").addEventListener("input", updateCustomPageTargetFromInputs);
@@ -1500,16 +1616,24 @@ if ($("level")) {
 updateChapterSpecificUi();
 
 async function initialiseWorkspace() {
-  prefillRecoveryEmail();
+  ensureWorkspaceClearButton();
   const params = new URLSearchParams(window.location.search);
-  const returnedProject = params.get("project_id");
+  const explicitNewJob = params.get(WORKSPACE_NEW_JOB_PARAM) === "1";
+  if (explicitNewJob) clearWorkspaceStoredJobState();
+  prefillRecoveryEmail();
+  const returnedProject = explicitNewJob ? "" : (params.get("project_id") || "");
   if (returnedProject) {
     currentProjectId = returnedProject;
     localStorage.setItem(CURRENT_PROJECT_STORAGE_KEY, returnedProject);
   }
   if (window.ProjectReadySessionBootstrap?.ready) await window.ProjectReadySessionBootstrap.ready;
   await loadTemplate();
-  await restoreCurrentProject();
+  if (explicitNewJob) {
+    resetWorkspaceBrowserFields();
+    prefillRecoveryEmail();
+  } else {
+    await restoreCurrentProject();
+  }
   const returnedChapter = Number(params.get("chapter") || 0);
   if (returnedChapter && $("chapterSelect")?.querySelector(`option[value="${returnedChapter}"]`)) {
     $("chapterSelect").value = String(returnedChapter);
@@ -1559,15 +1683,17 @@ async function initialiseWorkspace() {
       $("planNotice").textContent = "Checkout was cancelled. You can restart it when ready.";
     }
   }
-  if (payment || registered) {
+  if (payment || registered || explicitNewJob) {
     const clean = new URL(window.location.pathname, window.location.origin);
     if (currentProjectId) clean.searchParams.set("project_id", currentProjectId);
     if (currentChapter) clean.searchParams.set("chapter", String(currentChapter));
     history.replaceState({}, document.title, clean.pathname + clean.search);
   }
+  ensureWorkspaceClearButton();
   await updatePaymentPanel();
 }
 
+ensureWorkspaceClearButton();
 initialiseOptionalFields();
 initialiseWorkspace().then(resumeBackgroundDraftIfAvailable).catch(err => {
   document.body.innerHTML = `<pre>Failed to load app: ${escapeHtml(err.message)}</pre>`;

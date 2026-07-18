@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ProjectReady AI | Guided Thesis and Dissertation Development Workspace</title>
   <link rel="stylesheet" href="/static/styles.css?v=20260629-integrity-v3" />
-  <link rel="stylesheet" href="/static/workspace-ui-clarity.css?v=20260714-commercial-worker-v1" />
+  <link rel="stylesheet" href="/static/workspace-ui-clarity.css?v=20260718-workspace-clear-visible-v2" />
   <link rel="stylesheet" href="/static/projectready-suite.css?v=20260710-nav-tabs-v1" />
   <link rel="stylesheet" href="/static/projectready_payments.css?v=20260709-live-payments-v2" />
 </head>
@@ -325,7 +325,10 @@
         <p class="hint">ProjectReady AI produces editable working drafts and research guidance, not completed or submission-ready academic work. <a href="/academic-integrity" target="_blank" rel="noopener">Read the Academic Integrity and Responsible Use Policy</a>.</p>
       </div>
 
-      <button id="createProjectBtn" class="primary-action">Create research project</button>
+      <div class="actions project-start-actions">
+        <button id="createProjectBtn" class="primary-action">Create research project</button>
+        <button id="clearWorkspaceBtn" type="button" class="secondary-action workspace-clear-action">Clear and start new job</button>
+      </div>
       <p id="projectStatus" class="status"></p>
       <p id="planNotice" class="status plan-notice" hidden></p>
     </section>
@@ -486,6 +489,6 @@
     </section>
   </main>
   <script src="/static/projectready_payments.js?v=20260714-commercial-v1"></script>
-  <script src="/static/app.js?v=20260714-commercial-worker-v1"></script>
+  <script src="/static/app.js?v=20260718-workspace-clear-visible-v2"></script>
 </body>
 </html>

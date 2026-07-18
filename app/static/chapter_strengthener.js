@@ -18,6 +18,74 @@ const downloadRevisionBtn = byId('downloadRevisionBtn');
 const revisionMeta = byId('revisionMeta');
 const targetNote = byId('targetNote');
 const PROJECT_STORAGE_KEY = 'projectready-current-project';
+const STRENGTHENER_NEW_JOB_PARAM = 'new_job';
+
+function clearStrengthenerStoredJobState() {
+  currentProject = null;
+  activeStrengthenerJob = null;
+  for (const storage of [sessionStorage, localStorage]) {
+    try { storage.removeItem(PROJECT_STORAGE_KEY); } catch (_error) {}
+    try {
+      Object.keys(storage)
+        .filter((key) => key.startsWith('projectready-strengthener-job:'))
+        .forEach((key) => storage.removeItem(key));
+    } catch (_error) {}
+  }
+}
+
+function prefillStrengthenerRecoveryEmails() {
+  const profile = window.ProjectReadyPayments?.readRegistrationProfile?.();
+  if (profile?.email) {
+    if (!byId('recoverEmail').value) byId('recoverEmail').value = profile.email;
+    if (!byId('externalRecoveryEmail').value) byId('externalRecoveryEmail').value = profile.email;
+  }
+}
+
+function resetStrengthenerForNewJob() {
+  form.reset();
+  document.querySelectorAll('#revisionForm input[type="file"]').forEach((input) => { input.value = ''; });
+  byId('projectId').value = '';
+  chapterText.value = '';
+  supervisorComments.value = '';
+  if (previousChaptersContext) previousChaptersContext.value = '';
+  revisedChapter.value = '';
+  strengtheningReport.value = '';
+  supervisorMatrix.value = '';
+  supervisorMatrixPanel.hidden = true;
+  lastResult = null;
+  currentProject = null;
+  customNewSections = [];
+  activeStrengthenerJob = null;
+  strengthenerJobInFlight = false;
+  renderStrengthenerJob(null);
+  renderCustomNewSections();
+  renderStrengthenerSections();
+  if (byId('customTargetPagesFields')) byId('customTargetPagesFields').hidden = true;
+  revisionMeta.textContent = 'Revision details will appear here.';
+  uploadStatus.textContent = '';
+  byId('projectConnectionStatus').textContent = 'No project is connected. Select an existing project or bring a new chapter.';
+  byId('externalProjectStatus').textContent = '';
+  byId('recoveryResults').innerHTML = '';
+  byId('useSavedDraftBtn').disabled = true;
+  message('Old chapter entries were cleared. Complete the new strengthening job to begin.');
+  enableOutputs(false);
+  copyMatrixBtn.disabled = true;
+  setSourceMode('existing');
+  updateTargetNote();
+  prefillStrengthenerRecoveryEmails();
+}
+
+async function clearStrengthenerAndStartNewJob() {
+  if (activeStrengthenerJob && ['queued', 'retrying'].includes(activeStrengthenerJob.job?.status)) {
+    try { await cancelActiveStrengthenerJob(); } catch (_error) {}
+  }
+  clearStrengthenerStoredJobState();
+  const clean = new URL('/chapter-strengthener', window.location.origin);
+  clean.searchParams.set(STRENGTHENER_NEW_JOB_PARAM, '1');
+  clean.searchParams.set('_', String(Date.now()));
+  window.location.replace(clean.pathname + clean.search);
+}
+
 let currentProject = null;
 let lastResult = null;
 let strengthenerTemplate = null;
@@ -33,7 +101,6 @@ function message(text, kind = '') {
 function setBusy(busy) {
   reviseBtn.disabled = busy;
   reviseBtn.textContent = busy ? 'Background request running…' : 'Strengthen my working chapter';
-  if (byId('clearBtn')) byId('clearBtn').disabled = busy;
 }
 
 function selectedSourceMode() {
@@ -558,12 +625,7 @@ byId('recoverProjectsBtn').addEventListener('click', async () => {
   }
 });
 
-const registrationProfile = window.ProjectReadyPayments?.readRegistrationProfile?.();
-if (registrationProfile?.email) {
-  if (!byId('recoverEmail').value) byId('recoverEmail').value = registrationProfile.email;
-  if (!byId('externalRecoveryEmail').value) byId('externalRecoveryEmail').value = registrationProfile.email;
-}
-
+prefillStrengthenerRecoveryEmails();
 
 
 function strengthenerJobStorageKey(project = projectId(), chapter = chapterNumber()) {
@@ -780,10 +842,18 @@ form.addEventListener('submit', async (event) => {
 });
 
 async function initialiseStrengthener() {
+  const params = new URLSearchParams(window.location.search);
+  const explicitNewJob = params.get(STRENGTHENER_NEW_JOB_PARAM) === '1';
+  if (explicitNewJob) clearStrengthenerStoredJobState();
   try {
     await Promise.resolve(window.ProjectReadySessionBootstrap?.ready);
   } catch (_error) {
     // Public users continue without a authorised session.
+  }
+  if (explicitNewJob) {
+    resetStrengthenerForNewJob();
+    history.replaceState({}, document.title, '/chapter-strengthener');
+    return;
   }
   await loadProject();
   await resumeStrengthenerJobIfAvailable();
@@ -857,23 +927,7 @@ downloadRevisionBtn.addEventListener('click', async () => {
 });
 
 byId('clearBtn').addEventListener('click', () => {
-  form.reset();
-  chapterText.value = '';
-  supervisorComments.value = '';
-  if (previousChaptersContext) previousChaptersContext.value = '';
-  revisedChapter.value = '';
-  strengtheningReport.value = '';
-  supervisorMatrix.value = '';
-  supervisorMatrixPanel.hidden = true;
-  lastResult = null;
-  customNewSections = [];
-  renderCustomNewSections();
-  renderStrengthenerSections();
-  if (byId('customTargetPagesFields')) byId('customTargetPagesFields').hidden = true;
-  revisionMeta.textContent = 'Revision details will appear here.';
-  uploadStatus.textContent = '';
-  message('');
-  enableOutputs(false);
-  copyMatrixBtn.disabled = true;
-  updateTargetNote();
+  clearStrengthenerAndStartNewJob().catch((error) => {
+    message(error.message || 'The current strengthening job could not be cleared.', 'error');
+  });
 });
