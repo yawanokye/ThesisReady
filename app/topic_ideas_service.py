@@ -9,7 +9,6 @@ from typing import Any
 from app.source_finder import search_literature_sources
 from app.research_resource_finder import discover_research_resources
 
-MAX_SOURCE_CONTEXT = 14
 
 _RETRACTION_TERMS = re.compile(
     r"\b(retracted|retraction\s+notice|withdrawn|removed\s+article|expression\s+of\s+concern|erratum\s+to\s+retracted)\b",
@@ -43,6 +42,26 @@ def _env_float(name: str, default: float, minimum: float, maximum: float) -> flo
     except (TypeError, ValueError):
         value = default
     return max(minimum, min(value, maximum))
+
+
+def _topic_trend_source_limit() -> int:
+    """Maximum relevant literature records passed to and returned from Topic Ideas."""
+    return _env_int(
+        "PROJECTREADY_TOPIC_TREND_SOURCE_LIMIT",
+        24,
+        12,
+        36,
+    )
+
+
+def _topic_trend_search_limit() -> int:
+    """Maximum literature records requested before relevance filtering."""
+    return _env_int(
+        "PROJECTREADY_TOPIC_TREND_SEARCH_LIMIT",
+        36,
+        _topic_trend_source_limit(),
+        60,
+    )
 
 
 def _topic_provider() -> str:
@@ -175,7 +194,7 @@ def _build_topic_search_profile(payload: dict[str, Any]) -> dict[str, Any]:
 
 def _source_context(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
     context = []
-    for idx, src in enumerate(sources[:MAX_SOURCE_CONTEXT], start=1):
+    for idx, src in enumerate(sources[:_topic_trend_source_limit()], start=1):
         context.append({
             "key": f"S{idx}",
             "title": src.get("title", ""),
@@ -614,7 +633,7 @@ def _fallback_ideas(payload: dict[str, Any], sources: list[dict[str, Any]], coun
 
 
 def generate_topic_ideas(payload: dict[str, Any]) -> dict[str, Any]:
-    """Generate source-grounded thesis ideas with DeepSeek V4 Pro by default."""
+    """Generate source-grounded thesis ideas with the configured model."""
     max_ideas = max(2, min(int(payload.get("max_ideas") or 8), 12))
     profile = _build_topic_search_profile(payload)
     search_terms = " ".join([
@@ -625,10 +644,12 @@ def generate_topic_ideas(payload: dict[str, Any]) -> dict[str, Any]:
         str(payload.get("trend_focus") or ""),
     ])
 
+    trend_search_limit = _topic_trend_search_limit()
+    requested_trend_records = max(16, min(max_ideas * 4, trend_search_limit))
     search_result = search_literature_sources(
         profile=profile,
         query=search_terms,
-        max_results=max(10, min(max_ideas * 3, 30)),
+        max_results=requested_trend_records,
         include_older_foundational=bool(
             payload.get("include_older_foundational", True)
         ),
@@ -636,6 +657,7 @@ def generate_topic_ideas(payload: dict[str, Any]) -> dict[str, Any]:
     raw_sources = search_result.get("sources") or []
     usable_sources = [src for src in raw_sources if not _looks_retracted(src)]
     excluded_retracted = [src for src in raw_sources if _looks_retracted(src)]
+    trend_source_context = _source_context(usable_sources)
 
     idea_prompt = {
         "task": (
@@ -726,7 +748,7 @@ def generate_topic_ideas(payload: dict[str, Any]) -> dict[str, Any]:
             ),
         ],
         "required_json_structure": _required_topic_json_structure(),
-        "source_records": _source_context(usable_sources),
+        "source_records": trend_source_context,
         "requested_number_of_ideas": max_ideas,
         "objective_requirement": _objective_requirement(
             profile.get("level", "Bachelors")
@@ -856,7 +878,10 @@ def generate_topic_ideas(payload: dict[str, Any]) -> dict[str, Any]:
         "trend_summary": generated.get("trend_summary", ""),
         "ideas": processed_ideas,
         "suggested_next_step": generated.get("suggested_next_step", ""),
-        "source_records_used": _source_context(usable_sources),
+        "source_records_used": trend_source_context,
+        "trend_source_records_used": len(trend_source_context),
+        "trend_source_records_available": len(usable_sources),
+        "trend_source_record_limit": _topic_trend_source_limit(),
         "provider_errors": (
             search_result.get("provider_errors", [])
             + (resource_search.get("provider_errors") or [])

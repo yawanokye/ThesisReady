@@ -85,7 +85,10 @@ def home() -> FileResponse:
 
 @app.get("/workspace")
 def workspace() -> FileResponse:
-    return FileResponse(STATIC_DIR / "workspace.html")
+    return FileResponse(
+        STATIC_DIR / "workspace.html",
+        headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
+    )
 
 
 @app.get("/topic-ideas")
@@ -116,12 +119,18 @@ def article_page_alias() -> FileResponse:
 
 @app.get("/chapter-strengthener")
 def chapter_strengthener_page() -> FileResponse:
-    return FileResponse(STATIC_DIR / "chapter_strengthener.html")
+    return FileResponse(
+        STATIC_DIR / "chapter_strengthener.html",
+        headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
+    )
 
 
 @app.get("/strengthen-chapter")
 def strengthen_chapter_alias() -> FileResponse:
-    return FileResponse(STATIC_DIR / "chapter_strengthener.html")
+    return FileResponse(
+        STATIC_DIR / "chapter_strengthener.html",
+        headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
+    )
 
 
 @app.get("/register")
