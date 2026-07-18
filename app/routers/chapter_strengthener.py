@@ -19,7 +19,7 @@ from app.database import get_conn, row_to_dict
 from app.project_recovery import set_project_recovery
 from app.payments.guard import (
     PaymentRequiredError,
-    credentials_from_headers,
+    credentials_from_request,
     paid_chapter_action,
 )
 from app.schemas import (
@@ -75,7 +75,7 @@ def _paid_context(
     preauthorised = getattr(request.state, "preauthorized_claim", None)
     if preauthorised:
         return nullcontext(preauthorised)
-    credentials = credentials_from_headers(request.headers)
+    credentials = credentials_from_request(request)
     return paid_chapter_action(
         purchase_id=credentials["purchase_id"],
         access_token=credentials["access_token"],

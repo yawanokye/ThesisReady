@@ -16,7 +16,7 @@ from app.jobs.store import (
     verify_job_token,
 )
 from app.payments.entitlements import is_free_generation_allowed
-from app.payments.guard import credentials_from_headers
+from app.payments.guard import credentials_from_request
 from app.payments.internal_access import is_internal_purchase_id, validate_internal_access
 from app.payments.store import claim_entitlement, rollback_claim
 from app.schemas import ChapterRevisionRequest, DraftRequest
@@ -72,7 +72,7 @@ def _reserve_paid_action(
     chapter_title: str,
     action: str,
 ) -> dict[str, Any]:
-    credentials = credentials_from_headers(request.headers)
+    credentials = credentials_from_request(request)
     purchase_id = credentials["purchase_id"]
     access_token = credentials["access_token"]
     if not purchase_id or not access_token:
@@ -174,7 +174,7 @@ def queue_chapter_draft(project_id: str, payload: DraftRequest, request: Request
             },
         )
 
-    credentials = credentials_from_headers(request.headers)
+    credentials = credentials_from_request(request)
     has_paid = bool(credentials["purchase_id"] and credentials["access_token"])
     claim: dict[str, Any] = {}
     job_id = str(uuid.uuid4())
