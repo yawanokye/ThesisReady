@@ -52,6 +52,7 @@
     if (area !== "all") keys.add(`${STORAGE_PREFIX}internal:all:chapter-${chapter}`);
     keys.forEach(key => localStorage.setItem(key, JSON.stringify(value)));
     if (data.purchase_id) localStorage.setItem(`${STORAGE_PREFIX}purchase:${data.purchase_id}`, JSON.stringify(value));
+    window.ProjectReadyInternalCredential = value;
     return value;
   }
 
@@ -157,6 +158,10 @@
     try {
       const exact = projectId ? JSON.parse(localStorage.getItem(entitlementKey(projectId, chapterNumber)) || "null") : null;
       if (exact) return exact;
+      const memoryCredential = window.ProjectReadyInternalCredential;
+      if (memoryCredential?.purchase_id && memoryCredential?.access_token && isInternalCredential(memoryCredential)) {
+        return memoryCredential;
+      }
       const area = String(productArea || "").trim();
       const fallbackAreas = area ? [area, "all"] : ["all"];
       for (const fallbackArea of fallbackAreas) {
@@ -166,6 +171,8 @@
         }
       }
     } catch (_) {
+      const memoryCredential = window.ProjectReadyInternalCredential;
+      if (memoryCredential?.purchase_id && memoryCredential?.access_token && isInternalCredential(memoryCredential)) return memoryCredential;
       return null;
     }
     return null;
@@ -436,8 +443,9 @@
     };
   }
 
-  async function checkEntitlement(projectId, chapterNumber) {
-    const credential = getCredential(projectId, chapterNumber);
+  async function checkEntitlement(projectId, chapterNumber, productArea = "") {
+    await Promise.resolve(window.ProjectReadySessionBootstrap?.ready).catch(() => null);
+    const credential = getCredential(projectId, chapterNumber, productArea);
     if (!credential) return {ok: false, allowed: false, reason: "not_stored"};
     const response = await fetch("/api/payments/entitlement-status", {
       method: "POST",
@@ -481,7 +489,8 @@
     bindCheckoutButtons,
     hasRegistrationProfile,
     readRegistrationProfile,
-    registrationUrl
+    registrationUrl,
+    isInternalCredential
   };
   document.addEventListener("DOMContentLoaded", bindCheckoutButtons);
 })();

@@ -20,6 +20,19 @@ const targetNote = byId('targetNote');
 const PROJECT_STORAGE_KEY = 'projectready-current-project';
 const STRENGTHENER_NEW_JOB_PARAM = 'new_job';
 
+
+function strengthenerPagePath() {
+  const internalPath = window.ProjectReadyInternalPortal?.modulePath;
+  if (internalPath) return String(internalPath).replace(/\/$/, '');
+  const current = String(window.location.pathname || '');
+  if (/^\/internal\//.test(current) && /\/chapter-strengthener$/.test(current)) return current.replace(/\/$/, '');
+  return '/chapter-strengthener';
+}
+
+function isInternalDeveloperCredential(credential) {
+  return String(credential?.purchase_id || '').startsWith('pr-internal-v1:');
+}
+
 function clearStrengthenerStoredJobState() {
   currentProject = null;
   activeStrengthenerJob = null;
@@ -80,7 +93,7 @@ async function clearStrengthenerAndStartNewJob() {
     try { await cancelActiveStrengthenerJob(); } catch (_error) {}
   }
   clearStrengthenerStoredJobState();
-  const clean = new URL('/chapter-strengthener', window.location.origin);
+  const clean = new URL(strengthenerPagePath(), window.location.origin);
   clean.searchParams.set(STRENGTHENER_NEW_JOB_PARAM, '1');
   clean.searchParams.set('_', String(Date.now()));
   window.location.replace(clean.pathname + clean.search);
@@ -413,7 +426,7 @@ function accessOptions() {
     academicLevel: byId('academicLevel').value,
     purchaseMode: isRevisionOnlyProject() ? 'revision_only' : 'chapter',
     customerEmail: isRevisionOnlyProject() ? byId('externalRecoveryEmail').value.trim() : byId('recoverEmail').value.trim(),
-    returnPath: `/chapter-strengthener?project_id=${encodeURIComponent(projectId())}`,
+    returnPath: `${strengthenerPagePath()}?project_id=${encodeURIComponent(projectId())}`,
   };
 }
 
@@ -549,6 +562,7 @@ async function createExternalRevisionProject(payload) {
 
 async function updateAccessSummary() {
   const box = byId('chapterAccessSummary');
+  await Promise.resolve(window.ProjectReadySessionBootstrap?.ready).catch(() => null);
   if (!projectId()) {
     box.textContent = selectedSourceMode() === 'external'
       ? 'Complete the chapter details and click Strengthen chapter. The app will create a recoverable revision-only project before checkout.'
@@ -556,6 +570,10 @@ async function updateAccessSummary() {
     return;
   }
   const credential = window.ProjectReadyPayments?.getCredential(projectId(), chapterNumber(), 'chapter_strengthener');
+  if (isInternalDeveloperCredential(credential)) {
+    box.textContent = 'Internal developer access is active for Chapter Strengthener. No payment quota will be consumed.';
+    return;
+  }
   if (!credential) {
     const label = isRevisionOnlyProject() ? 'Unlock revision-only access' : 'Unlock chapter';
     const explanation = isRevisionOnlyProject()
@@ -566,7 +584,7 @@ async function updateAccessSummary() {
     return;
   }
   try {
-    const entitlement = await ProjectReadyPayments.checkEntitlement(projectId(), chapterNumber());
+    const entitlement = await ProjectReadyPayments.checkEntitlement(projectId(), chapterNumber(), 'chapter_strengthener');
     const remaining = entitlement.remaining || {};
     if (entitlement.allowed) {
       box.textContent = `Payment confirmed. Remaining revision: ${remaining.revision ?? 0}. Remaining compliance check: ${remaining.compliance ?? 0}. Remaining export: ${remaining.export ?? 0}.`;
@@ -852,12 +870,16 @@ async function initialiseStrengthener() {
   }
   if (explicitNewJob) {
     resetStrengthenerForNewJob();
-    history.replaceState({}, document.title, '/chapter-strengthener');
+    history.replaceState({}, document.title, strengthenerPagePath());
     return;
   }
   await loadProject();
   await resumeStrengthenerJobIfAvailable();
 }
+
+window.addEventListener('projectready:session-ready', () => {
+  updateAccessSummary().catch(() => {});
+});
 
 initialiseStrengthener().catch((error) => message(error.message || 'The Chapter Strengthener could not be initialised.', 'error'));
 
