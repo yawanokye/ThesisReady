@@ -70,12 +70,13 @@
                 "How does the purpose flow from the problem statement?"
               ],
               "rules": [
-                "State the overall intent of the study in one clear paragraph.",
+                "State the overall intent of the study in one concise sentence closely aligned with the general objective, unless the school explicitly requires one short paragraph.",
                 "Ensure the purpose flows directly from the problem statement.",
                 "Do not introduce variables not already in the study profile.",
                 "Follow the project purpose-style control. When concise-general-objective is selected, state the purpose in one clear sentence closely aligned with the general objective.",
                 "Do not turn the purpose section into another background, problem statement or literature review.",
-                "Do not request confirmation of generated wording when a defensible purpose can be derived from the approved title and objectives."
+                "Do not request confirmation of generated wording when a defensible purpose can be derived from the approved title and objectives.",
+                "Do not add explanatory commentary, literature discussion or an extended rationale after the purpose statement."
               ]
             },
             {
@@ -91,7 +92,9 @@
                 "Use measurable action verbs such as examine, analyse, assess, determine, evaluate, explore, or investigate.",
                 "Sequence objectives logically from general to specific.",
                 "Make each objective traceable to the problem or gap.",
-                "Avoid objectives that cannot be addressed by the proposed data and analysis."
+                "Avoid objectives that cannot be addressed by the proposed data and analysis.",
+                "Present the general objective and specific objectives as clean standalone statements without explanatory commentary after the list.",
+                "Number the specific objectives from 1 independently of all other numbered lists."
               ]
             },
             {
@@ -105,7 +108,9 @@
               "rules": [
                 "Create one research question for each specific objective unless the institution requires otherwise.",
                 "Ensure each question can be answered by the proposed method and data.",
-                "Keep the wording aligned with the variables and context."
+                "Keep the wording aligned with the variables and context.",
+                "Number the research questions from 1 independently of the research-objective numbering.",
+                "Do not add commentary, alignment notes or methodological explanations after the research-question list."
               ]
             },
             {
