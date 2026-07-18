@@ -122,7 +122,7 @@
                 "How does the purpose flow from the problem statement?"
               ],
               "rules": [
-                "State the overall intent of the study in one clear paragraph.",
+                "State the overall intent of the study in one concise sentence closely aligned with the general objective, unless the school explicitly requires one short paragraph.",
                 "Ensure the purpose flows directly from the problem statement.",
                 "Do not introduce variables or constructs not used elsewhere.",
                 "Use formal British English and a natural scholarly style.",
@@ -130,7 +130,8 @@
                 "End the chapter with a clean APA-style References section containing only sources cited in the chapter body.",
                 "Follow the project purpose-style control. When concise-general-objective is selected, state the purpose in one clear sentence closely aligned with the general objective.",
                 "Do not turn the purpose section into another background, problem statement or literature review.",
-                "Do not request confirmation of generated wording when a defensible purpose can be derived from the approved title and objectives."
+                "Do not request confirmation of generated wording when a defensible purpose can be derived from the approved title and objectives.",
+                "Do not add explanatory commentary, literature discussion or an extended rationale after the purpose statement."
               ]
             },
             {
@@ -148,7 +149,9 @@
                 "Make every objective traceable to the problem, gap and methodology.",
                 "Use formal British English and a natural scholarly style.",
                 "Use relevant accurate in-text citations for substantive claims.",
-                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body.",
+                "Present the general objective and specific objectives as clean standalone statements without explanatory commentary after the list.",
+                "Number the specific objectives from 1 independently of all other numbered lists."
               ]
             },
             {
@@ -164,7 +167,9 @@
                 "Ensure each question can be answered by the proposed method and data.",
                 "Use formal British English and a natural scholarly style.",
                 "Use relevant accurate in-text citations for substantive claims.",
-                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body."
+                "End the chapter with a clean APA-style References section containing only sources cited in the chapter body.",
+                "Number the research questions from 1 independently of the research-objective numbering.",
+                "Do not add commentary, alignment notes or methodological explanations after the research-question list."
               ]
             },
             {
