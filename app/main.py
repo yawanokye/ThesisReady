@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.database import init_db
-from app.internal_portal import init_internal_portal_tables, router as internal_portal_router
+from app.internal_portal import init_internal_portal_tables, internal_session_or_none, router as internal_portal_router
 from app.jobs.store import init_job_tables
 from app.payments.store import init_payment_tables
 from app.routers import chapter_strengthener, generation, jobs, journal_article, payments, projects, sources, templates, topic_ideas
@@ -49,6 +49,17 @@ app = FastAPI(
     redoc_url="/redoc" if expose_docs else None,
     openapi_url="/openapi.json" if expose_docs else None,
 )
+
+
+@app.middleware("http")
+async def attach_internal_portal_session(request, call_next):
+    """Validate the restricted portal cookie once for every same-origin request.
+
+    Protected module routes can then recognise authorised developer access on
+    the server without depending only on localStorage or custom browser headers.
+    """
+    request.state.internal_portal_session = internal_session_or_none(request)
+    return await call_next(request)
 
 origins = _allowed_origins()
 app.add_middleware(

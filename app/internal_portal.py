@@ -213,7 +213,22 @@ def _internal_module_page(request: Request, filename: str, module_script: str) -
     if not internal_session_or_none(request):
         raise HTTPException(status_code=404, detail="Resource not found.")
     html = (PUBLIC_STATIC_DIR / filename).read_text(encoding="utf-8")
-    bootstrap = f'<script src="{PORTAL_PATH}/module-session.js?v=20260714-commercial-v3"></script>\n  '
+    private_routes = {
+        "/workspace": f"{PORTAL_PATH}/workspace",
+        "/chapter-strengthener": f"{PORTAL_PATH}/chapter-strengthener",
+        "/strengthen-chapter": f"{PORTAL_PATH}/chapter-strengthener",
+        "/topic-ideas": f"{PORTAL_PATH}/topic-ideas",
+        "/ideas": f"{PORTAL_PATH}/topic-ideas",
+    }
+    for public_path, private_path in private_routes.items():
+        html = html.replace(f'href="{public_path}"', f'href="{private_path}"')
+    context_meta = (
+        f'<meta name="projectready-internal-portal-base" content="{PORTAL_PATH}" />\n'
+        f'  <meta name="projectready-internal-module-path" content="{request.url.path}" />\n  '
+    )
+    html = html.replace("</head>", context_meta + "</head>", 1)
+    html = html.replace("<body", '<body data-projectready-internal-portal="true"', 1)
+    bootstrap = f'<script src="{PORTAL_PATH}/module-session.js?v=20260718-strengthener-access-v4"></script>\n  '
     target = f'<script src="/static/{module_script}'
     if target not in html:
         raise HTTPException(status_code=500, detail="Internal module page is unavailable.")
