@@ -10,6 +10,12 @@ from typing import Any
 
 from app.source_finder import search_literature_sources
 from app.action_items import detach_action_items
+from app.ai_service import (
+    _clean_chapter_references,
+    _ensure_markdown_heading_spacing,
+    _normalise_objectives_and_questions,
+    _normalise_purpose_of_study,
+)
 from app.scholarly_humanizer import (
     analyse_scholarly_style,
     build_humanizer_batches,
@@ -83,29 +89,29 @@ CHAPTER_PAGE_TARGETS: dict[str, dict[str, tuple[int, int]]] = {
 
 CITATION_DENSITY_TARGETS: dict[str, dict[str, tuple[int, int]]] = {
     "bachelors": {
-        "introduction": (8, 10), "literature_review": (12, 16),
-        "methodology": (4, 6), "results_discussion": (4, 7),
-        "conclusion": (3, 5), "other": (5, 8),
+        "introduction": (12, 16), "literature_review": (16, 22),
+        "methodology": (6, 9), "results_discussion": (6, 10),
+        "conclusion": (4, 7), "other": (7, 10),
     },
     "non_research_masters": {
-        "introduction": (9, 12), "literature_review": (14, 18),
-        "methodology": (5, 7), "results_discussion": (5, 8),
-        "conclusion": (4, 6), "other": (6, 9),
+        "introduction": (13, 18), "literature_review": (18, 24),
+        "methodology": (7, 10), "results_discussion": (7, 11),
+        "conclusion": (5, 8), "other": (8, 11),
     },
     "research_masters": {
-        "introduction": (10, 14), "literature_review": (16, 21),
-        "methodology": (6, 9), "results_discussion": (6, 10),
-        "conclusion": (5, 7), "other": (7, 11),
+        "introduction": (15, 20), "literature_review": (20, 28),
+        "methodology": (8, 12), "results_discussion": (8, 13),
+        "conclusion": (6, 9), "other": (9, 13),
     },
     "professional_doctorate": {
-        "introduction": (11, 15), "literature_review": (18, 23),
-        "methodology": (7, 10), "results_discussion": (7, 11),
-        "conclusion": (5, 8), "other": (8, 12),
+        "introduction": (16, 22), "literature_review": (22, 30),
+        "methodology": (9, 13), "results_discussion": (9, 14),
+        "conclusion": (7, 10), "other": (10, 14),
     },
     "phd": {
-        "introduction": (12, 16), "literature_review": (20, 26),
-        "methodology": (8, 12), "results_discussion": (8, 13),
-        "conclusion": (6, 9), "other": (9, 14),
+        "introduction": (18, 24), "literature_review": (24, 32),
+        "methodology": (10, 15), "results_discussion": (10, 16),
+        "conclusion": (8, 12), "other": (11, 16),
     },
 }
 
@@ -1077,13 +1083,18 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
                 "Do not invent citations, references, data, analyses, instruments, ethics approvals, permissions, institutional rules, tables, figures or results.",
                 "Retain valid existing citations. Do not alter author names or publication years unless the supplied evidence confirms a correction.",
                 "Use retrieved metadata only when the title or abstract directly supports the claim. Never turn metadata into evidence for a result not reported by the source.",
-                "Increase citation density according to the level- and chapter-specific target, but avoid citation padding and do not attach citations to unsupported claims.",
+                "Increase citation density according to the stronger level- and chapter-specific target, but avoid citation padding and do not attach citations to unsupported claims.",
+                "For Chapter One, support most substantive background and problem paragraphs with at least one directly relevant source; evidence-heavy paragraphs may synthesise two or more sources.",
+                "For Chapter Two, make nearly every substantive paragraph evidence-supported and normally compare two to four relevant sources in thematic synthesis rather than repeating one citation.",
                 "Run a claim-evidence audit. Support every substantive factual, historical, policy, contextual, theoretical and empirical claim with a directly relevant and accurate source from the existing citations or verified source bank.",
                 "For Chapter One, follow target_citations_per_1000_words in the project profile. Distribute accurate citations across the background, problem, significance and other evidence-led sections, while keeping objectives, questions, purpose and purely organisational sentences citation-light.",
                 "Do not leave comments or user instructions inside the scholarly narrative. Put every unresolved action on a separate line beginning [ACTION REQUIRED: ...] immediately after the affected paragraph or list. Do not collect actions at the end of the chapter.",
                 "Complete every correction that can be responsibly made from the chapter, project profile, earlier chapters and verified source bank. Do not create an action merely to ask the user to approve generated wording.",
                 "Reserve ACTION REQUIRED items for unique material facts or institutional decisions that cannot be inferred or retrieved, such as the exact study population, site, sample, instrument, ethics approval, study period or actual results. State each missing input once at its first relevant location.",
-                "For an Introduction chapter, if background_structure is continuous_narrative, keep Background to the Study under one main heading without internal numbered subheadings. If purpose_statement_style is concise_general_objective, write Purpose of the Study as one concise sentence aligned with the general objective and do not add an extended rationale.",
+                "For an Introduction chapter, if background_structure is continuous_narrative, keep Background to the Study under one main heading without internal numbered subheadings. Write Purpose of the Study concisely: one sentence when purpose_statement_style is concise_general_objective, or one short paragraph only when the school explicitly requires it. Do not add explanatory commentary after the purpose.",
+                "Present research objectives and research questions as clean standalone lists. Remove explanatory commentary, level-alignment notes and methodological justification after the list.",
+                "Restart research-question numbering at 1, independently of objective numbering. Use one numbered question for each item.",
+                "End the revised chapter with one clean APA 7 References section containing only cited sources, one complete entry per paragraph, deduplicated and alphabetised. Do not use bullets, numbering, annotations, source keys, relevance labels or a Source Use Audit.",
                 "Do not add mediation, moderation, causality, longitudinal design, multilevel structure, robustness tests or measurement validation unless they are justified by the approved study and available data.",
                 "Do not present a recommended analysis as completed. Use a concise bracketed action item such as [conduct and report the required diagnostic test] when essential evidence is missing.",
                 "Preserve chapter numbering and school-specific headings where supplied. Add a missing expected heading only when the chapter type, school guidelines, previous chapters or supervisor comments clearly require it.",
@@ -1178,6 +1189,11 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
     else:
         humanizer_report = {"mode": humanizer_mode, "applied": False, "reason": "No completed AI revision to refine."}
 
+    revised_chapter = _finalise_chapter_text(revised_chapter)
+    revised_chapter = _normalise_purpose_of_study(revised_chapter)
+    revised_chapter = _normalise_objectives_and_questions(revised_chapter)
+    revised_chapter = _clean_chapter_references(revised_chapter)
+    revised_chapter = _ensure_markdown_heading_spacing(revised_chapter)
     revised_chapter = detach_action_items(_finalise_chapter_text(revised_chapter))
     strengthening_report = _finalise_chapter_text(strengthening_report)
     supervisor_matrix = _finalise_chapter_text(supervisor_matrix) if supervisor_matrix else ""

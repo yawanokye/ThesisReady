@@ -81,8 +81,9 @@ def check_chapter(chapter_number: int, selected_section_ids: list[str], draft: s
     for section in sections:
         section_title = section["section_title"]
         section_paras = _section_paragraphs(section_title, paragraphs)
+        review_paras = section_paras or list(enumerate(paragraphs, start=1))
         for rule in section.get("rules", []):
-            result = _check_rule(rule, section_paras or paragraphs)
+            result = _check_rule(rule, review_paras)
             items.append(
                 {
                     "section_id": section["section_id"],
@@ -94,7 +95,7 @@ def check_chapter(chapter_number: int, selected_section_ids: list[str], draft: s
                 }
             )
 
-        density_result = _check_citation_density(section_paras or paragraphs)
+        density_result = _check_citation_density(review_paras)
         items.append(
             {
                 "section_id": section["section_id"],
@@ -116,18 +117,6 @@ def check_chapter(chapter_number: int, selected_section_ids: list[str], draft: s
             "status": reference_result["status"],
             "evidence": reference_result["evidence"],
             "suggested_action": reference_result["suggested_action"],
-        }
-    )
-
-    audit_result = _check_source_use_audit(paragraphs)
-    items.append(
-        {
-            "section_id": "source_use_audit",
-            "section_title": "Source Use Audit",
-            "requirement": "Where source-search results were used or attached, the chapter should include a Source Use Audit explaining which searched sources were cited or excluded.",
-            "status": audit_result["status"],
-            "evidence": audit_result["evidence"],
-            "suggested_action": audit_result["suggested_action"],
         }
     )
 
@@ -221,9 +210,9 @@ def _check_citation_density(section_paras: list[tuple[int, str]]) -> dict[str, s
 
     ratio = len(supported) / len(substantive)
     evidence = f"{len(supported)} of {len(substantive)} substantive paragraphs contain a citation or source placeholder."
-    if ratio >= 0.5:
+    if ratio >= 0.7:
         return {"status": "Passed", "evidence": evidence, "suggested_action": "None"}
-    if ratio > 0:
+    if ratio >= 0.35:
         return {
             "status": "Weak",
             "evidence": evidence,
@@ -327,40 +316,38 @@ def _check_references_section(paragraphs: list[str]) -> dict[str, str]:
         return {
             "status": "Missing",
             "evidence": "No References section was found at the end of the chapter.",
-            "suggested_action": "Add a References section containing only sources cited in the chapter body.",
+            "suggested_action": "Add one clean References section containing only sources cited in the chapter body.",
         }
     refs_text = text[match.end():].strip()
-    if _has_intext_citation(refs_text) or re.search(r"\b(19|20)\d{2}\b", refs_text):
+    refs_text = re.split(r"(?im)^#{0,3}\s*(?:source use audit|appendix|appendices)\b", refs_text, maxsplit=1)[0].strip()
+    has_entries = bool(_has_intext_citation(refs_text) or re.search(r"\b(19|20)\d{2}\b", refs_text))
+    has_bullets = bool(re.search(r"(?m)^\s*(?:[-*•]|\d+[.)])\s+", refs_text))
+    has_audit = bool(re.search(r"(?i)\b(source key|relevance tier|not cited|source use audit)\b", refs_text))
+    raw_entries = [re.sub(r"\s+", " ", item).strip() for item in re.split(r"\n\s*\n", refs_text) if item.strip()]
+    keys = [re.sub(r"[^a-z0-9]+", "", entry.lower()) for entry in raw_entries]
+    has_duplicates = len([key for key in keys if key]) != len(set(key for key in keys if key))
+    if has_entries and not has_bullets and not has_audit and not has_duplicates:
         return {
             "status": "Passed",
-            "evidence": "References section found with apparent author-year entries.",
+            "evidence": "A clean, unnumbered References section with apparent author-year entries was found.",
             "suggested_action": "None",
+        }
+    if has_entries:
+        issues = []
+        if has_bullets:
+            issues.append("remove bullets or numbering")
+        if has_audit:
+            issues.append("remove source-audit commentary")
+        if has_duplicates:
+            issues.append("remove duplicate entries")
+        issue_text = ", ".join(issues) or "complete and alphabetise the entries"
+        return {
+            "status": "Weak",
+            "evidence": "References were found, but the list is not yet clean.",
+            "suggested_action": f"Use one complete APA-style entry per paragraph, include only cited sources, and {issue_text}.",
         }
     return {
         "status": "Weak",
         "evidence": "References heading was found, but the entries appear incomplete or missing.",
         "suggested_action": "Add complete reference entries for sources actually cited in the chapter.",
-    }
-
-
-def _check_source_use_audit(paragraphs: list[str]) -> dict[str, str]:
-    text = "\n\n".join(paragraphs or [])
-    match = re.search(r"(?im)^#{0,3}\s*source\s+use\s+audit\b", text)
-    if not match:
-        return {
-            "status": "Weak",
-            "evidence": "No Source Use Audit section was found. This is acceptable only when no source-search results were attached.",
-            "suggested_action": "If the source finder was used, add a Source Use Audit after the References section showing cited, not cited, and excluded sources with reasons.",
-        }
-    audit_text = text[match.end():].strip()
-    if re.search(r"(?i)\b(cited|not cited|excluded|not relevant|source key|relevance tier)\b", audit_text):
-        return {
-            "status": "Passed",
-            "evidence": "Source Use Audit section found with citation/exclusion decisions.",
-            "suggested_action": "None",
-        }
-    return {
-        "status": "Weak",
-        "evidence": "Source Use Audit heading was found, but the decisions or reasons appear incomplete.",
-        "suggested_action": "Use columns such as Source Key, Relevance Tier, Decision, and Reason.",
     }

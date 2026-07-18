@@ -60,11 +60,11 @@ def _level_key(profile: dict[str, Any]) -> str:
 
 
 _AUTO_SOURCE_MINIMUMS: dict[str, dict[int, int]] = {
-    "bachelors": {1: 12, 2: 24, 3: 8, 4: 10, 5: 6},
-    "nonresearch_masters": {1: 15, 2: 30, 3: 10, 4: 12, 5: 8},
-    "research_masters": {1: 18, 2: 40, 3: 14, 4: 16, 5: 10},
-    "professional_doctorate": {1: 20, 2: 48, 3: 18, 4: 20, 5: 12},
-    "phd": {1: 24, 2: 60, 3: 22, 4: 28, 5: 16},
+    "bachelors": {1: 16, 2: 28, 3: 10, 4: 14, 5: 8},
+    "nonresearch_masters": {1: 20, 2: 36, 3: 12, 4: 16, 5: 10},
+    "research_masters": {1: 24, 2: 48, 3: 18, 4: 22, 5: 12},
+    "professional_doctorate": {1: 28, 2: 56, 3: 22, 4: 26, 5: 15},
+    "phd": {1: 32, 2: 72, 3: 28, 4: 36, 5: 20},
 }
 
 
@@ -149,8 +149,8 @@ def ensure_automatic_source_support(profile: dict[str, Any], chapter_number: int
             "minimum_source_target": minimum,
         }
 
-    query_limit = max(1, min(3, int(os.getenv("PROJECTREADY_AUTO_SOURCE_QUERY_COUNT", "2") or 2)))
-    max_results = max(8, min(30, int(os.getenv("PROJECTREADY_AUTO_SOURCE_RESULTS_PER_QUERY", "14") or 14)))
+    query_limit = max(1, min(3, int(os.getenv("PROJECTREADY_AUTO_SOURCE_QUERY_COUNT", "3") or 3)))
+    max_results = max(8, min(30, int(os.getenv("PROJECTREADY_AUTO_SOURCE_RESULTS_PER_QUERY", "18") or 18)))
     queries = _query_candidates(profile, chapter_number)[:query_limit]
     gathered: list[dict[str, Any]] = []
     provider_errors: list[dict[str, str]] = []

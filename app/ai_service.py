@@ -54,23 +54,23 @@ CHAPTER_PAGE_TARGETS: dict[str, dict[int, tuple[int, int]]] = {
 # Planning guides, not mechanical quotas. Citations must still pass the relevance
 # and source-integrity checks before they are inserted.
 CITATION_DENSITY_TARGETS: dict[str, dict[int, tuple[int, int]]] = {
-    # These are citation-occurrence planning ranges per 1,000 substantive words.
-    # They are intentionally stronger than the earlier defaults, but remain subject
-    # to a strict relevance gate and do not permit invented or decorative citations.
+    # Citation-occurrence planning ranges per 1,000 substantive words. These
+    # stronger ranges apply across all academic levels, but every citation must
+    # still pass the relevance and source-integrity gate.
     "bachelors": {
-        1: (8, 10), 2: (12, 16), 3: (4, 6), 4: (4, 7), 5: (3, 5),
+        1: (12, 16), 2: (16, 22), 3: (6, 9), 4: (6, 10), 5: (4, 7),
     },
     "nonresearch_masters": {
-        1: (9, 12), 2: (14, 18), 3: (5, 7), 4: (5, 8), 5: (4, 6),
+        1: (13, 18), 2: (18, 24), 3: (7, 10), 4: (7, 11), 5: (5, 8),
     },
     "research_masters": {
-        1: (10, 14), 2: (16, 21), 3: (6, 9), 4: (6, 10), 5: (5, 7),
+        1: (15, 20), 2: (20, 28), 3: (8, 12), 4: (8, 13), 5: (6, 9),
     },
     "professional_doctorate": {
-        1: (11, 15), 2: (18, 23), 3: (7, 10), 4: (7, 11), 5: (5, 8),
+        1: (16, 22), 2: (22, 30), 3: (9, 13), 4: (9, 14), 5: (7, 10),
     },
     "phd": {
-        1: (12, 16), 2: (20, 26), 3: (8, 12), 4: (8, 13), 5: (6, 9),
+        1: (18, 24), 2: (24, 32), 3: (10, 15), 4: (10, 16), 5: (8, 12),
     },
 }
 
@@ -219,6 +219,8 @@ def _chapter_length_requirements(
             "Use the citation-density range as a planning guide, never as a mechanical quota.",
             "Every citation must directly support the sentence or paragraph in which it appears.",
             "Distribute citations across substantive paragraphs instead of placing a citation cluster only at the end of a section.",
+            "In Chapter One, most substantive background and problem paragraphs should contain at least one directly relevant citation, and evidence-heavy paragraphs may synthesise two or more sources.",
+            "In Chapter Two, nearly every substantive paragraph should be evidence-supported and thematic synthesis should normally compare two to four relevant sources rather than rely on one citation repeatedly.",
             "Chapter Two should compare multiple studies within thematic and objective-led synthesis, not present one study per paragraph as an annotated list.",
             "Chapter Four should keep results reporting evidence-based and citation-light, while the discussion should be citation-rich and connect findings to theory and prior studies.",
             "Use a bracketed source placeholder when the evidence bank is insufficient. Never fabricate a source to meet the density target.",
@@ -878,7 +880,6 @@ def _retrieved_sources_for_prompt(profile: dict[str, Any], chapter_number: int |
             "Use the supplied in_text_citation value for author-year citations where possible.",
             "Use the supplied reference_entry_hint when building the References section for sources actually cited.",
             "Where retrieved sources are insufficient for a claim, use a bracketed placeholder rather than inventing or forcing a citation.",
-            "If any source search results are attached, end the chapter with a short Source Use Audit after the References section. The audit should list cited sources and relevant-but-not-cited sources with reasons. It should also state that irrelevant sources were excluded.",
             "Do not invent page numbers, quotations, findings, or reference-list details not present in the metadata or supplied by the student.",
             "Maintain a clean thesis structure: use the selected chapter sections in order, keep subheadings purposeful, and do not move paragraphs outside their correct section.",
             "Use natural scholarly variation without disrupting logic, citations, tables, equations, references or section numbering.",
@@ -1180,8 +1181,8 @@ def build_drafting_prompt(
             "Do not copy large passages from previous_chapters_for_alignment. Use it to detect contradictions, omissions and missing links. Where alignment cannot be confirmed, insert a precise bracketed attention placeholder such as [confirm alignment with Chapter One objective wording].",
             "Use retrieved_sources as an additional evidence bank where the user has run the source finder. Do not replace the project profile, user-provided evidence, uploaded files, or placeholders; enrich the draft with relevant retrieved sources.",
             "When retrieved_sources contains sources marked highly_relevant or partly_relevant, review them carefully and integrate those that directly support the chapter argument. Do not cite not_relevant sources, and do not cite any source merely to increase citation count.",
-            "Every chapter must end with a References section that includes complete reference entries for every source cited in the chapter, using available reference_entry_hint/apa_hint details from the source bank and user-supplied evidence notes. If source search results were attached, add a short Source Use Audit after the References section.",
-            "Increase in-text citation density in line with the level-specific planning range. Chapter Two should be citation-rich; Chapter One should cite evidence for context, concepts, policy, the problem and the gap; Chapter Three should cite methodological and measurement authorities where appropriate; Chapter Four discussion should cite theory and directly comparable studies.",
+            "Every chapter must end with one clean References section containing complete entries only for sources cited in the chapter body. Use available reference_entry_hint/apa_hint details, remove duplicates, omit bullets and numbering, and alphabetise entries by the first author or institutional author.",
+            "Increase in-text citation density in line with the stronger level-specific planning range. Chapter One should support most substantive background and problem paragraphs with directly relevant citations; Chapter Two should be citation-rich and synthesise multiple studies in most substantive paragraphs; Chapter Three should cite methodological and measurement authorities where appropriate; Chapter Four discussion should cite theory and directly comparable studies.",
             "If the user did not manually attach sources, use the automatically enriched source bank when available. A source may be cited more than once only when it directly supports each claim. Never use a citation merely as decoration.",
             "Run a claim-evidence pass before finalising. Every substantive factual, historical, policy, contextual, theoretical or empirical claim must be supported by a directly relevant and accurate citation from the supplied or retrieved evidence bank. Do not leave long substantive paragraphs without support.",
             "For Chapter One, follow the level-specific citation range in chapter_page_word_and_citation_targets. Support substantive contextual, theoretical, policy, historical and empirical claims throughout the section, not only at paragraph endings. Accuracy and direct relevance remain more important than numerical padding.",
@@ -1191,7 +1192,7 @@ def build_drafting_prompt(
             "Do not fabricate citations, statistics, or reference-list entries. Use verified/supplied citations and facts where available. Where a required source, statistic, or fact is not supplied or cannot be stated confidently, insert a bracketed placeholder rather than inventing it.",
             "Use clear numbered headings matching the selected sections.",
             "For Research Objectives and Research Questions sections, restart the ordered list at 1 within each section. Do not continue numbering from a previous section.",
-            "Do not attach explanatory commentary after the last research objective, research question, hypothesis, or list item. Keep each item as a clean standalone item. If guidance is essential, place it after the list as a bracketed attention placeholder beginning with [confirm ...] so the DOCX exporter marks it red.",
+            "Do not attach explanatory commentary, level-alignment notes, methodological justification or summary prose after research objectives or research questions. Return clean standalone numbered items only. Discard generated commentary rather than converting it into an action item.",
             "Use a thesis-style hierarchy: Chapter title, major sections such as 1.1, 1.2 and 1.3, and lower-level subheadings such as 1.2.1 only where they genuinely improve clarity.",
             "Do not merge selected sections. Present each selected section and subsection in the same logical order as the approved guideline/template.",
             "Do not use raw HTML colour tags such as <span style=...>. Do not colour normal academic prose; only attention placeholders should be highlighted by the DOCX exporter. The only text requiring user attention should appear as bracketed placeholders such as [insert current statistic], [verify citation], [confirm sample size], or [provide supervisor-approved wording].",
@@ -1210,7 +1211,7 @@ def build_drafting_prompt(
             "Where evidence is missing, write a bracketed placeholder such as [insert recent empirical evidence].",
             "Keep variables, objectives, questions, hypotheses, theories, context, and methods internally consistent.",
             "Use markdown tables only where a table is clearly requested or useful.",
-            "Use APA 7th style for the chapter References section. Include only sources cited in the chapter body, and keep entries clean, complete and alphabetised where possible.",
+            "Use APA 7th style for the chapter References section. Include only sources cited in the chapter body. Present one clean, complete, deduplicated and alphabetised entry per paragraph, without bullets, numbering, annotations, relevance labels, source keys or a Source Use Audit.",
             "When equations are required, place each equation in a display equation block using the format $$ equation $$. Use clean Word-friendly mathematical notation where possible, with Unicode Greek letters and subscripts rather than raw LaTeX commands. Do not leave important equations only as ordinary text.",
             "For conceptual framework diagrams, avoid messy ASCII art. Use a clean relationship table and, where appropriate, a Mermaid flowchart code block. Keep the diagram simple enough to be readable.",
             "When revision mode is enabled, preserve the original structure as far as possible, revise with comments in the narrative where helpful, and preserve the original structure. Do not wrap ordinary inserted material in colour markers; use bracketed attention placeholders only where the student must verify or complete something.",
@@ -1510,48 +1511,110 @@ def _split_list_item_guidance(item_text: str, section_kind: str) -> tuple[str, s
 
 
 def _normalise_numbered_items_in_section(section_text: str, section_kind: str) -> str:
-    """Restart numbered items at 1 and keep guidance outside the list."""
-    lines = section_text.split("\n")
-    output: list[str] = []
-    counter = 1
-    guidance_notes: list[str] = []
-    in_ordered_list = False
+    """Return clean objective/question lists beginning at 1 without commentary."""
+    if not section_text:
+        return section_text
 
-    for line in lines:
-        original = line
-        stripped = line.strip()
-        match = re.match(r"^(\s*)(\d+)[\.)]\s+(.+)$", line)
-        if match:
-            indent, _old_number, body = match.groups()
-            main, guidance = _split_list_item_guidance(body, section_kind)
-            if main:
-                output.append(f"{indent}{counter}. {main}")
-                counter += 1
-                in_ordered_list = True
-            if guidance:
-                guidance_notes.append(guidance)
+    attention_lines: list[str] = []
+    items: list[str] = []
+    section_kind = str(section_kind or "").strip().lower()
+
+    def add_attention(value: str) -> None:
+        value = re.sub(r"\s+", " ", value or "").strip()
+        if value and value not in attention_lines:
+            attention_lines.append(value)
+
+    def add_item(value: str, *, was_numbered: bool = False) -> None:
+        value = re.sub(r"\s+", " ", value or "").strip()
+        value = re.sub(r"^(?:[-*•]|\d+[.)])\s*", "", value).strip()
+        if not value:
+            return
+        main, _guidance = _split_list_item_guidance(value, "questions" if section_kind == "questions" else "objectives")
+        main = re.sub(r"\s+", " ", main).strip()
+        if not main:
+            return
+        # Explanatory prose generated after a list is intentionally discarded.
+        if re.match(
+            r"^(?:These objectives?|These questions?|The (?:first|second|third|fourth|fifth) "
+            r"(?:objective|question)|This (?:objective|question|alignment)|The objectives? (?:support|enable|allow)|"
+            r"The questions? (?:support|enable|allow))\b",
+            main,
+            flags=re.I,
+        ):
+            return
+        if section_kind == "questions":
+            if not was_numbered and not (
+                main.endswith("?")
+                or re.match(r"^(?:What|How|Why|Which|Who|Where|When|To what extent|Does|Do|Did|Is|Are|Was|Were|Can|Could|Would|Should)\b", main, re.I)
+            ):
+                return
+            if not main.endswith("?"):
+                main = main.rstrip(".") + "?"
+        elif section_kind in {"objectives", "general_objective"}:
+            if not was_numbered and not re.match(
+                r"^(?:To\s+)?(?:assess|analyse|analyze|compare|determine|develop|establish|estimate|evaluate|examine|explore|identify|investigate|measure|test|describe|ascertain|explain|rank|map|conceptuali[sz]e)\b",
+                main,
+                flags=re.I,
+            ):
+                return
+            main = main.rstrip(";")
+        key = re.sub(r"[^a-z0-9]+", "", main.lower())
+        if key and all(re.sub(r"[^a-z0-9]+", "", old.lower()) != key for old in items):
+            items.append(main)
+
+    # Make inline numbering such as "... ? 2. How ...? 3. What ...?" visible.
+    normalised = re.sub(r"\s+(?=\d+[.)]\s+)", "\n", section_text)
+    for raw_line in normalised.splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        if re.match(r"^\[[^\]]+\]$", stripped):
+            add_attention(stripped)
             continue
 
-        if in_ordered_list and stripped and re.match(r"^(These|The first|The second|The third|The fourth|The fifth|This alignment|This objective|This question)\b", stripped, flags=re.I):
-            guidance_notes.append(stripped)
+        numbered = re.match(r"^(\d+)[.)]\s+(.+)$", stripped)
+        body = numbered.group(2).strip() if numbered else stripped
+        was_numbered = bool(numbered)
+
+        if section_kind == "general_objective":
+            add_item(body, was_numbered=True)
+            if items:
+                break
             continue
-        output.append(original)
 
-    if guidance_notes:
-        # Keep it as attention text so DOCX export colours it red. Cap overly long
-        # notes to avoid turning the chapter into a commentary document.
-        compact = " ".join(re.sub(r"\s+", " ", note).strip() for note in guidance_notes if note.strip())
-        compact = compact[:900].rstrip()
-        output.extend(["", f"[confirm whether to retain this guidance note for students: {compact}]"])
+        if section_kind == "questions":
+            # Split more than one question accidentally placed on the same line.
+            chunks = [chunk.strip() for chunk in re.findall(r"[^?]+(?:\?|$)", body) if chunk.strip()]
+            if len(chunks) > 1:
+                for chunk in chunks:
+                    add_item(chunk, was_numbered=was_numbered)
+            else:
+                add_item(body, was_numbered=was_numbered)
+        else:
+            add_item(body, was_numbered=was_numbered)
 
+    if not items:
+        # Avoid deleting unusual institution-specific content when no list can be identified.
+        return section_text.strip()
+
+    if section_kind == "general_objective":
+        output = [items[0]]
+    else:
+        output = [f"{index}. {item}" for index, item in enumerate(items, start=1)]
+
+    if attention_lines:
+        output.extend(["", *attention_lines])
     return "\n".join(output).strip()
 
 
 def _normalise_objectives_and_questions(text: str) -> str:
-    """Fix common AI list-numbering drift in Chapter One objectives/questions."""
+    """Restart objective/question numbering at 1 and remove generated list commentary."""
     if not text:
         return text
-    heading_re = re.compile(r"(?im)^(#{1,4}\s*)?(?:\d+(?:\.\d+){0,3}\s+)?(Research Objectives|Specific Objectives|Research Questions|Research Question|Hypotheses)\s*$")
+    heading_re = re.compile(
+        r"(?im)^(#{1,4}\s*)?(?:\d+(?:\.\d+){0,3}\s+)?"
+        r"(Research Objectives|General Objective|Specific Objectives|Research Questions|Research Question|Hypotheses)\s*$"
+    )
     matches = list(heading_re.finditer(text))
     if not matches:
         return text
@@ -1562,9 +1625,10 @@ def _normalise_objectives_and_questions(text: str) -> str:
         section_start = match.start()
         body_start = match.end()
         next_start = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-        # Stop at the next numbered or markdown heading if it occurs before the
-        # next target section.
-        next_heading = re.search(r"(?im)^\s*(?:#{1,4}\s+[^\n]{2,120}|\d+\.\d+(?:\.\d+)*\s+[A-Z][^\n]{2,120})$", text[body_start:next_start])
+        next_heading = re.search(
+            r"(?im)^\s*(?:#{1,4}\s+[^\n]{2,120}|\d+\.\d+(?:\.\d+)*\s+[A-Z][^\n]{2,120})$",
+            text[body_start:next_start],
+        )
         if next_heading:
             body_end = body_start + next_heading.start()
             tail_start = body_end
@@ -1575,9 +1639,12 @@ def _normalise_objectives_and_questions(text: str) -> str:
         heading = text[section_start:body_start]
         body = text[body_start:body_end]
         title = match.group(2).lower()
-        kind = "questions" if "question" in title else "objectives"
-        if "hypoth" in title:
+        if "general objective" in title:
+            kind = "general_objective"
+        elif "question" in title or "hypoth" in title:
             kind = "questions"
+        else:
+            kind = "objectives"
         parts.append(text[last:section_start])
         parts.append(heading)
         parts.append("\n" + _normalise_numbered_items_in_section(body.strip("\n"), kind) + "\n")
@@ -1587,6 +1654,153 @@ def _normalise_objectives_and_questions(text: str) -> str:
     result = re.sub(r"\n{3,}", "\n\n", result)
     return result.strip()
 
+
+def _normalise_purpose_of_study(text: str) -> str:
+    """Keep Purpose of the Study concise while preserving a necessary action item."""
+    if not text:
+        return text
+    heading_re = re.compile(
+        r"(?im)^(#{1,4}\s*)?(?:\d+(?:\.\d+){0,3}\s+)?Purpose of the Study\s*$"
+    )
+    match = heading_re.search(text)
+    if not match:
+        return text
+
+    body_start = match.end()
+    next_heading = re.search(
+        r"(?im)^\s*(?:#{1,4}\s+[^\n]{2,120}|\d+\.\d+(?:\.\d+)*\s+[A-Z][^\n]{2,120})$",
+        text[body_start:],
+    )
+    body_end = body_start + next_heading.start() if next_heading else len(text)
+    body = text[body_start:body_end].strip()
+    if not body:
+        return text
+
+    actions = []
+    prose_lines = []
+    for line in body.splitlines():
+        stripped = line.strip()
+        if re.match(r"^\[[^\]]+\]$", stripped):
+            if stripped not in actions:
+                actions.append(stripped)
+        elif stripped:
+            prose_lines.append(stripped)
+    prose = re.sub(r"\s+", " ", " ".join(prose_lines)).strip()
+    if not prose:
+        return text
+
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", prose) if s.strip()]
+    selected = ""
+    for sentence in sentences[:3]:
+        if re.search(r"\b(?:purpose|aim|sought|examine|assess|determine|investigate|explore|evaluate|analyse|analyze)\b", sentence, re.I):
+            selected = sentence
+            break
+    selected = selected or (sentences[0] if sentences else prose)
+    words = selected.split()
+    if len(words) > 85:
+        selected = " ".join(words[:85]).rstrip(",;:") + "."
+    selected = selected.strip()
+
+    replacement = [text[match.start():body_start].rstrip(), selected]
+    if actions:
+        replacement.extend(["", actions[0]])
+    tail = text[body_end:]
+    return (text[:match.start()] + "\n".join(replacement) + tail).strip()
+
+
+def _reference_entries_from_text(reference_text: str) -> list[str]:
+    """Extract, deduplicate and alphabetise clean reference paragraphs."""
+    entries: list[str] = []
+    current: list[str] = []
+
+    def flush() -> None:
+        if not current:
+            return
+        entry = re.sub(r"\s+", " ", " ".join(current)).strip()
+        current.clear()
+        if entry:
+            entries.append(entry)
+
+    for raw_line in (reference_text or "").splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            flush()
+            continue
+        if stripped.startswith("|") or re.match(r"^#{1,6}\s+", stripped):
+            continue
+        cleaned = re.sub(r"^(?:[-*•]|\d+[.)])\s*", "", stripped).strip()
+        if not cleaned:
+            continue
+        is_placeholder = bool(re.match(r"^\[[^\]]+\]$", cleaned))
+        starts_entry = bool(
+            re.search(r"\((?:19|20)\d{2}[a-z]?\)|\(n\.d\.\)", cleaned, re.I)
+            and not re.match(r"^(?:https?://|doi\b)", cleaned, re.I)
+        )
+        if is_placeholder:
+            flush()
+            entries.append(cleaned)
+        elif starts_entry:
+            flush()
+            current.append(cleaned)
+        elif current:
+            current.append(cleaned)
+        else:
+            current.append(cleaned)
+    flush()
+
+    unique: list[str] = []
+    seen: set[str] = set()
+    for entry in entries:
+        key = re.sub(r"[^a-z0-9]+", "", entry.lower())[:240]
+        if key and key not in seen:
+            seen.add(key)
+            unique.append(entry)
+
+    def sort_key(entry: str) -> tuple[int, str]:
+        placeholder = 1 if entry.startswith("[") else 0
+        normal = re.sub(r"^[^A-Za-z0-9]+", "", entry).lower()
+        return placeholder, normal
+
+    return sorted(unique, key=sort_key)
+
+
+def _ensure_markdown_heading_spacing(text: str) -> str:
+    """Ensure chapter headings are separated from the preceding paragraph or list."""
+    value = str(text or "")
+    value = re.sub(r"(?m)(?<!\n)\n(?=#{1,4}\s)", "\n\n", value)
+    return re.sub(r"\n{3,}", "\n\n", value).strip()
+
+
+def _clean_chapter_references(text: str) -> str:
+    """Return one clean References list and remove internal source-audit material."""
+    if not text:
+        return text
+    match = re.search(
+        r"(?im)^#{0,4}\s*(?:\d+(?:\.\d+)*\s+)?(?:References|Reference List)\s*$",
+        text,
+    )
+    if not match:
+        return text
+
+    after = text[match.end():]
+    audit = re.search(r"(?im)^#{0,4}\s*Source Use Audit\s*$", after)
+    appendix = re.search(r"(?im)^#{0,4}\s*(?:Appendix|Appendices)\b.*$", after)
+    cut_positions = [m.start() for m in (audit, appendix) if m]
+    refs_end = min(cut_positions) if cut_positions else len(after)
+    refs_text = after[:refs_end]
+
+    appendix_tail = ""
+    if appendix:
+        appendix_tail = after[appendix.start():]
+    entries = _reference_entries_from_text(refs_text)
+    if not entries:
+        entries = ["[Insert complete APA 7 reference entries for every source cited in the chapter body.]" ]
+
+    cleaned_refs = "# References\n\n" + "\n\n".join(entries)
+    result = text[:match.start()].rstrip() + "\n\n" + cleaned_refs
+    if appendix_tail.strip():
+        result += "\n\n" + appendix_tail.strip()
+    return result.strip()
 
 
 def _remove_stray_transition_prefixes(text: str) -> str:
@@ -1609,7 +1823,10 @@ def _finalise_output_controls(text: str) -> str:
     text = _minimise_em_en_dashes(text)
     text = _remove_stray_transition_prefixes(text)
     text = _protect_thesis_structure(text)
+    text = _normalise_purpose_of_study(text)
     text = _normalise_objectives_and_questions(text)
+    text = _clean_chapter_references(text)
+    text = _ensure_markdown_heading_spacing(text)
     text = _protect_thesis_structure(text)
     return text.strip()
 
@@ -1704,8 +1921,6 @@ def _review_source_integration(
             "If no searched source fits a claim, keep or add a bracketed placeholder instead of forcing a citation.",
             "Increase citation density only where doing so improves scholarly support and accuracy.",
             "End the chapter with a References section for sources actually cited in the body.",
-            "After the References section, add a short Source Use Audit with columns: Source Key, Relevance Tier, Decision, Reason.",
-            "In the Source Use Audit, mark sources as Cited, Not cited - not relevant, or Not cited - not needed for this chapter.",
             "Do not invent new sources, statistics, page numbers, quotations, findings, or reference details.",
             "Preserve or increase the chapter's substantive word count. Do not compress a developed chapter into a shorter summary during source integration.",
             "Keep the revised chapter within the stated minimum and maximum word range where the evidence bank permits it.",
@@ -1717,7 +1932,7 @@ def _review_source_integration(
     revised = _call_openai_response_safely(
         client,
         model,
-        instructions + " Revise rather than restart. Preserve the student's context and depth. Use only relevant attached sources and include a Source Use Audit.",
+        instructions + " Revise rather than restart. Preserve the student's context and depth. Use only directly relevant attached sources and return one clean References section containing only cited sources.",
         json.dumps(repair_payload, ensure_ascii=False, indent=2),
         max_output_tokens=_max_output_tokens_for_length(length_requirements, revision=True),
     )
@@ -1983,48 +2198,38 @@ def _dedupe_reference_entries(entries: list[str]) -> list[str]:
     unique: list[str] = []
     seen: set[str] = set()
     for entry in entries:
-        cleaned = re.sub(r"\s+", " ", str(entry or "")).strip().rstrip(".") + "."
-        key = re.sub(r"[^a-z0-9]+", "", cleaned.lower())[:180]
+        cleaned = re.sub(r"^(?:[-*•]|\d+[.)])\s*", "", str(entry or "").strip())
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        if cleaned and not cleaned.endswith((".", "?", "!", "]")):
+            cleaned += "."
+        key = re.sub(r"[^a-z0-9]+", "", cleaned.lower())[:220]
         if not key or key in seen:
             continue
         seen.add(key)
         unique.append(cleaned)
-    return unique
+    return sorted(
+        unique,
+        key=lambda item: (1 if item.startswith("[") else 0, re.sub(r"^[^A-Za-z0-9]+", "", item).lower()),
+    )
 
 
 def _local_source_references_and_audit(profile: dict[str, Any], body: str) -> tuple[list[str], str]:
-    """Build reference hints and a compact audit for attached source-search records."""
+    """Build clean reference hints for attached source-search records used in the body.
+
+    The second return value is retained for compatibility but is always empty.
+    Source-selection diagnostics belong in the internal report, not in the thesis chapter.
+    """
     sources = _merged_source_bank(profile)
     if not sources:
         return [], ""
     refs: list[str] = []
-    audit_rows: list[str] = []
-    relevant_not_cited = 0
     for src in sources:
-        used = _source_is_used_in_body(body, src)
-        tier = str(src.get("relevance_tier") or "unclassified")
-        key = str(src.get("citation_key") or "")
-        title = str(src.get("title") or "Untitled source")
-        if used:
-            hint = str(src.get("apa_hint") or src.get("reference_entry_hint") or "").strip()
-            if hint:
-                refs.append(hint)
-            audit_rows.append(f"| {key} | {tier} | Cited | Directly used in the chapter body |")
-        elif tier in {"highly_relevant", "partly_relevant", "unclassified"} and relevant_not_cited < 20:
-            relevant_not_cited += 1
-            audit_rows.append(f"| {key} | {tier} | Not cited | Not required in the final argument or insufficiently specific |")
-    if not audit_rows:
-        return refs, ""
-    audit = [
-        "# Source Use Audit",
-        "",
-        "| Source Key | Relevance Tier | Decision | Reason |",
-        "|---|---|---|---|",
-        *audit_rows,
-        "",
-        "Sources marked not relevant were excluded from the chapter argument.",
-    ]
-    return refs, "\n".join(audit)
+        if not _source_is_used_in_body(body, src):
+            continue
+        hint = str(src.get("apa_hint") or src.get("reference_entry_hint") or "").strip()
+        if hint:
+            refs.append(hint)
+    return _dedupe_reference_entries(refs), ""
 
 
 def _group_sections_for_chunks(
@@ -2200,7 +2405,7 @@ def _generate_chapter_in_chunks(
             f"Develop this chunk to approximately {chunk_target_words:,} words and at least {chunk_min_words:,} words, subject to evidence availability.",
             f"Plan for about {citation_density.get('minimum', 3)}-{citation_density.get('target', 6)} accurate citation occurrences per 1,000 substantive words, without forcing irrelevant sources.",
             "At the end, add a heading exactly named '## References Used in This Chunk' and list complete APA 7 entries only for sources cited in this chunk.",
-            "Do not add a Source Use Audit inside the chunk. The app will consolidate it after all chunks are assembled.",
+            "Do not add a Source Use Audit. The final chapter must end with the clean consolidated References list only.",
         ]
         chunk_text = _call_openai_response_safely(
             client,
@@ -2249,7 +2454,7 @@ def _generate_chapter_in_chunks(
     chapter = get_chapter(chapter_number)
     chapter_title = _effective_chapter_title(chapter, profile, chapter_number)
     body = "\n\n".join(part for part in bodies if part.strip()).strip()
-    source_refs, audit = _local_source_references_and_audit(profile, body)
+    source_refs, _unused_audit = _local_source_references_and_audit(profile, body)
     references = _dedupe_reference_entries([*references, *source_refs])
 
     output = [f"# CHAPTER {chapter_number}", f"# {chapter_title.upper()}", "", body]
@@ -2257,9 +2462,7 @@ def _generate_chapter_in_chunks(
         output.extend(["", "# References", "", *references])
     else:
         output.extend(["", "# References", "", "[Insert complete APA 7 reference entries for every source cited in the chapter body.]" ])
-    if audit:
-        output.extend(["", audit])
-    return "\n".join(output).strip()
+    return _clean_chapter_references("\n".join(output).strip())
 
 
 def _ensure_chapter_depth(
@@ -2295,7 +2498,7 @@ def _ensure_chapter_depth(
             "Increase citation density using only relevant sources already present in the project profile, retrieved source bank, uploaded material or verified user notes.",
             "Where adequate evidence is missing, insert a precise bracketed source or evidence placeholder rather than fabricating content.",
             "For Chapter Four, never invent results. Expand interpretation and discussion only from supplied results, and use placeholders for missing outputs.",
-            "Retain one consolidated References section and, where source-search records were supplied, one Source Use Audit at the end.",
+            "Retain one consolidated, clean and alphabetised References section containing only sources cited in the chapter body. Do not add a Source Use Audit to the chapter.",
             "Aim for at least the minimum word count and do not exceed the maximum word count.",
         ],
         "original_generation_prompt": original_prompt,
@@ -2402,7 +2605,7 @@ def generate_chapter(
             "For Ch2: use clean markdown gap tables and Mermaid flowcharts for diagrams. For equations: display blocks with $$. "
             "For Ch4: never invent output; present only supplied results. Apply reference currency (≥70% recent, but allow older where needed). "
             "Include accurate in-text citations. For source-finder results: integrate only highly_relevant/partly_relevant records, "
-            "exclude not_relevant, and add a Source Use Audit after References. Do not add any AI-detection or humanisation notes. "
+            "exclude not_relevant, and end with one clean alphabetised References list containing only cited sources. Do not add a Source Use Audit, AI-detection note or humanisation note. "
             "For the Supplementary Methods and Analysis Guide, use sample outputs only as structural guides, not as content templates. "
             "Do not hard-code sample topics, sources, constructs, item wording or contexts. Use only the current project profile and source bank. "
             "Apply the level-based quality route: Bachelor outputs must still be complete paid thesis drafts; non-research Masters outputs must be stronger and professionally applied; Research Masters/MPhil outputs must show deeper research synthesis; PhD/DBA/doctoral outputs must show advanced critique, defensible contribution and doctoral-level scholarly judgement. "
