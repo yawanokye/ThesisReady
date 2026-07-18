@@ -8,6 +8,8 @@ const PAID_MAXIMUM_IDEAS = 12;
 let paidAccessReady = false;
 let runtimeTopicCredential = null;
 let topicAccessPlan = null;
+let activeGenerationController = null;
+let activeGenerationSequence = 0;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -261,7 +263,7 @@ async function startTopicIdeasCheckout() {
     $("topicPaymentEmail").focus();
     return;
   }
-  saveTopicFormDraft();
+  saveTopicFormDraftForCheckout();
   button.disabled = true;
   $("topicAccessStatus").textContent = "Creating secure checkout to unlock up to 12 ideas...";
   try {
@@ -297,16 +299,44 @@ function collectPayload() {
   };
 }
 
-function saveTopicFormDraft() {
-  try {
-    localStorage.setItem(TOPIC_FORM_STORAGE_KEY, JSON.stringify(collectPayload()));
-  } catch (_) {}
+function clearTopicFormDraft() {
+  for (const storage of [sessionStorage, localStorage]) {
+    try { storage.removeItem(TOPIC_FORM_STORAGE_KEY); } catch (_) {}
+  }
 }
 
-function restoreTopicFormDraft() {
+function saveTopicFormDraftForCheckout() {
+  const payload = {
+    version: 2,
+    reason: "payment_checkout",
+    saved_at: new Date().toISOString(),
+    expires_at: Date.now() + (2 * 60 * 60 * 1000),
+    form: collectPayload(),
+  };
+  for (const storage of [sessionStorage, localStorage]) {
+    try { storage.setItem(TOPIC_FORM_STORAGE_KEY, JSON.stringify(payload)); } catch (_) {}
+  }
+}
+
+function restoreTopicFormDraft({ paymentReturn = false } = {}) {
+  if (!paymentReturn) {
+    clearTopicFormDraft();
+    return false;
+  }
   try {
-    const value = JSON.parse(localStorage.getItem(TOPIC_FORM_STORAGE_KEY) || "null");
-    if (!value) return;
+    let stored = null;
+    for (const storage of [sessionStorage, localStorage]) {
+      try {
+        stored = JSON.parse(storage.getItem(TOPIC_FORM_STORAGE_KEY) || "null");
+        if (stored) break;
+      } catch (_) {}
+    }
+    if (!stored) return false;
+    const value = stored.form || stored;
+    if (stored.expires_at && Number(stored.expires_at) < Date.now()) {
+      clearTopicFormDraft();
+      return false;
+    }
     const mappings = {
       researchArea: "research_area",
       context: "context",
@@ -324,7 +354,39 @@ function restoreTopicFormDraft() {
     if ($("includeOlderFoundational") && value.include_older_foundational !== undefined) {
       $("includeOlderFoundational").checked = Boolean(value.include_older_foundational);
     }
-  } catch (_) {}
+    clearTopicFormDraft();
+    return true;
+  } catch (_) {
+    clearTopicFormDraft();
+    return false;
+  }
+}
+
+function resetIdeaOutputs(message = "Your current job is clear. Enter a new research area to begin.") {
+  $("ideaMeta").innerHTML = "";
+  $("ideaResults").className = "idea-results empty-state";
+  $("ideaResults").innerHTML = `<p>${escapeHtml(message)}</p>`;
+  $("sourceRecords").innerHTML = "";
+  lastIdeaText = "";
+  lastIdeaResult = null;
+  $("copyIdeasBtn").disabled = true;
+  if ($("exportIdeasBtn")) $("exportIdeasBtn").disabled = true;
+  showFreePreviewUnlock(false);
+}
+
+function resetTopicFormForNewJob({ preservePayment = true } = {}) {
+  const paymentEmail = preservePayment ? ($("topicPaymentEmail")?.value || "") : "";
+  const market = preservePayment ? selectedTopicMarket() : "ghana";
+  $("ideaForm").reset();
+  if ($("topicPaymentEmail")) $("topicPaymentEmail").value = paymentEmail;
+  const marketRadio = document.querySelector(`input[name="topicMarket"][value="${market}"]`);
+  if (marketRadio) marketRadio.checked = true;
+  if ($("researchArea")) $("researchArea").value = "";
+  if ($("context")) $("context").value = "";
+  if ($("countryRegion")) $("countryRegion").value = "";
+  if ($("keywords")) $("keywords").value = "";
+  if ($("trendFocus")) $("trendFocus").value = "";
+  if ($("topicRecoveryPurchaseId")) $("topicRecoveryPurchaseId").value = readTopicCredential()?.purchase_id || "";
 }
 
 function showFreePreviewUnlock(show = true) {
@@ -618,19 +680,25 @@ async function generateIdeas(event) {
     ? Math.max(5, Math.min(Number(payload.max_ideas || PAID_MAXIMUM_IDEAS), PAID_MAXIMUM_IDEAS))
     : FREE_PREVIEW_IDEAS;
 
+  if (activeGenerationController) activeGenerationController.abort();
+  activeGenerationController = new AbortController();
+  const generationSequence = ++activeGenerationSequence;
+  resetIdeaOutputs("Generating the current job. Previous results have been removed.");
   $("ideaStatus").textContent = accessReady
     ? `Searching current literature and generating ${payload.max_ideas} unlocked topic ideas...`
     : "Searching current literature and generating your 2 free topic ideas...";
   $("generateIdeasBtn").disabled = true;
   showFreePreviewUnlock(false);
-  saveTopicFormDraft();
+  clearTopicFormDraft();
 
   try {
     const result = await api("/api/topic-ideas", {
       method: "POST",
       headers: accessReady ? topicAccessHeaders() : {},
       body: JSON.stringify(payload),
+      signal: activeGenerationController.signal,
     });
+    if (generationSequence !== activeGenerationSequence) return;
     renderIdeas(result);
     const providerErrors = (result.provider_errors || []).length;
     if (result.free_preview) {
@@ -645,34 +713,30 @@ async function generateIdeas(event) {
       await checkTopicAccess({ quiet: true });
     }
   } catch (err) {
+    if (err.name === "AbortError" || generationSequence !== activeGenerationSequence) return;
     $("ideaStatus").textContent = `Error: ${err.message}`;
     if (err.status === 402) {
       updateGenerationControls(false);
       setTopicAccessState("free", `${err.message} You can still generate 2 ideas free.`);
     }
   } finally {
-    $("generateIdeasBtn").disabled = false;
+    if (generationSequence === activeGenerationSequence) {
+      $("generateIdeasBtn").disabled = false;
+      activeGenerationController = null;
+    }
   }
 }
 
 function clearIdeas() {
-  const paymentEmail = $("topicPaymentEmail").value;
-  const market = selectedTopicMarket();
-  $("ideaForm").reset();
-  $("topicPaymentEmail").value = paymentEmail;
-  const marketRadio = document.querySelector(`input[name="topicMarket"][value="${market}"]`);
-  if (marketRadio) marketRadio.checked = true;
-  $("ideaMeta").innerHTML = "";
-  $("ideaResults").className = "idea-results empty-state";
-  $("ideaResults").innerHTML = "<p>Generated ideas will appear here.</p>";
-  $("sourceRecords").innerHTML = "";
-  $("ideaStatus").textContent = "";
-  lastIdeaText = "";
-  lastIdeaResult = null;
-  $("copyIdeasBtn").disabled = true;
-  if ($("exportIdeasBtn")) $("exportIdeasBtn").disabled = true;
-  showFreePreviewUnlock(false);
+  if (activeGenerationController) activeGenerationController.abort();
+  activeGenerationController = null;
+  activeGenerationSequence += 1;
+  clearTopicFormDraft();
+  resetTopicFormForNewJob({ preservePayment: true });
+  resetIdeaOutputs();
+  $("ideaStatus").textContent = "Old entries and results were cleared. Paid access and payment email were retained.";
   updateGenerationControls(paidAccessReady);
+  window.setTimeout(() => $("researchArea")?.focus(), 0);
 }
 
 async function copyIdeas() {
@@ -695,13 +759,16 @@ window.addEventListener("DOMContentLoaded", async () => {
   } catch (_error) {
     // Public users continue without a authorised session.
   }
-  restoreTopicFormDraft();
+  const params = new URLSearchParams(window.location.search);
+  const isPaymentReturn = ["success", "cancelled", "failed"].includes(params.get("payment") || "");
+  resetTopicFormForNewJob({ preservePayment: false });
+  restoreTopicFormDraft({ paymentReturn: isPaymentReturn });
+  resetIdeaOutputs("Your current job is empty. Enter a research area to begin.");
   await loadTopicAccessPlan();
   updateGenerationControls(false);
   const profile = registrationProfile();
   if (profile?.email && !$("topicPaymentEmail").value) $("topicPaymentEmail").value = profile.email;
 
-  const params = new URLSearchParams(window.location.search);
   const returnedPurchaseId = params.get("purchase_id") || "";
   const existingCredential = readTopicCredential();
   if ($("topicRecoveryPurchaseId")) {
