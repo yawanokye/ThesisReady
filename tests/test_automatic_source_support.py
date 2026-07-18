@@ -42,12 +42,12 @@ def test_existing_evidence_bank_avoids_repeated_search(monkeypatch):
     profile = _profile()
     profile["source_bank"] = [
         {"title": f"Relevant source {i}", "doi": f"10.1/{i}", "relevance_tier": "highly_relevant"}
-        for i in range(12)
+        for i in range(16)
     ]
     monkeypatch.setattr(source_support, "search_literature_sources", lambda **kwargs: (_ for _ in ()).throw(AssertionError("should not search")))
     result = source_support.ensure_automatic_source_support(profile, 1)
     assert result["searched"] is False
-    assert result["source_count"] == 12
+    assert result["source_count"] == 16
 
 
 def test_project_can_disable_automatic_source_support(monkeypatch):
