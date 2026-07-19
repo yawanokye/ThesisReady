@@ -8,8 +8,9 @@
   <link rel="stylesheet" href="/static/workspace-ui-clarity.css?v=20260718-workspace-clear-visible-v2" />
   <link rel="stylesheet" href="/static/projectready-suite.css?v=20260710-nav-tabs-v1" />
   <link rel="stylesheet" href="/static/projectready_payments.css?v=20260709-live-payments-v2" />
+  <link rel="stylesheet" href="/static/user_guide_shared.css?v=20260719-user-guide-v1" />
 </head>
-<body class="workspace-clarity-theme suite-page thesis-suite">
+<body class="workspace-clarity-theme suite-page thesis-suite" data-guide-module="thesis-workspace">
   <header class="workspace-topbar">
     <a class="workspace-brand" href="/" aria-label="ProjectReady AI home">
       <span class="brand-mark-small">PR</span>
@@ -23,6 +24,7 @@
       <a href="/topic-ideas">Topic Ideas</a>
       <a href="/workspace" aria-current="page">Thesis Workspace</a>
       <a href="/chapter-strengthener">Chapter Strengthener</a>
+      <a href="/user-guide">User Guide</a>
     </nav>
   </header>
 
@@ -34,7 +36,10 @@
     </div>
   </header>
 
-
+  <section class="guide-help-card" aria-label="Thesis Workspace user guidance">
+    <div><h2>New to Thesis Workspace?</h2><p>Review the six-stage workflow and the mandatory, recommended and optional project fields before creating a chapter job.</p></div>
+    <div class="guide-help-actions"><a href="/user-guide#thesis-workspace">Read Workspace guide</a><a href="/user-guide#video">Watch walkthrough</a><a href="/static/guides/projectready-ai-annotated-user-guide.pdf" target="_blank" rel="noopener">Open PDF</a></div>
+  </section>
 
   <section class="suite-module-grid" aria-label="ProjectReady AI modules">
     <a class="suite-module-card green" href="/topic-ideas"><span class="suite-module-tag">Before drafting</span><strong>Topic Ideas</strong><span>Explore 2 ideas free, then unlock up to 12 titles, trends, gaps, objectives and data directions when you need more alternatives.</span></a>
@@ -490,5 +495,6 @@
   </main>
   <script src="/static/projectready_payments.js?v=20260714-commercial-v1"></script>
   <script src="/static/app.js?v=20260718-workspace-clear-visible-v2"></script>
+  <script src="/static/guide_banner.js?v=20260719-user-guide-v1"></script>
 </body>
 </html>

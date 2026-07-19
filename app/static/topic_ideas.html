@@ -7,8 +7,9 @@
   <link rel="stylesheet" href="/static/styles.css?v=20260618-suite-ui-verified" />
   <link rel="stylesheet" href="/static/topic_ideas.css?v=20260717-strict-resources-docx-v2" />
   <link rel="stylesheet" href="/static/projectready-suite.css?v=20260710-nav-tabs-v1" />
+  <link rel="stylesheet" href="/static/user_guide_shared.css?v=20260719-user-guide-v1" />
 </head>
-<body class="topic-page suite-page ideas-suite">
+<body class="topic-page suite-page ideas-suite" data-guide-module="topic-ideas">
   <header class="workspace-topbar topic-topbar">
     <a class="workspace-brand" href="/" aria-label="ProjectReady AI home">
       <span class="brand-mark-small">PR</span>
@@ -22,6 +23,7 @@
       <a href="/topic-ideas" aria-current="page">Topic Ideas</a>
       <a href="/workspace">Thesis Workspace</a>
       <a href="/chapter-strengthener">Chapter Strengthener</a>
+      <a href="/user-guide">User Guide</a>
     </nav>
   </header>
 
@@ -38,7 +40,10 @@
       </aside>
     </section>
 
-
+    <section class="guide-help-card" aria-label="Topic Ideas user guidance">
+      <div><h2>Need help completing Topic Ideas?</h2><p>See which fields are required, recommended or optional before generating a new set.</p></div>
+      <div class="guide-help-actions"><a href="/user-guide#topic-ideas">Read Topic Ideas guide</a><a href="/user-guide#video">Watch walkthrough</a><a href="/static/guides/projectready-ai-annotated-user-guide.pdf" target="_blank" rel="noopener">Open PDF</a></div>
+    </section>
 
     <section class="suite-module-grid" aria-label="ProjectReady AI modules">
       <a class="suite-module-card green active" href="/topic-ideas"><span class="suite-module-tag">Current module</span><strong>Topic Ideas</strong><span>Generate titles, synopses, proposed objectives and study directions from trends.</span></a>
@@ -200,5 +205,6 @@
     </section>
   </main>
   <script src="/static/topic_ideas.js?v=20260718-all-clear-trend-v1"></script>
+  <script src="/static/guide_banner.js?v=20260719-user-guide-v1"></script>
 </body>
 </html>
