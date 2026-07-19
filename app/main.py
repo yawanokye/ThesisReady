@@ -118,6 +118,19 @@ def ideas_page_alias() -> FileResponse:
     )
 
 
+@app.get("/user-guide")
+def user_guide_page() -> FileResponse:
+    return FileResponse(
+        STATIC_DIR / "user_guide.html",
+        headers={"Cache-Control": "no-cache, max-age=0", "Pragma": "no-cache"},
+    )
+
+
+@app.get("/how-to-use")
+def user_guide_alias() -> FileResponse:
+    return user_guide_page()
+
+
 @app.get("/journal-article")
 def journal_article_page() -> FileResponse:
     return FileResponse(STATIC_DIR / "journal_article.html")
