@@ -7,7 +7,7 @@
   <title>User Guide | ProjectReady AI</title>
   <link rel="stylesheet" href="/static/landing.css?v=20260719-user-guide-v1" />
   <link rel="stylesheet" href="/static/projectready-suite.css?v=20260719-user-guide-v1" />
-  <link rel="stylesheet" href="/static/user_guide.css?v=20260719-user-guide-v1" />
+  <link rel="stylesheet" href="/static/user_guide.css?v=20260719-user-guide-v2" />
 </head>
 <body class="suite-page guide-page">
   <header class="site-header">
@@ -34,7 +34,7 @@
         <p class="guide-lead">Watch the guided platform demonstration or use the annotated step-by-step guide to understand what is mandatory, recommended, optional and conditional in Topic Ideas, Thesis Workspace and Chapter Strengthener.</p>
         <div class="guide-actions">
           <a class="primary-btn large" href="#video">Watch the walkthrough</a>
-          <a class="secondary-btn large" href="/static/guides/projectready-ai-annotated-user-guide.pdf" target="_blank" rel="noopener">View annotated guide</a>
+          <a class="secondary-btn large" href="#annotated-guide">View annotated guide</a>
           <a class="secondary-btn large" href="/static/guides/projectready-ai-annotated-user-guide.pdf" download>Download PDF</a>
         </div>
       </div>
@@ -68,33 +68,234 @@
 
     <section id="annotated-guide" class="guide-section guide-document-section" aria-labelledby="document-title">
       <div class="guide-section-heading">
-        <p class="eyebrow">Annotated PDF guide</p>
-        <h2 id="document-title">Follow the interface step by step</h2>
-        <p>The official guide explains the three modules, shows the current interface and distinguishes fields required to run from strongly recommended, optional and conditional information.</p>
+        <p class="eyebrow">Interactive annotated guide</p>
+        <h2 id="document-title">Follow the interface step by step on this page</h2>
+        <p>The infographic guide has been converted into a responsive HTML viewer. Move through all 18 annotated pages without opening a separate PDF. The PDF remains available for printing and offline use.</p>
       </div>
       <div class="guide-document-card">
         <div>
           <h3>ProjectReady AI Annotated User Guide</h3>
-          <p>Use the PDF beside the platform while completing a job. It includes module selection, preparation, field guidance, review checks, colour interpretation and responsible-use reminders.</p>
+          <p>Use the embedded guide beside the platform while completing a job. It covers module selection, mandatory and optional fields, source checks, revision scope, colour interpretation and responsible academic use.</p>
           <div class="guide-actions">
-            <a class="primary-btn" href="/static/guides/projectready-ai-annotated-user-guide.pdf" target="_blank" rel="noopener">Open full guide</a>
+            <a class="primary-btn" href="#guide-viewer">Start the interactive guide</a>
+            <a class="secondary-btn" href="/static/guides/projectready-ai-annotated-user-guide.pdf" target="_blank" rel="noopener">Open PDF</a>
             <a class="secondary-btn" href="/static/guides/projectready-ai-annotated-user-guide.pdf" download>Download PDF</a>
           </div>
         </div>
         <div class="guide-document-badges" aria-label="Guide coverage">
+          <span>18 annotated pages</span>
           <span>Topic Ideas</span>
           <span>Thesis Workspace</span>
           <span>Chapter Strengthener</span>
           <span>Mandatory and optional fields</span>
-          <span>Review and export</span>
+          <span>Final review checklist</span>
         </div>
       </div>
-      <details class="pdf-preview">
-        <summary>Preview the annotated guide on this page</summary>
-        <object data="/static/guides/projectready-ai-annotated-user-guide.pdf#view=FitH" type="application/pdf">
-          <p>Your browser cannot display the PDF preview. <a href="/static/guides/projectready-ai-annotated-user-guide.pdf" target="_blank" rel="noopener">Open the guide in a new tab</a>.</p>
-        </object>
-      </details>
+
+      <div id="guide-viewer" class="embedded-guide-viewer" data-guide-viewer tabindex="0" aria-label="Interactive ProjectReady AI annotated guide">
+        <div class="guide-viewer-toolbar">
+          <div class="guide-module-tabs" aria-label="Jump to a guide section">
+            <button type="button" class="guide-module-tab is-active" data-guide-jump="1" data-guide-range="1-3" aria-pressed="true">Getting started</button>
+            <button type="button" class="guide-module-tab" data-guide-jump="4" data-guide-range="4-7" aria-pressed="false">Topic Ideas</button>
+            <button type="button" class="guide-module-tab" data-guide-jump="8" data-guide-range="8-13" aria-pressed="false">Thesis Workspace</button>
+            <button type="button" class="guide-module-tab" data-guide-jump="14" data-guide-range="14-17" aria-pressed="false">Chapter Strengthener</button>
+            <button type="button" class="guide-module-tab" data-guide-jump="18" data-guide-range="18-18" aria-pressed="false">Final review</button>
+          </div>
+          <div class="guide-viewer-controls" aria-label="Guide page controls">
+            <button type="button" class="guide-page-button" data-guide-prev aria-label="Previous guide page">Previous</button>
+            <span class="guide-page-counter" data-guide-counter aria-live="polite">Page 1 of 18</span>
+            <button type="button" class="guide-page-button" data-guide-next aria-label="Next guide page">Next</button>
+            <a class="guide-page-open" data-guide-open href="/static/guides/annotated-html/pages/page-01.webp" target="_blank" rel="noopener">Open full size</a>
+          </div>
+        </div>
+
+        <div class="guide-slide-stage">
+        <figure class="guide-slide" data-guide-slide="1" data-guide-module="overview">
+          <a class="guide-slide-image-link" href="/static/guides/annotated-html/pages/page-01.webp" target="_blank" rel="noopener" aria-label="Open page 1 at full size">
+            <img src="/static/guides/annotated-html/pages/page-01.webp" alt="Annotated guide page 1: Use all three modules with confidence" width="1920" height="1080" loading="eager" fetchpriority="high" decoding="async" />
+          </a>
+          <figcaption><strong>Page 1: Use all three modules with confidence</strong><span>An overview of Topic Ideas, Thesis Workspace and Chapter Strengthener.</span></figcaption>
+        </figure>
+        <figure class="guide-slide" data-guide-slide="2" data-guide-module="overview" hidden>
+          <a class="guide-slide-image-link" href="/static/guides/annotated-html/pages/page-02.webp" target="_blank" rel="noopener" aria-label="Open page 2 at full size">
+            <img src="/static/guides/annotated-html/pages/page-02.webp" alt="Annotated guide page 2: Choose the right module first" width="1920" height="1080" loading="lazy" decoding="async" />
+          </a>
+          <figcaption><strong>Page 2: Choose the right module first</strong><span>Select the module that matches your current stage in the research process.</span></figcaption>
+        </figure>
+        <figure class="guide-slide" data-guide-slide="3" data-guide-module="overview" hidden>
+          <a class="guide-slide-image-link" href="/static/guides/annotated-html/pages/page-03.webp" target="_blank" rel="noopener" aria-label="Open page 3 at full size">
+            <img src="/static/guides/annotated-html/pages/page-03.webp" alt="Annotated guide page 3: Prepare these items before you begin" width="1920" height="1080" loading="lazy" decoding="async" />
+          </a>
+          <figcaption><strong>Page 3: Prepare these items before you begin</strong><span>Review the minimum preparation and responsible-use checks before generating any output.</span></figcaption>
+        </figure>
+        <figure class="guide-slide" data-guide-slide="4" data-guide-module="topic" hidden>
+          <a class="guide-slide-image-link" href="/static/guides/annotated-html/pages/page-04.webp" target="_blank" rel="noopener" aria-label="Open page 4 at full size">
+            <img src="/static/guides/annotated-html/pages/page-04.webp" alt="Annotated guide page 4: Module 1: Topic Ideas" width="1920" height="1080" loading="lazy" decoding="async" />
+          </a>
+          <figcaption><strong>Page 4: Module 1: Topic Ideas</strong><span>Understand what Topic Ideas produces before you begin entering a research interest.</span></figcaption>
+        </figure>
+        <figure class="guide-slide" data-guide-slide="5" data-guide-module="topic" hidden>
+          <a class="guide-slide-image-link" href="/static/guides/annotated-html/pages/page-05.webp" target="_blank" rel="noopener" aria-label="Open page 5 at full size">
+            <img src="/static/guides/annotated-html/pages/page-05.webp" alt="Annotated guide page 5: Enter the research interest and generation settings" width="1920" height="1080" loading="lazy" decoding="async" />
+          </a>
+          <figcaption><strong>Page 5: Enter the research interest and generation settings</strong><span>Follow the annotated fields for research area, context, setting, constructs, academic level, methodology and data access.</span></figcaption>
+        </figure>
+        <figure class="guide-slide" data-guide-slide="6" data-guide-module="topic" hidden>
+          <a class="guide-slide-image-link" href="/static/guides/annotated-html/pages/page-06.webp" target="_blank" rel="noopener" aria-label="Open page 6 at full size">
+            <img src="/static/guides/annotated-html/pages/page-06.webp" alt="Annotated guide page 6: Compare the ideas before choosing one" width="1920" height="1080" loading="lazy" decoding="async" />
+          </a>
+          <figcaption><strong>Page 6: Compare the ideas before choosing one</strong><span>Review the complete research logic rather than selecting a title from wording alone.</span></figcaption>
+        </figure>
+        <figure class="guide-slide" data-guide-slide="7" data-guide-module="topic" hidden>
+          <a class="guide-slide-image-link" href="/static/guides/annotated-html/pages/page-07.webp" target="_blank" rel="noopener" aria-label="Open page 7 at full size">
+            <img src="/static/guides/annotated-html/pages/page-07.webp" alt="Annotated guide page 7: Topic Ideas: what to complete" width="1920" height="1080" loading="lazy" decoding="async" />
+          </a>
+          <figcaption><strong>Page 7: Topic Ideas: what to complete</strong><span>Distinguish fields required to run from strongly recommended and optional or conditional inputs.</span></figcaption>
+        </figure>
+        <figure class="guide-slide" data-guide-slide="8" data-guide-module="workspace" hidden>
+          <a class="guide-slide-image-link" href="/static/guides/annotated-html/pages/page-08.webp" target="_blank" rel="noopener" aria-label="Open page 8 at full size">
+            <img src="/static/guides/annotated-html/pages/page-08.webp" alt="Annotated guide page 8: Module 2: Thesis Workspace" width="1920" height="1080" loading="lazy" decoding="async" />
+          </a>
+          <figcaption><strong>Page 8: Module 2: Thesis Workspace</strong><span>See the six-stage workflow for developing an editable chapter working draft.</span></figcaption>
+        </figure>
+        <figure class="guide-slide" data-guide-slide="9" data-guide-module="workspace" hidden>
+          <a class="guide-slide-image-link" href="/static/guides/annotated-html/pages/page-09.webp" target="_blank" rel="noopener" aria-label="Open page 9 at full size">
+            <img src="/static/guides/annotated-html/pages/page-09.webp" alt="Annotated guide page 9: Set up the research project" width="1920" height="1080" loading="lazy" decoding="async" />
+          </a>
+          <figcaption><strong>Page 9: Set up the research project</strong><span>Complete the project title, academic level, format, data orientation, research area and context.</span></figcaption>
+        </figure>
+        <figure class="guide-slide" data-guide-slide="10" data-guide-module="workspace" hidden>
+          <a class="guide-slide-image-link" href="/static/guides/annotated-html/pages/page-10.webp" target="_blank" rel="noopener" aria-label="Open page 10 at full size">
+            <img src="/static/guides/annotated-html/pages/page-10.webp" alt="Annotated guide page 10: Add research direction, then attach sources" width="1920" height="1080" loading="lazy" decoding="async" />
+          </a>
+          <figcaption><strong>Page 10: Add research direction, then attach sources</strong><span>Provide study-specific direction and verify every attached source before it is used.</span></figcaption>
+        </figure>
+        <figure class="guide-slide" data-guide-slide="11" data-guide-module="workspace" hidden>
+          <a class="guide-slide-image-link" href="/static/guides/annotated-html/pages/page-11.webp" target="_blank" rel="noopener" aria-label="Open page 11 at full size">
+            <img src="/static/guides/annotated-html/pages/page-11.webp" alt="Annotated guide page 11: Select only the sections required" width="1920" height="1080" loading="lazy" decoding="async" />
+          </a>
+          <figcaption><strong>Page 11: Select only the sections required</strong><span>Choose headings required by the school, supervisor or research design and leave unnecessary sections unticked.</span></figcaption>
+        </figure>
+        <figure class="guide-slide" data-guide-slide="12" data-guide-module="workspace" hidden>
+          <a class="guide-slide-image-link" href="/static/guides/annotated-html/pages/page-12.webp" target="_blank" rel="noopener" aria-label="Open page 12 at full size">
+            <img src="/static/guides/annotated-html/pages/page-12.webp" alt="Annotated guide page 12: Answer the prompts for each selected section" width="1920" height="1080" loading="lazy" decoding="async" />
+          </a>
+          <figcaption><strong>Page 12: Answer the prompts for each selected section</strong><span>Supply study-specific facts and decisions for the sections selected in the chapter plan.</span></figcaption>
+        </figure>
+        <figure class="guide-slide" data-guide-slide="13" data-guide-module="workspace" hidden>
+          <a class="guide-slide-image-link" href="/static/guides/annotated-html/pages/page-13.webp" target="_blank" rel="noopener" aria-label="Open page 13 at full size">
+            <img src="/static/guides/annotated-html/pages/page-13.webp" alt="Annotated guide page 13: Develop, review and export" width="1920" height="1080" loading="lazy" decoding="async" />
+          </a>
+          <figcaption><strong>Page 13: Develop, review and export</strong><span>Generate the draft, verify citations and claims, run the compliance review and export the editable DOCX.</span></figcaption>
+        </figure>
+        <figure class="guide-slide" data-guide-slide="14" data-guide-module="strengthener" hidden>
+          <a class="guide-slide-image-link" href="/static/guides/annotated-html/pages/page-14.webp" target="_blank" rel="noopener" aria-label="Open page 14 at full size">
+            <img src="/static/guides/annotated-html/pages/page-14.webp" alt="Annotated guide page 14: Module 3: Chapter Strengthener" width="1920" height="1080" loading="lazy" decoding="async" />
+          </a>
+          <figcaption><strong>Page 14: Module 3: Chapter Strengthener</strong><span>Use the Strengthener to revise an existing chapter without inventing evidence, results or decisions.</span></figcaption>
+        </figure>
+        <figure class="guide-slide" data-guide-slide="15" data-guide-module="strengthener" hidden>
+          <a class="guide-slide-image-link" href="/static/guides/annotated-html/pages/page-15.webp" target="_blank" rel="noopener" aria-label="Open page 15 at full size">
+            <img src="/static/guides/annotated-html/pages/page-15.webp" alt="Annotated guide page 15: Define the revision scope and upload the chapter" width="1920" height="1080" loading="lazy" decoding="async" />
+          </a>
+          <figcaption><strong>Page 15: Define the revision scope and upload the chapter</strong><span>Choose the chapter, upload type, output scope, selected sections and alignment material.</span></figcaption>
+        </figure>
+        <figure class="guide-slide" data-guide-slide="16" data-guide-module="strengthener" hidden>
+          <a class="guide-slide-image-link" href="/static/guides/annotated-html/pages/page-16.webp" target="_blank" rel="noopener" aria-label="Open page 16 at full size">
+            <img src="/static/guides/annotated-html/pages/page-16.webp" alt="Annotated guide page 16: Supply the research logic and revision instructions" width="1920" height="1080" loading="lazy" decoding="async" />
+          </a>
+          <figcaption><strong>Page 16: Supply the research logic and revision instructions</strong><span>Enter confirmed objectives, questions, theory, variables, methods, results and supervisor comments.</span></figcaption>
+        </figure>
+        <figure class="guide-slide" data-guide-slide="17" data-guide-module="strengthener" hidden>
+          <a class="guide-slide-image-link" href="/static/guides/annotated-html/pages/page-17.webp" target="_blank" rel="noopener" aria-label="Open page 17 at full size">
+            <img src="/static/guides/annotated-html/pages/page-17.webp" alt="Annotated guide page 17: Generate the revision and interpret the colours" width="1920" height="1080" loading="lazy" decoding="async" />
+          </a>
+          <figcaption><strong>Page 17: Generate the revision and interpret the colours</strong><span>Blue marks revised wording, red marks unresolved action items and black marks unchanged text.</span></figcaption>
+        </figure>
+        <figure class="guide-slide" data-guide-slide="18" data-guide-module="final" hidden>
+          <a class="guide-slide-image-link" href="/static/guides/annotated-html/pages/page-18.webp" target="_blank" rel="noopener" aria-label="Open page 18 at full size">
+            <img src="/static/guides/annotated-html/pages/page-18.webp" alt="Annotated guide page 18: Before you rely on any output" width="1920" height="1080" loading="lazy" decoding="async" />
+          </a>
+          <figcaption><strong>Page 18: Before you rely on any output</strong><span>Complete the alignment, evidence, feasibility, institutional-fit, human-review and clean-start checks.</span></figcaption>
+        </figure>
+        </div>
+
+        <div class="guide-thumb-strip" aria-label="Annotated guide page thumbnails">
+        <button type="button" class="guide-thumb is-active" data-guide-thumb="1" aria-label="Show page 1: Use all three modules with confidence" aria-current="true">
+          <img src="/static/guides/annotated-html/thumbs/page-01.webp" alt="" width="480" height="270" loading="lazy" decoding="async" />
+          <span>1</span>
+        </button>
+        <button type="button" class="guide-thumb" data-guide-thumb="2" aria-label="Show page 2: Choose the right module first" aria-current="false">
+          <img src="/static/guides/annotated-html/thumbs/page-02.webp" alt="" width="480" height="270" loading="lazy" decoding="async" />
+          <span>2</span>
+        </button>
+        <button type="button" class="guide-thumb" data-guide-thumb="3" aria-label="Show page 3: Prepare these items before you begin" aria-current="false">
+          <img src="/static/guides/annotated-html/thumbs/page-03.webp" alt="" width="480" height="270" loading="lazy" decoding="async" />
+          <span>3</span>
+        </button>
+        <button type="button" class="guide-thumb" data-guide-thumb="4" aria-label="Show page 4: Module 1: Topic Ideas" aria-current="false">
+          <img src="/static/guides/annotated-html/thumbs/page-04.webp" alt="" width="480" height="270" loading="lazy" decoding="async" />
+          <span>4</span>
+        </button>
+        <button type="button" class="guide-thumb" data-guide-thumb="5" aria-label="Show page 5: Enter the research interest and generation settings" aria-current="false">
+          <img src="/static/guides/annotated-html/thumbs/page-05.webp" alt="" width="480" height="270" loading="lazy" decoding="async" />
+          <span>5</span>
+        </button>
+        <button type="button" class="guide-thumb" data-guide-thumb="6" aria-label="Show page 6: Compare the ideas before choosing one" aria-current="false">
+          <img src="/static/guides/annotated-html/thumbs/page-06.webp" alt="" width="480" height="270" loading="lazy" decoding="async" />
+          <span>6</span>
+        </button>
+        <button type="button" class="guide-thumb" data-guide-thumb="7" aria-label="Show page 7: Topic Ideas: what to complete" aria-current="false">
+          <img src="/static/guides/annotated-html/thumbs/page-07.webp" alt="" width="480" height="270" loading="lazy" decoding="async" />
+          <span>7</span>
+        </button>
+        <button type="button" class="guide-thumb" data-guide-thumb="8" aria-label="Show page 8: Module 2: Thesis Workspace" aria-current="false">
+          <img src="/static/guides/annotated-html/thumbs/page-08.webp" alt="" width="480" height="270" loading="lazy" decoding="async" />
+          <span>8</span>
+        </button>
+        <button type="button" class="guide-thumb" data-guide-thumb="9" aria-label="Show page 9: Set up the research project" aria-current="false">
+          <img src="/static/guides/annotated-html/thumbs/page-09.webp" alt="" width="480" height="270" loading="lazy" decoding="async" />
+          <span>9</span>
+        </button>
+        <button type="button" class="guide-thumb" data-guide-thumb="10" aria-label="Show page 10: Add research direction, then attach sources" aria-current="false">
+          <img src="/static/guides/annotated-html/thumbs/page-10.webp" alt="" width="480" height="270" loading="lazy" decoding="async" />
+          <span>10</span>
+        </button>
+        <button type="button" class="guide-thumb" data-guide-thumb="11" aria-label="Show page 11: Select only the sections required" aria-current="false">
+          <img src="/static/guides/annotated-html/thumbs/page-11.webp" alt="" width="480" height="270" loading="lazy" decoding="async" />
+          <span>11</span>
+        </button>
+        <button type="button" class="guide-thumb" data-guide-thumb="12" aria-label="Show page 12: Answer the prompts for each selected section" aria-current="false">
+          <img src="/static/guides/annotated-html/thumbs/page-12.webp" alt="" width="480" height="270" loading="lazy" decoding="async" />
+          <span>12</span>
+        </button>
+        <button type="button" class="guide-thumb" data-guide-thumb="13" aria-label="Show page 13: Develop, review and export" aria-current="false">
+          <img src="/static/guides/annotated-html/thumbs/page-13.webp" alt="" width="480" height="270" loading="lazy" decoding="async" />
+          <span>13</span>
+        </button>
+        <button type="button" class="guide-thumb" data-guide-thumb="14" aria-label="Show page 14: Module 3: Chapter Strengthener" aria-current="false">
+          <img src="/static/guides/annotated-html/thumbs/page-14.webp" alt="" width="480" height="270" loading="lazy" decoding="async" />
+          <span>14</span>
+        </button>
+        <button type="button" class="guide-thumb" data-guide-thumb="15" aria-label="Show page 15: Define the revision scope and upload the chapter" aria-current="false">
+          <img src="/static/guides/annotated-html/thumbs/page-15.webp" alt="" width="480" height="270" loading="lazy" decoding="async" />
+          <span>15</span>
+        </button>
+        <button type="button" class="guide-thumb" data-guide-thumb="16" aria-label="Show page 16: Supply the research logic and revision instructions" aria-current="false">
+          <img src="/static/guides/annotated-html/thumbs/page-16.webp" alt="" width="480" height="270" loading="lazy" decoding="async" />
+          <span>16</span>
+        </button>
+        <button type="button" class="guide-thumb" data-guide-thumb="17" aria-label="Show page 17: Generate the revision and interpret the colours" aria-current="false">
+          <img src="/static/guides/annotated-html/thumbs/page-17.webp" alt="" width="480" height="270" loading="lazy" decoding="async" />
+          <span>17</span>
+        </button>
+        <button type="button" class="guide-thumb" data-guide-thumb="18" aria-label="Show page 18: Before you rely on any output" aria-current="false">
+          <img src="/static/guides/annotated-html/thumbs/page-18.webp" alt="" width="480" height="270" loading="lazy" decoding="async" />
+          <span>18</span>
+        </button>
+        </div>
+        <p class="guide-keyboard-hint">Select a thumbnail or use the Previous and Next buttons. When the viewer is focused, the left and right arrow keys also change pages.</p>
+      </div>
     </section>
 
     <section class="guide-section module-guide-section" aria-labelledby="module-guide-title">
@@ -161,7 +362,8 @@
 
   <footer class="site-footer">
     <div><strong>ProjectReady AI</strong><p>Guided academic research-development and revision support.</p></div>
-    <div class="footer-links"><a href="/user-guide">User Guide</a><a href="/static/guides/projectready-ai-annotated-user-guide.pdf" target="_blank" rel="noopener">Annotated PDF</a><a href="/academic-integrity">Academic integrity</a><a href="/terms">Terms</a></div>
+    <div class="footer-links"><a href="/user-guide">User Guide</a><a href="#annotated-guide">Interactive guide</a><a href="/static/guides/projectready-ai-annotated-user-guide.pdf" target="_blank" rel="noopener">PDF guide</a><a href="/academic-integrity">Academic integrity</a><a href="/terms">Terms</a></div>
   </footer>
+  <script src="/static/user_guide.js?v=20260719-user-guide-v2" defer></script>
 </body>
 </html>

@@ -84,3 +84,206 @@
   .guide-actions > * { width: 100%; }
   .pdf-preview object { height: 65vh; }
 }
+
+/* Embedded HTML conversion of the annotated infographic guide */
+.embedded-guide-viewer {
+  margin-top: 1.35rem;
+  background: #ffffff;
+  border: 1px solid #d6e0ee;
+  border-radius: 24px;
+  box-shadow: 0 22px 54px rgba(15, 23, 42, .12);
+  overflow: hidden;
+  scroll-margin-top: 96px;
+}
+.embedded-guide-viewer:focus-visible {
+  outline: 4px solid rgba(29, 78, 216, .24);
+  outline-offset: 4px;
+}
+.guide-viewer-toolbar {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border-bottom: 1px solid #dbe4f0;
+  background: linear-gradient(180deg, #ffffff, #f7f9fd);
+}
+.guide-module-tabs,
+.guide-viewer-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .55rem;
+}
+.guide-module-tab,
+.guide-page-button,
+.guide-page-open {
+  appearance: none;
+  border: 1px solid #c8d5e8;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1e3a5f;
+  min-height: 42px;
+  padding: .65rem .95rem;
+  font: inherit;
+  font-weight: 850;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background .18s ease, color .18s ease, border-color .18s ease, transform .18s ease;
+}
+.guide-module-tab:hover,
+.guide-page-button:hover,
+.guide-page-open:hover {
+  transform: translateY(-1px);
+  border-color: #6b8cc6;
+  background: #eef4ff;
+}
+.guide-module-tab.is-active {
+  color: #ffffff;
+  background: #3156b3;
+  border-color: #3156b3;
+}
+.guide-viewer-controls {
+  justify-content: space-between;
+}
+.guide-page-counter {
+  min-width: 7.5rem;
+  text-align: center;
+  color: #34465f;
+  font-weight: 900;
+}
+.guide-page-open {
+  margin-left: auto;
+  color: #1d4ed8;
+}
+.guide-page-button:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+  transform: none;
+}
+.guide-slide-stage {
+  position: relative;
+  padding: clamp(.55rem, 1.5vw, 1.15rem);
+  background: #e9eef6;
+}
+.guide-slide {
+  margin: 0;
+  background: #ffffff;
+  border: 1px solid #cfd9e8;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, .1);
+}
+.guide-slide[hidden] { display: none !important; }
+.guide-slide-image-link {
+  display: block;
+  background: #f3f6fb;
+}
+.guide-slide img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+}
+.guide-slide figcaption {
+  display: grid;
+  gap: .22rem;
+  padding: .95rem 1.1rem 1.05rem;
+  border-top: 1px solid #dbe4f0;
+  background: #ffffff;
+}
+.guide-slide figcaption strong {
+  color: #102a4c;
+  font-size: 1.05rem;
+}
+.guide-slide figcaption span {
+  color: #53657c;
+  line-height: 1.5;
+}
+.guide-thumb-strip {
+  display: flex;
+  gap: .65rem;
+  overflow-x: auto;
+  padding: .9rem 1rem 1rem;
+  background: #ffffff;
+  border-top: 1px solid #dbe4f0;
+  scrollbar-width: thin;
+  scroll-snap-type: x proximity;
+}
+.guide-thumb {
+  position: relative;
+  flex: 0 0 142px;
+  padding: 0;
+  overflow: hidden;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  background: #eef2f7;
+  cursor: pointer;
+  scroll-snap-align: center;
+  box-shadow: 0 5px 14px rgba(15, 23, 42, .08);
+}
+.guide-thumb:hover { border-color: #89a7dd; }
+.guide-thumb.is-active {
+  border-color: #3156b3;
+  box-shadow: 0 0 0 3px rgba(49, 86, 179, .16);
+}
+.guide-thumb img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+.guide-thumb span {
+  position: absolute;
+  right: .35rem;
+  bottom: .35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.8rem;
+  height: 1.8rem;
+  padding: 0 .4rem;
+  border-radius: 999px;
+  color: #ffffff;
+  background: rgba(15, 23, 42, .86);
+  font-size: .78rem;
+  font-weight: 900;
+}
+.guide-keyboard-hint {
+  margin: 0;
+  padding: 0 1rem 1rem;
+  color: #66758a;
+  font-size: .92rem;
+  line-height: 1.5;
+}
+
+@media (min-width: 920px) {
+  .guide-viewer-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+  .guide-viewer-controls { justify-content: flex-end; }
+}
+
+@media (max-width: 720px) {
+  .guide-module-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: .2rem;
+  }
+  .guide-module-tab { flex: 0 0 auto; }
+  .guide-viewer-controls {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+  }
+  .guide-page-button:first-child { justify-self: start; }
+  .guide-page-button:nth-of-type(2) { justify-self: end; }
+  .guide-page-open {
+    grid-column: 1 / -1;
+    width: 100%;
+    margin: 0;
+    text-align: center;
+  }
+  .guide-slide figcaption { padding: .8rem .9rem .9rem; }
+  .guide-thumb { flex-basis: 118px; }
+}
