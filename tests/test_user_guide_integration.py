@@ -61,3 +61,37 @@ def test_homepage_and_restricted_portal_surface_the_user_guide():
     assert "Watch the user guide" in homepage
     assert 'href="/user-guide"' in homepage
     assert 'href="/user-guide"' in portal
+
+
+def test_annotated_infographic_is_embedded_as_html_viewer():
+    client = TestClient(app)
+    response = client.get("/user-guide")
+    assert response.status_code == 200
+    assert 'data-guide-viewer' in response.text
+    assert response.text.count('data-guide-slide=') == 18
+    assert response.text.count('data-guide-thumb=') == 18
+    assert '/static/user_guide.js?v=20260719-user-guide-v2' in response.text
+    assert '<object data="/static/guides/projectready-ai-annotated-user-guide.pdf' not in response.text
+
+
+def test_all_annotated_html_page_images_and_thumbnails_are_available():
+    client = TestClient(app)
+    for page in range(1, 19):
+        page_name = f"page-{page:02d}.webp"
+        full = client.get(f"/static/guides/annotated-html/pages/{page_name}")
+        thumb = client.get(f"/static/guides/annotated-html/thumbs/{page_name}")
+        assert full.status_code == 200
+        assert thumb.status_code == 200
+        assert full.headers.get("content-type", "").startswith("image/webp")
+        assert thumb.headers.get("content-type", "").startswith("image/webp")
+        assert len(full.content) > 20_000
+        assert len(thumb.content) > 3_000
+
+
+def test_embedded_guide_script_supports_navigation_and_keyboard_controls():
+    js = (STATIC / "user_guide.js").read_text(encoding="utf-8")
+    assert "data-guide-prev" in js
+    assert "data-guide-next" in js
+    assert 'event.key === "ArrowLeft"' in js
+    assert 'event.key === "ArrowRight"' in js
+    assert "scrollIntoView" in js
