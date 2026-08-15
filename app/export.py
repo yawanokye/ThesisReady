@@ -390,3 +390,112 @@ def export_methods_supplement_docx(project: dict[str, Any], chapter_number: int,
         row[4].text = "[insert appendix reference]"
     doc.save(path)
     return path
+
+
+def _add_word_toc(doc: Document) -> None:
+    """Insert an updateable Word table-of-contents field."""
+    p = doc.add_paragraph()
+    run = p.add_run()
+    begin = OxmlElement("w:fldChar")
+    begin.set(qn("w:fldCharType"), "begin")
+    instr = OxmlElement("w:instrText")
+    instr.set(qn("xml:space"), "preserve")
+    instr.text = ' TOC \\o "1-3" \\h \\z \\u '
+    separate = OxmlElement("w:fldChar")
+    separate.set(qn("w:fldCharType"), "separate")
+    placeholder = OxmlElement("w:t")
+    placeholder.text = "Table of contents, update this field in Word if it does not refresh automatically."
+    end = OxmlElement("w:fldChar")
+    end.set(qn("w:fldCharType"), "end")
+    run._r.append(begin)
+    run._r.append(instr)
+    run._r.append(separate)
+    run._r.append(placeholder)
+    run._r.append(end)
+    try:
+        settings = doc.settings._element
+        update_fields = settings.find(qn("w:updateFields"))
+        if update_fields is None:
+            update_fields = OxmlElement("w:updateFields")
+            settings.append(update_fields)
+        update_fields.set(qn("w:val"), "true")
+    except Exception:
+        pass
+
+
+def export_project_working_file_docx(project: dict[str, Any], out_dir: Path) -> Path:
+    """Compile all currently developed chapters into one editable research working file.
+
+    This is an assembly/export feature only. It does not generate new academic
+    content and does not claim that the resulting document is submission-ready.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    profile = project.get("profile") or {}
+    drafts = project.get("drafts") or {}
+    chapter_items: list[tuple[int, str]] = []
+    for key, value in drafts.items():
+        try:
+            number = int(key)
+        except Exception:
+            continue
+        text = str(value or "").strip()
+        if text:
+            chapter_items.append((number, text))
+    chapter_items.sort(key=lambda item: item[0])
+    if not chapter_items:
+        raise ValueError("No developed chapter drafts are available to compile.")
+
+    project_title = str(project.get("title") or profile.get("title") or "ProjectReady Research Project").strip()
+    safe_title = _safe_filename(project_title)
+    path = out_dir / f"{safe_title}_project_working_file.docx"
+
+    doc = Document()
+    _apply_document_defaults(doc)
+    title = doc.add_heading(project_title, level=0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    for field in [
+        profile.get("institution"),
+        profile.get("programme"),
+        profile.get("level"),
+    ]:
+        if str(field or "").strip():
+            p = doc.add_paragraph(str(field).strip())
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p = doc.add_paragraph("ProjectReady AI compiled research working file")
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph("")
+    notice = doc.add_paragraph()
+    _add_runs(
+        notice,
+        "Responsible-use notice: This file compiles the project's current editable chapter drafts. It is not a final or submission-ready thesis. Verify all evidence, references, statistics, tables, cross-references, formatting and institutional requirements before submission.",
+        italic_default=True,
+    )
+    doc.add_page_break()
+
+    doc.add_heading("Table of Contents", level=1)
+    _add_word_toc(doc)
+    doc.add_page_break()
+
+    chapter_name_map = {
+        1: "Introduction",
+        2: "Literature Review",
+        3: "Research Methods/Methodology",
+        4: "Results/Data Analysis and Discussion",
+        5: "Summary, Conclusion and Recommendation",
+        6: str(profile.get("other_chapter_title") or "Other Chapter"),
+        7: "Supplementary Methods Chapter",
+    }
+    for index, (number, draft) in enumerate(chapter_items):
+        if index:
+            doc.add_page_break()
+        heading = doc.add_heading(f"Chapter {number}: {chapter_name_map.get(number, f'Chapter {number}')}", level=1)
+        _set_paragraph_spacing(heading)
+        _markdown_to_docx(doc, draft)
+
+    doc.add_page_break()
+    doc.add_heading("ProjectReady Working-File Audit Note", level=1)
+    doc.add_paragraph(
+        "Before academic submission, consolidate and verify the reference list, update the table of contents and page numbering in Word, check all tables and figures, resolve all bracketed action items, and confirm alignment with supervisor and institutional requirements."
+    )
+    doc.save(path)
+    return path

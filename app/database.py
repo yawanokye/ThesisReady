@@ -101,6 +101,24 @@ def init_db() -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_project_recovery_email ON project_recovery(recovery_email)"
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS project_draft_versions (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                chapter_number INTEGER NOT NULL,
+                version_number INTEGER NOT NULL,
+                draft_text TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT '',
+                label TEXT NOT NULL DEFAULT '',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_project_draft_versions_project_chapter ON project_draft_versions(project_id, chapter_number, version_number)"
+        )
         conn.commit()
 
 
@@ -145,3 +163,72 @@ def row_to_dict(row: Any | None) -> dict[str, Any] | None:
                 parsed = {}
         data[key.replace("_json", "")] = parsed
     return data
+
+
+def save_draft_version(
+    project_id: str,
+    chapter_number: int,
+    draft_text: str,
+    *,
+    source: str = "",
+    label: str = "",
+) -> dict[str, Any]:
+    """Persist a recoverable chapter snapshot after each successful draft/revision."""
+    import uuid
+
+    text = str(draft_text or "")
+    if not text.strip():
+        raise ValueError("Cannot version an empty draft.")
+    version_id = str(uuid.uuid4())
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT COALESCE(MAX(version_number), 0) AS max_version FROM project_draft_versions WHERE project_id = ? AND chapter_number = ?",
+            (project_id, int(chapter_number)),
+        ).fetchone()
+        max_version = int((dict(row) if row is not None else {}).get("max_version") or 0)
+        version_number = max_version + 1
+        conn.execute(
+            """
+            INSERT INTO project_draft_versions
+                (id, project_id, chapter_number, version_number, draft_text, source, label)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (version_id, project_id, int(chapter_number), version_number, text, str(source or "")[:120], str(label or "")[:240]),
+        )
+        conn.commit()
+    return {
+        "id": version_id,
+        "project_id": project_id,
+        "chapter_number": int(chapter_number),
+        "version_number": version_number,
+        "source": str(source or "")[:120],
+        "label": str(label or "")[:240],
+        "character_count": len(text),
+    }
+
+
+def list_draft_versions(project_id: str, chapter_number: int, limit: int = 20) -> list[dict[str, Any]]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, project_id, chapter_number, version_number, source, label, created_at, LENGTH(draft_text) AS character_count
+            FROM project_draft_versions
+            WHERE project_id = ? AND chapter_number = ?
+            ORDER BY version_number DESC
+            LIMIT ?
+            """,
+            (project_id, int(chapter_number), max(1, min(int(limit or 20), 100))),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_draft_version(project_id: str, chapter_number: int, version_id: str) -> dict[str, Any] | None:
+    with get_conn() as conn:
+        row = conn.execute(
+            """
+            SELECT * FROM project_draft_versions
+            WHERE id = ? AND project_id = ? AND chapter_number = ?
+            """,
+            (version_id, project_id, int(chapter_number)),
+        ).fetchone()
+    return dict(row) if row is not None else None
