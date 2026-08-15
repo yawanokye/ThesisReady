@@ -206,3 +206,15 @@ Thesis Workspace and Chapter Strengthener now use a simpler left-guided research
 The restricted internal developer portal can switch the research workspaces between Normal Commercial, Temporary Open Access and Payment Required modes. It can also issue revocable, expiring complimentary tokens with a server-enforced page-credit limit and optional assigned email/module scope.
 
 See `GUIDED_WORKSPACE_ACCESS_CONTROL_UPDATE_2026-08-15.md` for behaviour, security and validation details.
+
+## August 2026, verified citation matrix and linked-chapter continuation
+
+ProjectReady now applies a discipline-and-section citation-density matrix based on verified referenced works per 1,000 substantive words. Citation density is never achieved through invented or padded sources. Generated citations are fail-closed against retrieved metadata and user-supplied citations, and the final reference list is rebuilt from verified metadata/user-provided reference entries.
+
+When a complete standard chapter is developed, the workspace can continue directly to the next chapter while automatically carrying forward the saved chapter, title, objectives, research questions, hypotheses, variables, context and research approach. Students may correct or add information before continuing. Source-grounded numerical evidence may be proposed only from accessible source text, remains visibly provisional in red, includes its DOI/URL, and requires student confirmation.
+
+See `CITATION_MATRIX_LINKED_CHAPTER_WORKFLOW_UPDATE_2026-08-15.md` for details.
+
+## Student-selected paper library, August 2026
+
+ProjectReady can now use up to 50 student-selected papers in addition to automatically discovered literature. The library is available in both Thesis Workspace and Chapter Strengthener. Uploaded papers are prioritised only when relevant. A paper may support evidence synthesis immediately from its extracted text, but ProjectReady creates a new citation from it only after citation metadata is verified or explicitly confirmed by the student. See `SELECTED_PAPERS_LIBRARY_UPDATE_2026-08-15.md`.
