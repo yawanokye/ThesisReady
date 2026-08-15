@@ -8,6 +8,11 @@ import uuid
 
 from app.payments.store import claim_entitlement, complete_claim, rollback_claim
 from app.payments.internal_access import is_internal_purchase_id, validate_internal_access
+from app.access_control import (
+    complimentary_action,
+    complimentary_token_from_request,
+    get_access_policy,
+)
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 
@@ -119,3 +124,90 @@ def paid_chapter_action(
     else:
         if usage_id and claim.get("claimed"):
             complete_claim(usage_id, database_url=database_url or DATABASE_URL)
+
+
+def request_access_snapshot(request: Any, product_area: str = "all") -> Dict[str, Any]:
+    """Return the request's non-free access signals without consuming anything."""
+    policy = get_access_policy()
+    credentials = credentials_from_request(request)
+    complimentary_token, complimentary_email = complimentary_token_from_request(request)
+    return {
+        "policy": policy,
+        "purchase_id": credentials.get("purchase_id", ""),
+        "access_token": credentials.get("access_token", ""),
+        "has_paid_or_internal": bool(credentials.get("purchase_id") and credentials.get("access_token")),
+        "complimentary_token": complimentary_token,
+        "complimentary_email": complimentary_email,
+        "has_complimentary": bool(complimentary_token),
+        "temporary_open": bool(policy.get("temporary_open")),
+        "payment_required": bool(policy.get("payment_required")),
+        "free_starter_enabled": bool(policy.get("free_starter_enabled")),
+        "product_area": str(product_area or "all"),
+    }
+
+
+@contextmanager
+def protected_project_action(
+    *,
+    request: Any,
+    product_area: str,
+    project_id: str,
+    chapter_number: int,
+    chapter_title: str,
+    action: str,
+    requested_pages: int = 0,
+    idempotency_key: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+    database_url: str = "",
+) -> Iterator[Dict[str, Any]]:
+    """Authorize a protected ProjectReady action through open, complimentary, internal, or paid access.
+
+    Background workers pass a pre-authorized claim on request.state. In that case
+    this context deliberately does not complete or roll back the claim because the
+    worker owns that lifecycle.
+    """
+    preauthorised = getattr(getattr(request, "state", None), "preauthorized_claim", None)
+    if preauthorised:
+        yield preauthorised
+        return
+
+    snapshot = request_access_snapshot(request, product_area)
+    if snapshot["temporary_open"]:
+        yield {
+            "claimed": False,
+            "open_access": True,
+            "access_type": "temporary_open",
+            "policy": snapshot["policy"],
+        }
+        return
+
+    if snapshot["has_complimentary"]:
+        try:
+            with complimentary_action(
+                raw_token=snapshot["complimentary_token"],
+                supplied_email=snapshot["complimentary_email"],
+                product_area=product_area,
+                project_id=project_id,
+                chapter_number=chapter_number,
+                action=action,
+                requested_pages=requested_pages,
+                idempotency_key=idempotency_key or str(uuid.uuid4()),
+                metadata=metadata,
+            ) as claim:
+                yield claim
+                return
+        except PermissionError as exc:
+            raise PaymentRequiredError(str(exc)) from exc
+
+    with paid_chapter_action(
+        purchase_id=snapshot["purchase_id"],
+        access_token=snapshot["access_token"],
+        project_id=project_id,
+        chapter_number=chapter_number,
+        chapter_title=chapter_title,
+        action=action,
+        idempotency_key=idempotency_key,
+        metadata=metadata,
+        database_url=database_url,
+    ) as claim:
+        yield claim
