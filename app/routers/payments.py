@@ -1,6 +1,7 @@
 """FastAPI routes for ProjectReady AI chapter and revision-only checkout."""
 from __future__ import annotations
 
+import hashlib
 import hmac
 import os
 import uuid
@@ -39,10 +40,12 @@ from app.payments.router import (
 )
 from app.payments.store import (
     create_access_handoff,
+    activate_purchase,
     create_pending_purchase,
     entitlement_status,
     find_purchases_for_recovery,
     get_purchase,
+    get_purchase_by_reference,
     init_payment_tables,
     make_provider_reference,
     redeem_access_handoff,
@@ -52,9 +55,11 @@ from app.payments.store import (
 )
 from app.payments.stripe_provider import (
     StripePaymentError,
+    force_stripe_for_testing,
     handle_stripe_webhook,
     initialize_stripe_payment,
     stripe_environment_payload,
+    stripe_mode,
     verify_and_activate_stripe_session,
 )
 from app.template_store import get_chapter
@@ -75,6 +80,7 @@ class CheckoutRequest(BaseModel):
     plan_key: Optional[str] = Field(default=None, max_length=60)
     purchase_mode: str = Field(default="chapter", max_length=40)
     return_path: str = Field(default="", max_length=500)
+    test_access_key: str = Field(default="", max_length=300)
 
     @field_validator("purchase_mode")
     @classmethod
@@ -100,6 +106,7 @@ class TopicIdeasCheckoutRequest(BaseModel):
     email: str = Field(min_length=5, max_length=254)
     market: str = Field(default="ghana", max_length=20)
     return_path: str = Field(default="/topic-ideas", max_length=500)
+    test_access_key: str = Field(default="", max_length=300)
 
     @field_validator("market")
     @classmethod
@@ -110,6 +117,11 @@ class TopicIdeasCheckoutRequest(BaseModel):
         if market in {"international", "outside_ghana", "other", "global"}:
             return "international"
         raise ValueError("Choose Ghana or Outside Ghana.")
+
+
+class TopicIdeasTrialRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=254)
+    trial_key: str = Field(min_length=6, max_length=300)
 
 
 class TopicIdeasHandoffRequest(BaseModel):
@@ -148,6 +160,17 @@ def _valid_email(email: str) -> str:
     if "@" not in value or value.startswith("@") or value.endswith("@") or "." not in value.split("@", 1)[1]:
         raise HTTPException(status_code=422, detail="Enter a valid email address.")
     return value
+
+
+def _enforce_test_checkout_access(test_access_key: str = "") -> None:
+    if stripe_mode() != "test":
+        return
+    configured = str(os.getenv("PROJECTREADY_STRIPE_TEST_CHECKOUT_KEY", "") or "").strip()
+    if not configured:
+        raise HTTPException(status_code=503, detail="Stripe test checkout is enabled but no private checkout key is configured.")
+    supplied = str(test_access_key or "").strip()
+    if not supplied or not hmac.compare_digest(supplied, configured):
+        raise HTTPException(status_code=403, detail="A valid private Stripe test checkout key is required.")
 
 
 def _safe_return_path(path: str, fallback: str = SUCCESS_PATH) -> str:
@@ -457,8 +480,12 @@ def recover_paid_access(payload: PaidAccessRecoveryRequest) -> Dict[str, Any]:
 def payment_environment() -> Dict[str, Any]:
     environment = stripe_environment_payload()
     environment.update({
-        "provider_routing": "paystack_africa_stripe_elsewhere",
-        "warning": "Live payment mode is active. African billing countries use Paystack and other countries use Stripe.",
+        "provider_routing": "stripe_forced_test" if force_stripe_for_testing() else "paystack_africa_stripe_elsewhere",
+        "warning": (
+            "Private Stripe test mode is active. Checkout requires the configured test access key and no live charges are created."
+            if stripe_mode() == "test"
+            else "Live payment mode is active. African billing countries use Paystack and other countries use Stripe."
+        ),
     })
     return environment
 
@@ -503,7 +530,7 @@ def topic_ideas_access_plan() -> Dict[str, Any]:
     plan = get_plan("topic_ideas_access")
     paystack_charge = get_paystack_charge("topic_ideas_access")
     environment = stripe_environment_payload()
-    return {
+    payload = {
         "product": "ProjectReady AI Topic Ideas",
         "plan_key": "topic_ideas_access",
         "payment_environment": environment,
@@ -532,15 +559,91 @@ def topic_ideas_access_plan() -> Dict[str, Any]:
         },
         "validity_days": int(plan["validity_days"]),
     }
+    if str(os.getenv("PROJECTREADY_TOPIC_IDEAS_TRIAL_KEY", "") or "").strip():
+        payload["trial"] = {
+            "available": True,
+            "purchase_id_required": False,
+            "generations": 1,
+            "maximum_ideas": 12,
+        }
+    return payload
+
+
+@api_router.post("/api/topic-ideas/activate-trial")
+def activate_topic_ideas_trial(payload: TopicIdeasTrialRequest) -> Dict[str, Any]:
+    configured = str(os.getenv("PROJECTREADY_TOPIC_IDEAS_TRIAL_KEY", "") or "").strip()
+    if not configured:
+        raise HTTPException(status_code=404, detail="Topic Ideas trial access is not enabled.")
+    supplied = str(payload.trial_key or "").strip()
+    if not supplied or not hmac.compare_digest(supplied, configured):
+        raise HTTPException(status_code=403, detail="The Topic Ideas trial key is invalid.")
+
+    email = _valid_email(payload.email)
+    key_fingerprint = hashlib.sha256(configured.encode("utf-8")).hexdigest()[:24].upper()
+    provider_reference = f"PRAI-TOPIC-TRIAL-{key_fingerprint}"
+    existing = get_purchase_by_reference(provider_reference, database_url=DATABASE_URL)
+    recovered = False
+    if existing:
+        if str(existing.get("user_email") or "").strip().lower() != email:
+            raise HTTPException(status_code=409, detail="This Topic Ideas trial key has already been activated by another email address.")
+        purchase = rotate_access_token(str(existing.get("id") or ""), database_url=DATABASE_URL)
+        recovered = True
+    else:
+        purchase = create_pending_purchase(
+            user_email=email,
+            project_id=f"topic-ideas-trial-{uuid.uuid4()}",
+            chapter_number=99,
+            chapter_title="Topic Ideas Access",
+            academic_level="Topic Ideas",
+            plan_key="topic_ideas_access",
+            amount=0.0,
+            currency="USD",
+            display_amount=0.0,
+            display_currency="USD",
+            payment_provider="trial",
+            provider_reference=provider_reference,
+            metadata={
+                "product_area": "topic_ideas",
+                "purchase_mode": "topic_ideas",
+                "payment_environment": "internal_trial",
+                "trial": True,
+                "return_path": "/topic-ideas",
+            },
+            database_url=DATABASE_URL,
+        )
+        activate_purchase(
+            provider_reference=provider_reference,
+            verified_amount=0.0,
+            verified_currency="USD",
+            provider_payload={"trial": True, "key_fingerprint": key_fingerprint},
+            database_url=DATABASE_URL,
+        )
+
+    status = entitlement_status(
+        str(purchase.get("id") or ""),
+        str(purchase.get("access_token") or ""),
+        database_url=DATABASE_URL,
+    )
+    return {
+        "ok": True,
+        "trial": True,
+        "recovered": recovered,
+        "purchase_id": purchase.get("id"),
+        "access_token": purchase.get("access_token"),
+        "access_id": purchase.get("project_id"),
+        "status": status,
+        "message": "Topic Ideas trial access restored." if recovered else "Topic Ideas trial access activated for one full generation.",
+    }
 
 
 @api_router.post("/api/topic-ideas/checkout")
 def start_topic_ideas_checkout(payload: TopicIdeasCheckoutRequest) -> Dict[str, Any]:
     email = _valid_email(payload.email)
+    _enforce_test_checkout_access(payload.test_access_key)
     plan_key = "topic_ideas_access"
     plan = get_plan(plan_key)
     display_price = get_price(plan_key)
-    provider = "paystack" if payload.market == "ghana" else "stripe"
+    provider = choose_payment_provider("GH") if payload.market == "ghana" else "stripe"
     provider_reference = make_provider_reference(provider)
     access_id = f"topic-ideas-{uuid.uuid4()}"
     return_path = _safe_return_path(payload.return_path, "/topic-ideas")
@@ -584,7 +687,7 @@ def start_topic_ideas_checkout(payload: TopicIdeasCheckoutRequest) -> Dict[str, 
             "plan_name": plan["name"],
             "product_area": "topic_ideas",
             "purchase_mode": "topic_ideas",
-            "payment_environment": "live",
+            "payment_environment": stripe_mode() if provider == "stripe" else "live",
             "return_path": return_path,
             "pricing": pricing_metadata,
         },
@@ -714,6 +817,7 @@ def topic_ideas_payment_status(payload: EntitlementStatusRequest) -> Dict[str, A
 @api_router.post("/api/payments/checkout")
 def start_checkout(payload: CheckoutRequest) -> Dict[str, Any]:
     email = _valid_email(payload.email)
+    _enforce_test_checkout_access(payload.test_access_key)
     project = _load_project(payload.project_id)
     profile = project.get("profile") or {}
     stored_level = str(profile.get("level") or payload.academic_level or "").strip()
@@ -786,7 +890,7 @@ def start_checkout(payload: CheckoutRequest) -> Dict[str, Any]:
             "plan_name": plan["name"],
             "project_title": project.get("title", ""),
             "purchase_mode": purchase_mode,
-            "payment_environment": "live",
+            "payment_environment": stripe_mode() if provider == "stripe" else "live",
             "return_path": return_path,
             "pricing": pricing_metadata,
         },

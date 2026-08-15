@@ -11,9 +11,10 @@ from typing import Any
 
 from fastapi import APIRouter, File, Header, HTTPException, Request, UploadFile
 
-from app.database import get_conn, row_to_dict
+from app.database import get_conn, get_draft_version, list_draft_versions, row_to_dict, save_draft_version
 from app.project_recovery import recover_projects, recovery_enabled, set_project_recovery
 from app.result_uploads import extract_result_file
+from app.research_logic import build_research_logic
 from app.payments.store import rotate_project_access_tokens
 from app.schemas import (
     ProjectCreate,
@@ -309,6 +310,99 @@ def get_project(project_id: str):
     project = _get_project_or_404(project_id)
     project["recovery_enabled"] = recovery_enabled(project_id)
     return project
+
+
+@router.put("/{project_id}/profile")
+def update_project_profile(project_id: str, payload: dict[str, Any]):
+    project = _get_project_or_404(project_id)
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=422, detail="Project profile updates must be a JSON object.")
+    profile = project.get("profile") or {}
+    allowed = {
+        "title", "programme", "department", "institution", "level", "academic_level_guidance",
+        "reference_currency_rule", "thesis_format", "format_notes", "background_structure",
+        "purpose_statement_style", "automatic_source_support", "research_area", "study_context",
+        "citation_evidence_notes", "research_approach", "data_type", "expected_chapters",
+        "variables", "objectives", "research_questions", "hypotheses", "notes", "source_search_terms",
+        "other_chapter_title", "other_chapter_instructions", "draft_maturity", "humanizer_mode",
+        "student_contribution", "academic_integrity_confirmed", "user_contribution_confirmed",
+        "allow_provisional_drafting", "draft_consideration_warnings", "custom_page_targets",
+        "current_custom_page_target",
+    }
+    for key in allowed:
+        if key not in payload:
+            continue
+        value = payload[key]
+        if key == "title":
+            title = str(value or "").strip()
+            if len(title) < 3:
+                raise HTTPException(status_code=422, detail="Project title must contain at least 3 characters.")
+            project["title"] = title
+            profile["title"] = title
+            continue
+        profile[key] = value
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE projects SET title = ?, profile_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (project.get("title") or profile.get("title") or "Untitled project", json.dumps(profile), project_id),
+        )
+        conn.commit()
+    project["profile"] = profile
+    return {
+        "ok": True,
+        "project_id": project_id,
+        "title": project.get("title"),
+        "profile": profile,
+        "research_logic": build_research_logic(project),
+    }
+
+
+@router.get("/{project_id}/research-logic")
+def research_logic(project_id: str):
+    project = _get_project_or_404(project_id)
+    return build_research_logic(project)
+
+
+@router.get("/{project_id}/versions/{chapter_number}")
+def project_draft_versions(project_id: str, chapter_number: int, limit: int = 20):
+    _get_project_or_404(project_id)
+    return {
+        "project_id": project_id,
+        "chapter_number": int(chapter_number),
+        "versions": list_draft_versions(project_id, chapter_number, limit=limit),
+    }
+
+
+@router.post("/{project_id}/versions/{chapter_number}/{version_id}/restore")
+def restore_project_draft_version(project_id: str, chapter_number: int, version_id: str):
+    project = _get_project_or_404(project_id)
+    version = get_draft_version(project_id, chapter_number, version_id)
+    if not version:
+        raise HTTPException(status_code=404, detail="Draft version not found.")
+    draft_text = str(version.get("draft_text") or "")
+    drafts = project.get("drafts") or {}
+    drafts[str(int(chapter_number))] = draft_text
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE projects SET drafts_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (json.dumps(drafts), project_id),
+        )
+        conn.commit()
+    restored_snapshot = save_draft_version(
+        project_id,
+        chapter_number,
+        draft_text,
+        source="version_restore",
+        label=f"Restored from version {version.get('version_number')}",
+    )
+    return {
+        "ok": True,
+        "project_id": project_id,
+        "chapter_number": int(chapter_number),
+        "draft": draft_text,
+        "restored_from": version.get("version_number"),
+        "new_version": restored_snapshot,
+    }
 
 
 @router.post("/{project_id}/sections")

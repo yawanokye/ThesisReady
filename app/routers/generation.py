@@ -12,8 +12,8 @@ from fastapi.responses import FileResponse
 
 from app.ai_service import chapter_output_metrics, generate_chapter
 from app.compliance import check_chapter
-from app.database import get_conn, row_to_dict
-from app.export import export_chapter_docx, export_compliance_docx, export_instrument_docx, export_methods_supplement_docx
+from app.database import get_conn, row_to_dict, save_draft_version
+from app.export import export_chapter_docx, export_compliance_docx, export_instrument_docx, export_methods_supplement_docx, export_project_working_file_docx
 from app.result_uploads import extract_result_file
 from app.source_support import ensure_automatic_source_support
 from app.schemas import ComplianceRequest, DraftRequest
@@ -614,6 +614,14 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
             )
             conn.commit()
 
+        draft_version = save_draft_version(
+            project_id,
+            payload.chapter_number,
+            draft,
+            source=str(source),
+            label="Strengthened revision" if revision_mode else "Chapter working draft",
+        )
+
         if not generation_warning and str(source).startswith("local_template_fallback"):
             generation_warning = (
                 "The AI provider did not return a full chapter, so ProjectReady AI produced an expanded local thesis draft. "
@@ -643,6 +651,7 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
             "access_mode": access_mode,
             "entitlement_action": action,
             "generation_metrics": metrics,
+            "draft_version": draft_version,
             "automatic_source_support": source_support_summary,
             "working_draft_notice": "AI-assisted working draft. Review, verify and revise it before any academic use or submission.",
         }
@@ -918,6 +927,16 @@ def export_methods_supplement(project_id: str):
     # while this supplementary chapter gathers instruments, measurement details,
     # variable/data-source registers and appendix materials for analysis.
     path = export_methods_supplement_docx(project, 0, EXPORT_DIR)
+    return FileResponse(path, filename=path.name, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+
+@router.get("/{project_id}/export/project-working-file")
+def export_project_working_file(project_id: str):
+    project = _get_project_or_404(project_id)
+    try:
+        path = export_project_working_file_docx(project, EXPORT_DIR)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return FileResponse(path, filename=path.name, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 
