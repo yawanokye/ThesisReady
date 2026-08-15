@@ -7,6 +7,9 @@ from typing import Any
 from fastapi import APIRouter, Header, HTTPException, Request, status
 
 from app.database import get_conn, row_to_dict
+from app.ai_service import _chapter_length_requirements
+from app.chapter_revision_service import chapter_planning_targets
+from app.access_control import reserve_complimentary_for_background, rollback_complimentary_usage
 from app.jobs.store import (
     cancel_job,
     create_job,
@@ -16,7 +19,7 @@ from app.jobs.store import (
     verify_job_token,
 )
 from app.payments.entitlements import is_free_generation_allowed
-from app.payments.guard import credentials_from_request
+from app.payments.guard import credentials_from_request, request_access_snapshot
 from app.payments.internal_access import is_internal_purchase_id, validate_internal_access
 from app.payments.store import claim_entitlement, rollback_claim
 from app.schemas import ChapterRevisionRequest, DraftRequest
@@ -50,7 +53,7 @@ def _public_job(job: dict[str, Any]) -> dict[str, Any]:
         "stage": job.get("stage"),
         "message": job.get("message"),
         "error": (
-            "The request could not be completed after automatic retries. Any reserved paid entitlement was returned."
+            "The request could not be completed after automatic retries. Any reserved paid entitlement or complimentary page credits were returned."
             if str(job.get("status")) == "failed" else ""
         ),
         "result": job.get("result") if str(job.get("status")) == "completed" else {},
@@ -71,7 +74,33 @@ def _reserve_paid_action(
     chapter_number: int,
     chapter_title: str,
     action: str,
+    requested_pages: int = 0,
 ) -> dict[str, Any]:
+    snapshot = request_access_snapshot(request, product_area)
+    if snapshot["temporary_open"]:
+        return {
+            "claimed": False,
+            "open_access": True,
+            "access_type": "temporary_open",
+            "product_area": product_area,
+        }
+
+    if snapshot["has_complimentary"]:
+        try:
+            return reserve_complimentary_for_background(
+                raw_token=snapshot["complimentary_token"],
+                supplied_email=snapshot["complimentary_email"],
+                product_area=product_area,
+                project_id=project_id,
+                chapter_number=chapter_number,
+                action=action,
+                requested_pages=requested_pages,
+                idempotency_key=job_id,
+                metadata={"execution": "background_worker", "job_id": job_id, "module": product_area},
+            )
+        except PermissionError as exc:
+            raise HTTPException(status_code=402, detail=str(exc)) from exc
+
     credentials = credentials_from_request(request)
     purchase_id = credentials["purchase_id"]
     access_token = credentials["access_token"]
@@ -138,6 +167,16 @@ def _reserve_paid_action(
     }
 
 
+def _rollback_reserved_claim(claim: dict[str, Any]) -> None:
+    usage_id = str(claim.get("usage_id") or "")
+    if usage_id and claim.get("claimed"):
+        rollback_claim(usage_id, database_url=DATABASE_URL)
+    complimentary_usage_id = str(claim.get("complimentary_usage_id") or "")
+    if complimentary_usage_id and claim.get("claimed"):
+        rollback_complimentary_usage(complimentary_usage_id)
+
+
+
 def _max_attempts() -> int:
     try:
         return max(1, min(int(os.getenv("PROJECTREADY_JOB_MAX_ATTEMPTS", "2") or 2), 4))
@@ -174,12 +213,16 @@ def queue_chapter_draft(project_id: str, payload: DraftRequest, request: Request
             },
         )
 
-    credentials = credentials_from_request(request)
-    has_paid = bool(credentials["purchase_id"] and credentials["access_token"])
+    snapshot = request_access_snapshot(request, "thesis_workspace")
+    has_protected = bool(snapshot["has_paid_or_internal"] or snapshot["has_complimentary"] or snapshot["temporary_open"])
     claim: dict[str, Any] = {}
     job_id = str(uuid.uuid4())
+    planning_profile = dict(project.get("profile") or {})
+    if isinstance(getattr(payload, "profile_updates", None), dict):
+        planning_profile.update(payload.profile_updates or {})
+    requested_pages = int(_chapter_length_requirements(planning_profile, payload.chapter_number, payload.selected_section_ids).get("maximum_pages") or 0)
 
-    if revision_mode or has_paid:
+    if revision_mode or has_protected:
         claim = _reserve_paid_action(
             request=request,
             job_id=job_id,
@@ -188,8 +231,17 @@ def queue_chapter_draft(project_id: str, payload: DraftRequest, request: Request
             chapter_number=payload.chapter_number,
             chapter_title=chapter_title,
             action=action,
+            requested_pages=requested_pages,
         )
     else:
+        if snapshot["payment_required"]:
+            raise HTTPException(status_code=402, detail={
+                "code": "chapter_payment_required",
+                "message": "Payment is currently required for chapter generation. Use paid chapter access or a valid complimentary token.",
+                "action": "draft",
+                "chapter_number": payload.chapter_number,
+                "checkout_endpoint": "/api/payments/checkout",
+            })
         free_check = is_free_generation_allowed(
             chapter_number=payload.chapter_number,
             selected_section_ids=payload.selected_section_ids,
@@ -224,9 +276,7 @@ def queue_chapter_draft(project_id: str, payload: DraftRequest, request: Request
             message="Chapter request queued. You may leave this page and return while the worker continues.",
         )
     except Exception:
-        usage_id = str(claim.get("usage_id") or "")
-        if usage_id and claim.get("claimed"):
-            rollback_claim(usage_id, database_url=DATABASE_URL)
+        _rollback_reserved_claim(claim)
         raise
 
     return {
@@ -260,6 +310,17 @@ def queue_chapter_strengthener(project_id: str, payload: ChapterRevisionRequest,
         })
 
     job_id = str(uuid.uuid4())
+    selected_count = len(payload.selected_section_titles or []) + len(payload.new_section_titles or []) + len(payload.custom_new_sections or [])
+    planning = chapter_planning_targets(
+        payload.academic_level,
+        payload.chapter_type,
+        strengthening_scope=payload.strengthening_scope,
+        selected_section_count=selected_count,
+        custom_target_pages_enabled=payload.custom_target_pages_enabled,
+        target_page_min=payload.target_page_min,
+        target_page_max=payload.target_page_max,
+    )
+    requested_pages = int((planning.get("page_range") or {}).get("maximum") or 0)
     claim = _reserve_paid_action(
         request=request,
         job_id=job_id,
@@ -268,6 +329,7 @@ def queue_chapter_strengthener(project_id: str, payload: ChapterRevisionRequest,
         chapter_number=chapter_number,
         chapter_title=chapter_title,
         action="revision",
+        requested_pages=requested_pages,
     )
     try:
         job, token = create_job(
@@ -284,9 +346,7 @@ def queue_chapter_strengthener(project_id: str, payload: ChapterRevisionRequest,
             message="Chapter strengthening queued. The selected chapter or sections will be processed in the background.",
         )
     except Exception:
-        usage_id = str(claim.get("usage_id") or "")
-        if usage_id and claim.get("claimed"):
-            rollback_claim(usage_id, database_url=DATABASE_URL)
+        _rollback_reserved_claim(claim)
         raise
     return {
         "ok": True,
@@ -319,7 +379,6 @@ def cancel_background_job(job_id: str, x_projectready_job_token: str = Header(de
         raise HTTPException(status_code=409, detail="A running request cannot be cancelled safely. It will finish or retry automatically.")
     updated = cancel_job(job_id)
     claim = (current.get("payload") or {}).get("_preauthorized_claim") or {}
-    usage_id = str(claim.get("usage_id") or "")
-    if updated and str(updated.get("status")) == "cancelled" and usage_id and claim.get("claimed"):
-        rollback_claim(usage_id, database_url=DATABASE_URL)
+    if updated and str(updated.get("status")) == "cancelled":
+        _rollback_reserved_claim(claim)
     return {"ok": True, "job": _public_job(updated or current)}

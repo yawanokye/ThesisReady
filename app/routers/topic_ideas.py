@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from app.topic_ideas_service import generate_topic_ideas
 from app.topic_ideas_export import export_topic_ideas_docx
-from app.payments.guard import PaymentRequiredError, credentials_from_request, paid_chapter_action
+from app.payments.guard import PaymentRequiredError, credentials_from_request, paid_chapter_action, request_access_snapshot
 from app.payments.internal_access import is_internal_purchase_id, validate_internal_access
 from app.payments.store import get_purchase
 
@@ -87,9 +87,34 @@ def _run_generation(payload: dict[str, Any]) -> dict[str, Any]:
 
 @router.post("")
 def create_topic_ideas(payload: TopicIdeasRequest, request: Request) -> dict[str, Any]:
+    access_snapshot = request_access_snapshot(request, "topic_ideas")
     credentials = credentials_from_request(request)
     purchase_id = credentials["purchase_id"]
     access_token = credentials["access_token"]
+
+    if access_snapshot["temporary_open"] and not purchase_id and not access_token:
+        open_payload = payload.model_dump()
+        open_payload["max_ideas"] = max(FREE_PREVIEW_IDEAS, min(int(open_payload.get("max_ideas") or PAID_MAXIMUM_IDEAS), PAID_MAXIMUM_IDEAS))
+        result = _run_generation(open_payload)
+        result.update({
+            "access_tier": "temporary_open",
+            "free_preview": False,
+            "ideas_returned": len(result.get("ideas") or []),
+            "maximum_ideas": PAID_MAXIMUM_IDEAS,
+            "paid_maximum_ideas": PAID_MAXIMUM_IDEAS,
+            "temporary_open": True,
+        })
+        return result
+
+    if access_snapshot["payment_required"] and not purchase_id and not access_token:
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "reason": "topic_ideas_payment_required",
+                "message": "Payment is currently required for Topic Ideas. Complete checkout to unlock the full idea set.",
+                "checkout_endpoint": "/api/topic-ideas/checkout",
+            },
+        )
 
     # Free preview: no payment credential is required. The server, rather than
     # the browser, enforces the two-idea limit so changing the page controls

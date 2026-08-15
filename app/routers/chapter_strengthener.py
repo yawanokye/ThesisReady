@@ -19,8 +19,7 @@ from app.database import get_conn, row_to_dict
 from app.project_recovery import set_project_recovery
 from app.payments.guard import (
     PaymentRequiredError,
-    credentials_from_request,
-    paid_chapter_action,
+    protected_project_action,
 )
 from app.schemas import (
     ChapterRevisionExportRequest,
@@ -71,23 +70,22 @@ def _paid_context(
     chapter_number: int,
     chapter_title: str,
     action: str,
+    requested_pages: int = 0,
 ):
-    preauthorised = getattr(request.state, "preauthorized_claim", None)
-    if preauthorised:
-        return nullcontext(preauthorised)
-    credentials = credentials_from_request(request)
-    return paid_chapter_action(
-        purchase_id=credentials["purchase_id"],
-        access_token=credentials["access_token"],
+    return protected_project_action(
+        request=request,
+        product_area="chapter_strengthener",
         project_id=project_id,
         chapter_number=chapter_number,
         chapter_title=chapter_title,
         action=action,
+        requested_pages=requested_pages,
         idempotency_key=request.headers.get("Idempotency-Key"),
         metadata={
             "route": request.url.path,
             "method": request.method,
             "module": "chapter_strengthener",
+            "product_area": "chapter_strengthener",
         },
     )
 
@@ -380,6 +378,20 @@ def strengthen_project_chapter(
             ),
         )
 
+    selected_count = len(merged_payload.get("selected_section_titles") or [])
+    selected_count += len(merged_payload.get("new_section_titles") or [])
+    selected_count += len(merged_payload.get("custom_new_sections") or [])
+    planning = chapter_planning_targets(
+        str(merged_payload.get("academic_level") or payload.academic_level),
+        str(merged_payload.get("chapter_type") or payload.chapter_type),
+        strengthening_scope=str(merged_payload.get("strengthening_scope") or "whole_chapter"),
+        selected_section_count=selected_count,
+        custom_target_pages_enabled=bool(merged_payload.get("custom_target_pages_enabled")),
+        target_page_min=merged_payload.get("target_page_min"),
+        target_page_max=merged_payload.get("target_page_max"),
+    )
+    requested_pages = int((planning.get("page_range") or {}).get("maximum") or 0)
+
     try:
         with _paid_context(
             request,
@@ -387,6 +399,7 @@ def strengthen_project_chapter(
             chapter_number=chapter_number,
             chapter_title=title,
             action="revision",
+            requested_pages=requested_pages,
         ):
             result = revise_chapter(merged_payload)
             if str(result.get("mode") or "").startswith("metadata_fallback"):

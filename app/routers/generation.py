@@ -10,7 +10,7 @@ from typing import Any
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
-from app.ai_service import chapter_output_metrics, generate_chapter
+from app.ai_service import _chapter_length_requirements, chapter_output_metrics, generate_chapter
 from app.compliance import check_chapter
 from app.database import get_conn, row_to_dict, save_draft_version
 from app.export import export_chapter_docx, export_compliance_docx, export_instrument_docx, export_methods_supplement_docx, export_project_working_file_docx
@@ -19,7 +19,7 @@ from app.source_support import ensure_automatic_source_support
 from app.schemas import ComplianceRequest, DraftRequest
 from app.template_store import get_chapter
 from app.payments.entitlements import is_free_generation_allowed
-from app.payments.guard import PaymentRequiredError, credentials_from_request, paid_chapter_action
+from app.payments.guard import PaymentRequiredError, protected_project_action, request_access_snapshot
 
 router = APIRouter(prefix="/api/projects", tags=["generation"])
 EXPORT_DIR = Path("exports")
@@ -42,20 +42,16 @@ def _paid_action_context(
     chapter_number: int,
     chapter_title: str,
     action: str,
+    requested_pages: int = 0,
 ):
-    preauthorised = getattr(request.state, "preauthorized_claim", None)
-    if preauthorised:
-        # Background jobs reserve the entitlement before entering the queue.
-        # The worker completes or rolls it back only after the whole job ends.
-        return nullcontext(preauthorised)
-    credentials = credentials_from_request(request)
-    return paid_chapter_action(
-        purchase_id=credentials["purchase_id"],
-        access_token=credentials["access_token"],
+    return protected_project_action(
+        request=request,
+        product_area="thesis_workspace",
         project_id=project_id,
         chapter_number=chapter_number,
         chapter_title=chapter_title,
         action=action,
+        requested_pages=requested_pages,
         idempotency_key=request.headers.get("Idempotency-Key"),
         metadata={"route": request.url.path, "method": request.method, "product_area": "thesis_workspace", "module": "thesis_workspace"},
     )
@@ -517,21 +513,49 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
         extra_instructions = (extra_instructions + "\n\n" + f"Other chapter title: {other_title}\nUser-specified chapter requirements: {other_instructions}").strip()
 
     chapter_title = str(chapter.get("chapter_title") or f"Chapter {payload.chapter_number}")
-    credentials = credentials_from_request(request)
+    access_snapshot = request_access_snapshot(request, "thesis_workspace")
     preauthorised_claim = getattr(request.state, "preauthorized_claim", None)
-    has_paid_credential = bool(credentials["purchase_id"] and credentials["access_token"]) or bool(preauthorised_claim)
+    has_protected_access = bool(
+        access_snapshot["has_paid_or_internal"]
+        or access_snapshot["has_complimentary"]
+        or access_snapshot["temporary_open"]
+        or preauthorised_claim
+    )
     action = "revision" if revision_mode else "draft"
+    page_requirements = _chapter_length_requirements(
+        project.get("profile", {}),
+        payload.chapter_number,
+        payload.selected_section_ids,
+    )
+    requested_pages = int(page_requirements.get("maximum_pages") or 0)
 
-    if revision_mode or has_paid_credential:
+    if revision_mode or has_protected_access:
         action_context = _paid_action_context(
             request,
             project_id=project_id,
             chapter_number=payload.chapter_number,
             chapter_title=chapter_title,
             action=action,
+            requested_pages=requested_pages,
         )
-        access_mode = "paid"
+        if access_snapshot["temporary_open"]:
+            access_mode = "temporary_open"
+        elif access_snapshot["has_complimentary"]:
+            access_mode = "complimentary_pages"
+        elif preauthorised_claim and preauthorised_claim.get("access_type"):
+            access_mode = str(preauthorised_claim.get("access_type"))
+        else:
+            access_mode = "paid"
     else:
+        if access_snapshot["payment_required"]:
+            raise HTTPException(
+                status_code=402,
+                detail=_payment_required_detail(
+                    "Payment is currently required for chapter generation. Use paid chapter access or a valid complimentary token.",
+                    action="draft",
+                    chapter_number=payload.chapter_number,
+                ),
+            )
         free_check = is_free_generation_allowed(
             chapter_number=payload.chapter_number,
             selected_section_ids=payload.selected_section_ids,
@@ -593,7 +617,7 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
         if str(source).startswith("local_template_fallback"):
             provider_fallback_used = True
 
-        if bool(getattr(request.state, "background_job", False)) and access_mode == "paid" and provider_fallback_used:
+        if bool(getattr(request.state, "background_job", False)) and access_mode != "free_starter" and provider_fallback_used:
             raise RuntimeError(
                 "The AI provider did not complete the paid chapter request. The background job will retry, and the entitlement will be returned if all attempts fail."
             )
