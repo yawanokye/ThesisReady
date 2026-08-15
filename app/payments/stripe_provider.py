@@ -31,18 +31,28 @@ class StripePaymentError(RuntimeError):
 
 
 def stripe_mode() -> str:
-    return "live"
+    mode = str(os.environ.get("PROJECTREADY_STRIPE_MODE", "live") or "live").strip().lower()
+    return "test" if mode == "test" else "live"
 
 
 def stripe_test_mode() -> bool:
-    return False
+    return stripe_mode() == "test"
 
 
 def force_stripe_for_testing() -> bool:
-    return False
+    if not stripe_test_mode():
+        return False
+    return str(os.environ.get("PROJECTREADY_FORCE_STRIPE", "0") or "0").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def configured_stripe_secret_key() -> str:
+    if stripe_test_mode():
+        key = os.environ.get("STRIPE_TEST_SECRET_KEY", "").strip()
+        if not key:
+            raise StripePaymentError("STRIPE_TEST_SECRET_KEY is not configured for Stripe test mode.")
+        if not key.startswith(("sk_test_", "rk_test_")):
+            raise StripePaymentError("Use a Stripe test secret key beginning with sk_test_ or rk_test_.")
+        return key
     key = os.environ.get("STRIPE_LIVE_SECRET_KEY", "").strip() or STRIPE_SECRET_KEY
     if not key:
         raise StripePaymentError("STRIPE_LIVE_SECRET_KEY is not configured for live Stripe payments.")
@@ -52,11 +62,16 @@ def configured_stripe_secret_key() -> str:
 
 
 def configured_stripe_webhook_secret() -> str:
-    secret = os.environ.get("STRIPE_LIVE_WEBHOOK_SECRET", "").strip() or STRIPE_WEBHOOK_SECRET
-    if not secret:
-        raise StripePaymentError("STRIPE_LIVE_WEBHOOK_SECRET is not configured for live Stripe payments.")
+    if stripe_test_mode():
+        secret = os.environ.get("STRIPE_TEST_WEBHOOK_SECRET", "").strip()
+        if not secret:
+            raise StripePaymentError("STRIPE_TEST_WEBHOOK_SECRET is not configured for Stripe test mode.")
+    else:
+        secret = os.environ.get("STRIPE_LIVE_WEBHOOK_SECRET", "").strip() or STRIPE_WEBHOOK_SECRET
+        if not secret:
+            raise StripePaymentError("STRIPE_LIVE_WEBHOOK_SECRET is not configured for live Stripe payments.")
     if not secret.startswith("whsec_"):
-        raise StripePaymentError("STRIPE_LIVE_WEBHOOK_SECRET must be a Stripe webhook signing secret beginning with whsec_.")
+        raise StripePaymentError("Stripe webhook secret must begin with whsec_.")
     return secret
 
 
@@ -69,11 +84,12 @@ def stripe_environment_payload() -> Dict[str, Any]:
         webhook_configured = bool(configured_stripe_webhook_secret())
     except StripePaymentError:
         webhook_configured = False
+    test_mode = stripe_test_mode()
     return {
-        "mode": "live",
-        "test_mode": False,
-        "force_stripe": False,
-        "test_checkout_key_required": False,
+        "mode": stripe_mode(),
+        "test_mode": test_mode,
+        "force_stripe": force_stripe_for_testing(),
+        "test_checkout_key_required": bool(test_mode and os.environ.get("PROJECTREADY_STRIPE_TEST_CHECKOUT_KEY", "").strip()),
         "secret_key_configured": secret_configured,
         "webhook_secret_configured": webhook_configured,
     }
@@ -156,7 +172,7 @@ def initialize_stripe_payment(purchase: Dict[str, Any], *, database_url: str = "
         "ok": True,
         "provider": "stripe",
         "payment_environment": environment,
-        "test_mode": False,
+        "test_mode": stripe_test_mode(),
         "checkout_url": session.url,
         "session_id": session.id,
         "provider_reference": purchase["provider_reference"],
@@ -305,7 +321,15 @@ def _purchase_for_stripe_session(data: Dict[str, Any], *, database_url: str = ""
 
 
 def _payment_environment_for_purchase(purchase: Dict[str, Any], metadata: Dict[str, Any]) -> str:
-    return "live"
+    purchase_metadata = purchase.get("metadata_json") or {}
+    if not isinstance(purchase_metadata, dict):
+        purchase_metadata = {}
+    value = str(
+        purchase_metadata.get("payment_environment")
+        or metadata.get("payment_environment")
+        or stripe_mode()
+    ).strip().lower()
+    return "test" if value == "test" else "live"
 
 
 def verify_and_activate_stripe_session_data(
@@ -420,7 +444,7 @@ def verify_and_activate_stripe_session_data(
         "ok": True,
         "activated": True,
         "payment_environment": received_environment,
-        "test_mode": False,
+        "test_mode": received_environment == "test",
         "purchase": activated,
         "session": data,
     }

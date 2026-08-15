@@ -28,4 +28,8 @@ def is_african_country(country_code: str) -> bool:
 
 
 def choose_payment_provider(country_code: str) -> str:
+    mode = str(__import__("os").environ.get("PROJECTREADY_STRIPE_MODE", "live") or "live").strip().lower()
+    force_stripe = str(__import__("os").environ.get("PROJECTREADY_FORCE_STRIPE", "0") or "0").strip().lower() in {"1", "true", "yes", "on"}
+    if mode == "test" and force_stripe:
+        return "stripe"
     return "paystack" if is_african_country(country_code) else "stripe"
