@@ -192,3 +192,9 @@ ProjectReady AI now supports email-and-PIN Project ID recovery without a paid em
 The Chapter Strengthener also supports chapters created outside ProjectReady AI. It automatically creates a recoverable revision-only project and uses a lower-cost revision-only purchase containing one strengthening revision, one compliance check and one DOCX export.
 
 See `PROJECT_RECOVERY_AND_REVISION_ONLY_UPDATE.md` for configuration and routes.
+
+## Flagship Student Upgrade, 15 August 2026
+
+ProjectReady now includes a Student Research Cockpit, deterministic Research Logic alignment monitoring, chapter version history and one-click compilation of saved chapters into an editable Project Working File DOCX. Full chapter draft development remains a primary workflow and has not been removed.
+
+See `FLAGSHIP_STUDENT_UPGRADE_2026-08-15.md` for the release details and validation results.
