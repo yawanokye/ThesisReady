@@ -13,6 +13,8 @@
   ]);
   const STORAGE_PREFIX = "projectready-entitlement:";
   const REGISTRATION_PROFILE_KEY = "projectready_registration_profile";
+  const COMPLIMENTARY_TOKEN_KEY = "projectready-complimentary-token-v1";
+  const COMPLIMENTARY_EMAIL_KEY = "projectready-complimentary-email-v1";
 
   const esc = (value) => String(value ?? "").replace(/[&<>"']/g, ch => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
@@ -178,13 +180,67 @@
     return null;
   }
 
+  function getComplimentaryCredential() {
+    try {
+      const token = String(localStorage.getItem(COMPLIMENTARY_TOKEN_KEY) || "").trim().toUpperCase();
+      const email = String(localStorage.getItem(COMPLIMENTARY_EMAIL_KEY) || "").trim().toLowerCase();
+      return token ? {token, email} : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function saveComplimentaryCredential(token, email = "") {
+    const cleanToken = String(token || "").trim().toUpperCase();
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    if (!cleanToken) {
+      try { localStorage.removeItem(COMPLIMENTARY_TOKEN_KEY); } catch (_) {}
+      try { localStorage.removeItem(COMPLIMENTARY_EMAIL_KEY); } catch (_) {}
+      return null;
+    }
+    try { localStorage.setItem(COMPLIMENTARY_TOKEN_KEY, cleanToken); } catch (_) {}
+    try {
+      if (cleanEmail) localStorage.setItem(COMPLIMENTARY_EMAIL_KEY, cleanEmail);
+      else localStorage.removeItem(COMPLIMENTARY_EMAIL_KEY);
+    } catch (_) {}
+    return {token: cleanToken, email: cleanEmail};
+  }
+
+  function clearComplimentaryCredential() {
+    saveComplimentaryCredential("", "");
+  }
+
   function paymentHeaders(projectId, chapterNumber, productArea = "") {
+    const headers = {};
     const credential = getCredential(projectId, chapterNumber, productArea);
-    if (!credential) return {};
-    return {
-      "X-ProjectReady-Purchase-ID": credential.purchase_id,
-      "X-ProjectReady-Access-Token": credential.access_token
-    };
+    if (credential) {
+      headers["X-ProjectReady-Purchase-ID"] = credential.purchase_id;
+      headers["X-ProjectReady-Access-Token"] = credential.access_token;
+    }
+    const complimentary = getComplimentaryCredential();
+    if (complimentary?.token) {
+      headers["X-ProjectReady-Complimentary-Token"] = complimentary.token;
+      if (complimentary.email) headers["X-ProjectReady-Complimentary-Email"] = complimentary.email;
+    }
+    return headers;
+  }
+
+  async function accessStatus(productArea = "all") {
+    const response = await fetch(`/api/access/status?product_area=${encodeURIComponent(productArea || "all")}`, {cache:"no-store"});
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || data.message || "Access status could not be loaded.");
+    return data;
+  }
+
+  async function complimentaryStatus(productArea = "all") {
+    const complimentary = getComplimentaryCredential();
+    if (!complimentary?.token) return {ok:false, allowed:false, reason:"not_stored"};
+    const headers = {"X-ProjectReady-Complimentary-Token": complimentary.token};
+    if (complimentary.email) headers["X-ProjectReady-Complimentary-Email"] = complimentary.email;
+    const response = await fetch(`/api/access/complimentary/status?product_area=${encodeURIComponent(productArea || "all")}`, {headers, cache:"no-store"});
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return {ok:false, allowed:false, detail:data.detail || data.message || "Complimentary access is unavailable."};
+    return data;
   }
 
   function syncBodyModalState() {
@@ -490,7 +546,12 @@
     hasRegistrationProfile,
     readRegistrationProfile,
     registrationUrl,
-    isInternalCredential
+    isInternalCredential,
+    getComplimentaryCredential,
+    saveComplimentaryCredential,
+    clearComplimentaryCredential,
+    complimentaryStatus,
+    accessStatus
   };
   document.addEventListener("DOMContentLoaded", bindCheckoutButtons);
 })();

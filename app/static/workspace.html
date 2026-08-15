@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/static/projectready-suite.css?v=20260710-nav-tabs-v1" />
   <link rel="stylesheet" href="/static/projectready_payments.css?v=20260709-live-payments-v2" />
   <link rel="stylesheet" href="/static/user_guide_shared.css?v=20260719-user-guide-v1" />
+  <link rel="stylesheet" href="/static/guided-workspace.css?v=20260815-guided-flow-v1" />
 </head>
 <body class="workspace-clarity-theme suite-page thesis-suite" data-guide-module="thesis-workspace">
   <header class="workspace-topbar">
@@ -31,8 +32,8 @@
   <header class="hero">
     <div>
       <p class="eyebrow">ProjectReady AI Workspace</p>
-      <h1>Develop thesis, dissertation and project working drafts with your own evidence, sources and academic judgement</h1>
-      <p class="lead">Use this guided workspace to organise your research inputs, develop editable chapter working drafts, strengthen existing writing, attach sources, upload results, review compliance and export material for further student and supervisor revision.</p><div class="suite-capability-strip"><span class="suite-pill">User-controlled development</span><span class="suite-pill green">Source finder</span><span class="suite-pill amber">Retracted source exclusion</span><span class="suite-pill purple">Editable working-draft export</span></div>
+      <h1>Develop your chapter in one guided workspace</h1>
+      <p class="lead">Complete the chapter-generation form in the main panel. The research journey on the left shows where you are, what is complete and what remains.</p><div class="suite-capability-strip"><span class="suite-pill">User-controlled development</span><span class="suite-pill green">Source finder</span><span class="suite-pill amber">Retracted source exclusion</span><span class="suite-pill purple">Editable working-draft export</span></div>
     </div>
   </header>
 
@@ -58,6 +59,37 @@
     <div><strong>6</strong><span>Review & export</span></div>
   </section>
 
+  <div class="guided-workspace-frame workspace-guided-frame">
+    <aside class="research-flow-sidebar" id="workspaceFlowSidebar" aria-label="Research journey">
+      <div class="flow-sidebar-head">
+        <p class="eyebrow">Your research journey</p>
+        <h2>Chapter development</h2>
+        <p id="workspaceFlowSummary" class="flow-summary">Complete the project profile to begin.</p>
+      </div>
+      <nav class="flow-step-list" id="workspaceFlowSteps">
+        <a class="flow-step current" data-flow-step="project" href="#projectSetupStep"><span class="flow-step-marker">1</span><span><strong>Project profile</strong><small>Title, level, research logic</small></span></a>
+        <a class="flow-step" data-flow-step="chapter" href="#chapterSelectionStep"><span class="flow-step-marker">2</span><span><strong>Choose chapter</strong><small>Chapter and sections</small></span></a>
+        <a class="flow-step" data-flow-step="details" href="#chapterDetailsStep"><span class="flow-step-marker">3</span><span><strong>Chapter details</strong><small>Your study-specific inputs</small></span></a>
+        <a class="flow-step" data-flow-step="evidence" href="#generationStep"><span class="flow-step-marker">4</span><span><strong>Evidence & alignment</strong><small>Optional sources, prior work, results</small></span></a>
+        <a class="flow-step" data-flow-step="access" href="#workspaceAccessCard"><span class="flow-step-marker">5</span><span><strong>Access</strong><small>Free, paid, open or complimentary</small></span></a>
+        <a class="flow-step" data-flow-step="generate" href="#draftBtn"><span class="flow-step-marker">6</span><span><strong>Develop chapter</strong><small>Generate the working draft</small></span></a>
+        <a class="flow-step" data-flow-step="review" href="#reviewStep"><span class="flow-step-marker">7</span><span><strong>Review & export</strong><small>Compliance and DOCX</small></span></a>
+      </nav>
+      <div class="flow-access-card" id="workspaceAccessCard">
+        <div class="flow-access-heading"><strong>Access status</strong><span id="workspaceAccessModeBadge" class="access-mode-badge">Checking…</span></div>
+        <p id="workspaceAccessModeText" class="flow-mini-text">Checking the current access mode.</p>
+        <button id="workspaceUnlockBtn" type="button" class="flow-access-primary" hidden>Unlock chapter access</button>
+        <details class="complimentary-entry" id="workspaceComplimentaryDetails">
+          <summary>Use complimentary token</summary>
+          <label>Token<input id="workspaceComplimentaryToken" autocomplete="off" placeholder="PRAI-COMP-…" /></label>
+          <label>Email, if assigned<input id="workspaceComplimentaryEmail" type="email" autocomplete="email" /></label>
+          <div class="flow-token-actions"><button id="applyWorkspaceComplimentaryBtn" type="button">Apply</button><button id="clearWorkspaceComplimentaryBtn" type="button" class="secondary-action">Clear</button></div>
+          <p id="workspaceComplimentaryStatus" class="flow-mini-text"></p>
+        </details>
+      </div>
+      <div class="flow-sidebar-links"><a href="/chapter-strengthener">Strengthen existing chapter</a><a href="/user-guide#thesis-workspace">Workspace guide</a></div>
+    </aside>
+    <div class="guided-workspace-main">
   <section id="researchCockpit" class="research-cockpit" hidden aria-live="polite">
     <div class="cockpit-head">
       <div>
@@ -103,8 +135,13 @@
     </details>
   </section>
 
-  <main class="layout">
-    <section class="card">
+  <section class="standalone-form-intro">
+      <p class="eyebrow">Standalone chapter generation form</p>
+      <h2>Complete this form, then develop your chapter</h2>
+      <p>Only the main research information is shown by default. Optional evidence, style, recovery and alignment tools stay collapsed until you need them.</p>
+    </section>
+  <main class="layout generation-form-layout">
+    <section class="card" id="projectSetupStep">
       <div class="row-between workspace-section-heading">
         <div>
           <h2>1. Set up your research project</h2>
@@ -396,7 +433,7 @@
       <p id="planNotice" class="status plan-notice" hidden></p>
     </section>
 
-    <section class="card">
+    <section class="card" id="chapterSelectionStep">
       <h2>2. Select chapter and sections</h2>
       <label class="priority-field"><span class="field-label">Chapter</span>
         <select id="chapterSelect"></select>
@@ -414,15 +451,15 @@
       <div id="sectionsBox" class="sections"></div>
     </section>
 
-    <section class="card wide">
+    <section class="card wide" id="chapterDetailsStep">
       <h2>3. Add your chapter-specific research details</h2>
       <p class="hint">Answer the selected section prompts using your own study decisions, evidence and notes. The app develops the working draft from these details. Leave unknown facts blank so the system can mark them for action rather than inventing them.</p>
       <div id="answersBox"></div>
     </section>
 
-    <section class="card wide">
+    <section class="card wide" id="generationStep">
       <div class="row-between">
-        <h2>4. Develop, review and check</h2>
+        <h2>4. Evidence, access and chapter development</h2>
         <input type="checkbox" id="useAi" checked hidden />
       </div>
 
@@ -512,7 +549,7 @@
           <button id="accessDismissBtn" type="button" class="pr-dismiss-access">Not now</button>
         </div>
       </div>
-      <div class="action-callout">Free Starter covers one limited Chapter One working draft with up to five selected sections. Paid access includes one guided working-draft development, one strengthening revision, one compliance review and one editable DOCX export.</div>
+      <div class="action-callout">Access is checked when you develop the chapter. The sidebar shows whether normal commercial, temporary open, payment-required or complimentary access is active.</div>
       <div class="actions">
         <button id="draftBtn" class="primary-action">Develop Chapter Draft</button>
         <button id="checkBtn" class="secondary-action">Run academic compliance review</button>
@@ -533,8 +570,8 @@
       <pre id="draftPreview" class="draft-preview"></pre>
     </section>
 
-    <section class="card wide">
-      <h2>5. Compliance report</h2>
+    <section class="card wide" id="reviewStep">
+      <h2>5. Review and compliance</h2>
       <div id="scoreBox" class="score"></div>
       <div class="table-wrap">
         <table id="checkTable">
@@ -552,8 +589,10 @@
       </div>
     </section>
   </main>
-  <script src="/static/projectready_payments.js?v=20260714-commercial-v1"></script>
-  <script src="/static/app.js?v=20260718-workspace-clear-visible-v2"></script>
+    </div>
+  </div>
+  <script src="/static/projectready_payments.js?v=20260815-complimentary-v2"></script>
+  <script src="/static/app.js?v=20260815-guided-flow-v2"></script>
   <script src="/static/guide_banner.js?v=20260719-user-guide-v1"></script>
 </body>
 </html>

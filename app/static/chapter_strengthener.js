@@ -21,6 +21,114 @@ const PROJECT_STORAGE_KEY = 'projectready-current-project';
 const STRENGTHENER_NEW_JOB_PARAM = 'new_job';
 
 
+let strengthenerAccessState = null;
+let strengthenerComplimentaryState = null;
+let lastStrengthenerTarget = null;
+
+function setStrengthenerFlowStep(name, complete, current) {
+  const node = document.querySelector(`#strengthenerFlowSteps [data-flow-step="${name}"]`);
+  if (!node) return;
+  node.classList.toggle('complete', Boolean(complete));
+  node.classList.toggle('current', Boolean(current));
+}
+
+function strengthenerHasPaidCredential() {
+  return Boolean(window.ProjectReadyPayments?.getCredential?.(projectId(), chapterNumber(), 'chapter_strengthener'));
+}
+
+function updateStrengthenerFlow() {
+  const sourceMode = selectedSourceMode();
+  const sourceReady = sourceMode === 'external' || Boolean(projectId());
+  const chapterReady = Boolean(byId('thesisTitle')?.value.trim() && chapterText?.value.trim().length >= 100);
+  const chapterNo = chapterNumber();
+  const logicSignals = [byId('objectives')?.value, byId('researchQuestions')?.value, byId('methodology')?.value, byId('theoryFramework')?.value].filter(Boolean).join(' ').trim();
+  const logicReady = chapterReady && logicSignals.length >= 20 && (chapterNo !== 4 || byId('dataResults')?.value.trim().length >= 20);
+  const directionReady = logicReady && Boolean(byId('revisionLevel')?.value);
+  const supportReady = directionReady; // optional by design
+  const accessReady = Boolean(
+    strengthenerAccessState?.temporary_open ||
+    strengthenerComplimentaryState?.allowed ||
+    strengthenerHasPaidCredential()
+  );
+  const reviewed = Boolean(revisedChapter?.value.trim());
+  const states = [
+    ['source', sourceReady], ['chapter', chapterReady], ['logic', logicReady], ['direction', directionReady],
+    ['support', supportReady], ['access', accessReady], ['review', reviewed]
+  ];
+  const firstIncomplete = states.find(([_, complete]) => !complete)?.[0] || 'review';
+  states.forEach(([name, complete]) => setStrengthenerFlowStep(name, complete, name === firstIncomplete));
+  const count = states.filter(([_, complete]) => complete).length;
+  const labels = {source:'Choose or connect the chapter source.',chapter:'Add the chapter text and scope.',logic:'Complete the research logic needed for this chapter.',direction:'Choose the strengthening direction.',support:'Add optional supervisor comments or source support if needed.',access:'Confirm strengthening access.',review:'Strengthen, review and export the working revision.'};
+  if (byId('strengthenerFlowSummary')) byId('strengthenerFlowSummary').textContent = count === states.length ? 'Strengthening workflow complete.' : `${count} of ${states.length} steps complete. ${labels[firstIncomplete] || ''}`;
+}
+
+function renderStrengthenerAccessStatus() {
+  const badge = byId('strengthenerAccessModeBadge');
+  const text = byId('strengthenerAccessModeText');
+  if (!badge || !text) return;
+  badge.className = 'access-mode-badge';
+  if (strengthenerComplimentaryState?.allowed) {
+    badge.classList.add('complimentary');
+    badge.textContent = 'Complimentary';
+    text.textContent = `${strengthenerComplimentaryState.pages_remaining} of ${strengthenerComplimentaryState.page_limit} page credits remain. Strengthening reserves the selected maximum page target.`;
+  } else if (strengthenerAccessState?.temporary_open) {
+    badge.classList.add('open');
+    badge.textContent = 'Open access';
+    const expiry = strengthenerAccessState.open_until ? new Date(strengthenerAccessState.open_until).toLocaleString() : 'the developer closes it';
+    text.textContent = `Temporary open access is active until ${expiry}. Strengthening payment is bypassed during this window.`;
+  } else if (strengthenerAccessState?.payment_required) {
+    badge.classList.add('locked');
+    badge.textContent = 'Payment required';
+    text.textContent = strengthenerHasPaidCredential() ? 'Paid strengthening access is stored on this device.' : 'Paid, authorised internal or complimentary access is required.';
+  } else {
+    badge.textContent = strengthenerHasPaidCredential() ? 'Paid' : 'Commercial';
+    text.textContent = strengthenerHasPaidCredential() ? 'Paid strengthening access is stored on this device.' : 'Normal commercial access is active. Unlock the chapter or apply a complimentary token before strengthening.';
+  }
+  updateStrengthenerFlow();
+}
+
+async function refreshStrengthenerAccessStatus() {
+  if (!window.ProjectReadyPayments) return;
+  try { strengthenerAccessState = await ProjectReadyPayments.accessStatus('chapter_strengthener'); }
+  catch (_) { strengthenerAccessState = {mode:'commercial'}; }
+  const stored = ProjectReadyPayments.getComplimentaryCredential?.();
+  if (byId('strengthenerComplimentaryToken') && stored?.token && !byId('strengthenerComplimentaryToken').value) byId('strengthenerComplimentaryToken').value = stored.token;
+  if (byId('strengthenerComplimentaryEmail') && stored?.email && !byId('strengthenerComplimentaryEmail').value) byId('strengthenerComplimentaryEmail').value = stored.email;
+  if (stored?.token) {
+    try { strengthenerComplimentaryState = await ProjectReadyPayments.complimentaryStatus('chapter_strengthener'); }
+    catch (_) { strengthenerComplimentaryState = null; }
+  } else strengthenerComplimentaryState = null;
+  const status = byId('strengthenerComplimentaryStatus');
+  if (status) {
+    if (strengthenerComplimentaryState?.allowed) status.textContent = `${strengthenerComplimentaryState.label || 'Complimentary access'}: ${strengthenerComplimentaryState.pages_remaining} page credit(s) remaining, expires ${new Date(strengthenerComplimentaryState.expires_at).toLocaleDateString()}. The maximum strengthening page target must fit within this balance.`;
+    else if (stored?.token) status.textContent = strengthenerComplimentaryState?.detail || 'This saved complimentary token is not valid for Chapter Strengthener.';
+    else status.textContent = '';
+  }
+  renderStrengthenerAccessStatus();
+}
+
+async function applyStrengthenerComplimentaryAccess() {
+  const token = byId('strengthenerComplimentaryToken')?.value.trim() || '';
+  const email = byId('strengthenerComplimentaryEmail')?.value.trim() || '';
+  if (!token) {
+    if (byId('strengthenerComplimentaryStatus')) byId('strengthenerComplimentaryStatus').textContent = 'Enter the complimentary token first.';
+    return;
+  }
+  ProjectReadyPayments.saveComplimentaryCredential(token, email);
+  await refreshStrengthenerAccessStatus();
+  if (!strengthenerComplimentaryState?.allowed && byId('strengthenerComplimentaryDetails')) byId('strengthenerComplimentaryDetails').open = true;
+}
+
+async function clearStrengthenerComplimentaryAccess() {
+  ProjectReadyPayments.clearComplimentaryCredential();
+  strengthenerComplimentaryState = null;
+  if (byId('strengthenerComplimentaryToken')) byId('strengthenerComplimentaryToken').value = '';
+  if (byId('strengthenerComplimentaryEmail')) byId('strengthenerComplimentaryEmail').value = '';
+  if (byId('strengthenerComplimentaryStatus')) byId('strengthenerComplimentaryStatus').textContent = 'Complimentary token cleared from this device.';
+  await refreshStrengthenerAccessStatus();
+}
+
+
 function strengthenerPagePath() {
   const internalPath = window.ProjectReadyInternalPortal?.modulePath;
   if (internalPath) return String(internalPath).replace(/\/$/, '');
@@ -127,6 +235,7 @@ function setSourceMode(mode) {
   byId('existingProjectPanel').hidden = target !== 'existing';
   byId('externalProjectPanel').hidden = target !== 'external';
   updateAccessSummary();
+  updateStrengthenerFlow();
 }
 
 document.querySelectorAll('input[name="chapterSource"]').forEach((radio) => {
@@ -287,12 +396,14 @@ async function updateTargetNote() {
     });
     const data = await response.json();
     if (!response.ok) return;
+    lastStrengthenerTarget = data;
     const scopeLabel = data.strengthening_scope === 'selected_sections' ? 'selected-section output' : 'complete selected chapter';
     targetNote.textContent = `Planning target for the ${scopeLabel}: ${data.page_range.minimum}-${data.page_range.maximum} pages, approximately ${Number(data.word_range_estimate.minimum).toLocaleString()}-${Number(data.word_range_estimate.maximum).toLocaleString()} words, and ${data.citation_density_per_1000_words.minimum}-${data.citation_density_per_1000_words.maximum} citation occurrences per 1,000 words.${data.custom_target_applied ? ' Custom page target applied.' : ''}`;
     if (!byId('customTargetPagesEnabled')?.checked) {
       if (byId('targetPageMin')) byId('targetPageMin').placeholder = String(data.page_range.minimum);
       if (byId('targetPageMax')) byId('targetPageMax').placeholder = String(data.page_range.maximum);
     }
+    updateStrengthenerFlow();
   } catch (_error) {
     targetNote.textContent = 'Planning target unavailable.';
   }
@@ -563,6 +674,15 @@ async function createExternalRevisionProject(payload) {
 async function updateAccessSummary() {
   const box = byId('chapterAccessSummary');
   await Promise.resolve(window.ProjectReadySessionBootstrap?.ready).catch(() => null);
+  await refreshStrengthenerAccessStatus().catch(() => {});
+  if (strengthenerComplimentaryState?.allowed) {
+    box.textContent = `Complimentary access is active with ${strengthenerComplimentaryState.pages_remaining} page credit(s) remaining. The selected maximum page target must fit within this balance.`;
+    return;
+  }
+  if (strengthenerAccessState?.temporary_open) {
+    box.textContent = 'Temporary open access is active. No strengthening payment will be required during the developer-defined access window.';
+    return;
+  }
   if (!projectId()) {
     box.textContent = selectedSourceMode() === 'external'
       ? 'Complete the chapter details and click Strengthen chapter. The app will create a recoverable revision-only project before checkout.'
@@ -575,10 +695,15 @@ async function updateAccessSummary() {
     return;
   }
   if (!credential) {
+    if (strengthenerAccessState?.payment_required) {
+      box.textContent = 'Payment Required mode is active. Use paid access, authorised internal access or a valid complimentary token before strengthening.';
+    }
     const label = isRevisionOnlyProject() ? 'Unlock revision-only access' : 'Unlock chapter';
-    const explanation = isRevisionOnlyProject()
-      ? 'This external chapter uses a revision-only plan with one strengthening revision, one compliance check and one DOCX export.'
-      : 'Chapter strengthening uses the revision included with a paid chapter.';
+    const explanation = strengthenerAccessState?.payment_required
+      ? 'Payment Required mode is active. Use paid access, authorised internal access or a valid complimentary token before strengthening.'
+      : (isRevisionOnlyProject()
+        ? 'This external chapter uses a revision-only plan with one strengthening revision, one compliance check and one DOCX export.'
+        : 'Chapter strengthening uses the revision included with a paid chapter.');
     box.innerHTML = `${explanation} <button type="button" id="unlockStrengthenerChapter">${label}</button>`;
     byId('unlockStrengthenerChapter')?.addEventListener('click', () => ProjectReadyPayments.openAccessGate(accessOptions(), { message: explanation }));
     return;
@@ -738,6 +863,7 @@ function applyStrengthenerResult(data) {
     ? `Revision completed with ${errors.length} provider warning(s). Review the report and action items.`
     : `Working revision completed.${saveMessage} Review the working revision, report, sources, facts and all action items before export or academic use.`);
   updateAccessSummary();
+  updateStrengthenerFlow();
 }
 
 async function resumeStrengthenerJobIfAvailable() {
@@ -874,12 +1000,21 @@ async function initialiseStrengthener() {
     return;
   }
   await loadProject();
+  await refreshStrengthenerAccessStatus();
+  updateStrengthenerFlow();
   await resumeStrengthenerJobIfAvailable();
 }
 
 window.addEventListener('projectready:session-ready', () => {
   updateAccessSummary().catch(() => {});
+  refreshStrengthenerAccessStatus().catch(() => {});
 });
+
+
+byId('applyStrengthenerComplimentaryBtn')?.addEventListener('click', () => applyStrengthenerComplimentaryAccess().then(updateAccessSummary).catch((error) => { if (byId('strengthenerComplimentaryStatus')) byId('strengthenerComplimentaryStatus').textContent = error.message || 'Token could not be applied.'; }));
+byId('clearStrengthenerComplimentaryBtn')?.addEventListener('click', () => clearStrengthenerComplimentaryAccess().then(updateAccessSummary).catch(() => {}));
+document.addEventListener('input', (event) => { if (event.target?.closest?.('.strengthener-guided-frame')) updateStrengthenerFlow(); });
+document.addEventListener('change', (event) => { if (event.target?.closest?.('.strengthener-guided-frame')) { updateStrengthenerFlow(); refreshStrengthenerAccessStatus().catch(() => {}); } });
 
 initialiseStrengthener().catch((error) => message(error.message || 'The Chapter Strengthener could not be initialised.', 'error'));
 

@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/static/chapter_strengthener.css?v=20260718-all-clear-trend-v1">
   <link rel="stylesheet" href="/static/projectready_payments.css?v=20260709-live-payments-v1">
   <link rel="stylesheet" href="/static/user_guide_shared.css?v=20260719-user-guide-v1">
+  <link rel="stylesheet" href="/static/guided-workspace.css?v=20260815-guided-flow-v2">
 </head>
 <body class="chapter-strengthener-page" data-guide-module="chapter-strengthener">
   <header class="topbar">
@@ -27,8 +28,8 @@
     <section class="hero">
       <div class="hero-copy">
         <p class="eyebrow">Integrated thesis and dissertation revision</p>
-        <h1>Strengthen an existing chapter without changing the approved study.</h1>
-        <p class="lead">Improve structure, depth, evidence integration, citation density, method fit, discussion and recommendations while preserving confirmed facts, results and valid citations. Very long doctoral chapters are strengthened in staged section logic so depth is not lost.</p>
+        <h1>Strengthen your chapter in one guided form.</h1>
+        <p class="lead">Complete the strengthening form in the main panel. The journey on the left shows what is complete, what remains and how the chapter will be revised without changing your approved study.</p>
       </div>
       <aside class="hero-note">
         <h2>Evidence-preserving revision</h2>
@@ -42,7 +43,43 @@
       <div class="guide-help-actions"><a href="/user-guide#chapter-strengthener">Read Strengthener guide</a><a href="/user-guide#video">Watch walkthrough</a><a href="/static/guides/projectready-ai-annotated-user-guide.pdf" target="_blank" rel="noopener">Open PDF</a></div>
     </section>
 
-    <section class="card project-link-card">
+    <div class="strengthener-guided-frame">
+      <aside class="research-flow-sidebar" id="strengthenerFlowSidebar" aria-label="Chapter strengthening journey">
+        <div class="flow-sidebar-head">
+          <p class="eyebrow">Your strengthening journey</p>
+          <h2>Chapter Strengthener</h2>
+          <p id="strengthenerFlowSummary" class="flow-summary">Connect or upload a chapter to begin.</p>
+        </div>
+        <nav class="flow-step-list" id="strengthenerFlowSteps">
+          <a class="flow-step current" data-flow-step="source" href="#strengthenerSourceStep"><span class="flow-step-marker">1</span><span><strong>Chapter source</strong><small>Connect or bring your own</small></span></a>
+          <a class="flow-step" data-flow-step="chapter" href="#revisionForm"><span class="flow-step-marker">2</span><span><strong>Chapter & scope</strong><small>Text, sections and page target</small></span></a>
+          <a class="flow-step" data-flow-step="logic" href="#objectives"><span class="flow-step-marker">3</span><span><strong>Research logic</strong><small>Objectives, methods and findings</small></span></a>
+          <a class="flow-step" data-flow-step="direction" href="#revisionLevel"><span class="flow-step-marker">4</span><span><strong>Strengthening direction</strong><small>Depth and revision focus</small></span></a>
+          <a class="flow-step" data-flow-step="support" href="#strengthenerOptionalSupport"><span class="flow-step-marker">5</span><span><strong>Optional support</strong><small>Supervisor comments and sources</small></span></a>
+          <a class="flow-step" data-flow-step="access" href="#strengthenerAccessCard"><span class="flow-step-marker">6</span><span><strong>Access & strengthen</strong><small>Paid, open or complimentary</small></span></a>
+          <a class="flow-step" data-flow-step="review" href="#revisedChapter"><span class="flow-step-marker">7</span><span><strong>Review & export</strong><small>Working revision and report</small></span></a>
+        </nav>
+        <div class="flow-access-card" id="strengthenerAccessCard">
+          <div class="flow-access-heading"><strong>Access status</strong><span id="strengthenerAccessModeBadge" class="access-mode-badge">Checking…</span></div>
+          <p id="strengthenerAccessModeText" class="flow-mini-text">Checking the current access mode.</p>
+          <details class="complimentary-entry" id="strengthenerComplimentaryDetails">
+            <summary>Use complimentary token</summary>
+            <label>Token<input id="strengthenerComplimentaryToken" autocomplete="off" placeholder="PRAI-COMP-…"></label>
+            <label>Email, if assigned<input id="strengthenerComplimentaryEmail" type="email" autocomplete="email"></label>
+            <div class="flow-token-actions"><button id="applyStrengthenerComplimentaryBtn" type="button">Apply</button><button id="clearStrengthenerComplimentaryBtn" type="button" class="secondary">Clear</button></div>
+            <p id="strengthenerComplimentaryStatus" class="flow-mini-text"></p>
+          </details>
+        </div>
+        <div class="flow-sidebar-links"><a href="/workspace">Develop a chapter</a><a href="/user-guide#chapter-strengthener">Strengthener guide</a></div>
+      </aside>
+      <div class="strengthener-guided-main">
+        <section class="standalone-form-intro">
+          <p class="eyebrow">Standalone chapter strengthening form</p>
+          <h2>Complete the form, then strengthen your chapter</h2>
+          <p>The main form contains the revision inputs. Supervisor comments and literature support are optional and stay collapsed until you need them.</p>
+        </section>
+
+    <section class="card project-link-card" id="strengthenerSourceStep">
       <div>
         <p class="eyebrow">Choose the chapter source</p>
         <h2>Strengthen a ProjectReady chapter or bring your own chapter</h2>
@@ -86,7 +123,8 @@
 
     <section class="grid-two revision-layout">
       <form id="revisionForm" class="card form-card" autocomplete="off">
-        <h2>1. Existing chapter</h2>
+        <div class="form-section-marker" id="strengthenerChapterStep">
+        <h2>1. Chapter and strengthening scope</h2>
         <label><span class="field-label">Thesis or dissertation title *</span><input id="thesisTitle" required placeholder="Approved study title"></label>
         <div class="two-cols">
           <label><span class="field-label">Academic level</span>
@@ -139,14 +177,10 @@
           <p class="help">The page target applies to the complete selected chapter or to the selected-section output, according to the scope chosen above.</p>
         </div>
 
-        <div class="section-scope-panel">
-          <div class="section-scope-head">
-            <div>
-              <h3>Optional section-level strengthening</h3>
-              <p class="help">Choose sections already present to strengthen, or mark standard sections to add if missing. Use selected-sections mode when you want only these sections returned.</p>
-            </div>
-            <span id="sectionSelectionCount" class="section-count-badge">0 selected</span>
-          </div>
+        <details class="secondary-options section-scope-panel" id="strengthenerSectionOptions">
+          <summary><strong>Optional section-level strengthening</strong><span id="sectionSelectionCount" class="section-count-badge">0 selected</span></summary>
+          <div class="secondary-options-body">
+            <p class="help">Choose sections already present to strengthen, or mark standard sections to add if missing. Use selected-sections mode when you want only these sections returned.</p>
           <div class="section-action-legend" aria-hidden="true"><span>Section</span><span>Strengthen existing</span><span>Add if missing</span></div>
           <div id="strengthenerSectionsBox" class="strengthener-sections"></div>
           <div class="custom-section-builder">
@@ -158,22 +192,27 @@
             <button type="button" id="addCustomNewSectionBtn" class="secondary compact-upload">Add new section</button>
             <div id="customNewSectionsList" class="custom-section-list"></div>
           </div>
-        </div>
+          </div>
+        </details>
 
         <label><span class="field-label">Upload chapter or complete thesis</span><input id="chapterFile" type="file" accept=".docx,.pdf,.txt,.md,.rtf,.json"></label>
         <button type="button" class="secondary compact-upload" id="extractChapterBtn">Extract chapter text</button>
         <label class="priority"><span class="field-label">Existing chapter text *</span><textarea id="chapterText" rows="18" required placeholder="Paste the selected chapter, or extract a complete thesis and choose “A complete thesis or dissertation” above."></textarea></label>
         <p id="uploadStatus" class="status"></p>
 
-        <div class="alignment-box upload-box">
-          <h3>Previous chapters or complete work for alignment</h3>
+        <details class="secondary-options alignment-box upload-box" id="strengthenerAlignmentOptions">
+          <summary><strong>Previous chapters or complete work for alignment</strong><span>Recommended from Chapter Two onward</span></summary>
+          <div class="secondary-options-body">
           <p class="help">For Chapter Two and later, add earlier chapters or the full existing work so the strengthening checks the problem, objectives, questions, hypotheses, theory, variables, methods and terminology against the rest of the thesis.</p>
           <label><span class="field-label">Upload previous chapter or complete work</span><input id="alignmentFile" type="file" accept=".docx,.pdf,.txt,.md,.rtf,.json"></label>
           <button type="button" class="secondary compact-upload" id="extractAlignmentBtn">Extract alignment text</button>
           <label><span class="field-label">Previous chapters / complete work alignment text</span><textarea id="previousChaptersContext" rows="8" placeholder="Paste or extract earlier chapters, approved Chapter One, full thesis text, or supervisor-approved alignment notes. This is used only for consistency checks and is not copied into the revised chapter."></textarea></label>
+          </div>
+        </details>
+
         </div>
 
-
+        <div class="form-section-marker" id="strengthenerLogicStep">
         <h2>2. Project and research logic</h2>
         <div class="two-cols">
           <label><span class="field-label">Discipline or programme</span><input id="discipline" placeholder="e.g. Finance, Education, Procurement"></label>
@@ -200,6 +239,9 @@
         </div>
         <label><span class="field-label">Citation style</span><select id="citationStyle"><option>APA 7th</option><option>Harvard</option><option>Chicago author-date</option><option>Vancouver</option><option>IEEE</option><option>School-specific style</option></select></label>
 
+        </div>
+
+        <div class="form-section-marker" id="strengthenerDirectionStep">
         <h2>3. Strengthening direction</h2>
         <label><span class="field-label">Revision level</span><select id="revisionLevel"><option>Language and clarity polish</option><option>Substantive scholarly strengthening</option><option selected>Comprehensive chapter strengthening</option></select></label>
         <label><span class="field-label">Scholarly humanizer depth</span>
@@ -228,6 +270,11 @@
           <label class="check"><input type="checkbox" id="improveLanguage" checked> Improve academic language, flow and paragraph development</label>
         </div>
 
+        </div>
+
+        <details class="secondary-options" id="strengthenerOptionalSupport">
+          <summary><strong>Optional supervisor comments and literature support</strong><span>Add these only when needed</span></summary>
+          <div class="secondary-options-body">
         <h2>4. Supervisor comments</h2>
         <label><span class="field-label">Upload supervisor comments</span><input id="commentsFile" type="file" accept=".docx,.pdf,.txt,.md,.rtf,.json"></label>
         <button type="button" class="secondary compact-upload" id="extractCommentsBtn">Extract supervisor comments</button>
@@ -240,6 +287,10 @@
         <label class="check"><input type="checkbox" id="includeOlderFoundational" checked> Include relevant foundational literature</label>
         <label class="check"><input type="checkbox" id="saveToProject" checked> Save the strengthened version as the current project chapter draft</label>
 
+          </div>
+        </details>
+
+        <div class="form-section-marker" id="strengthenerSubmitStep">
         <div class="academic-integrity-panel">
           <h3>Academic integrity and author responsibility</h3>
           <label class="check"><input type="checkbox" id="strengthenerIntegrityDeclaration"> I confirm that this chapter forms part of my own authorised academic work and is not being submitted for another person.</label>
@@ -258,9 +309,10 @@
           <p id="strengthenerJobMessage" class="help">Your chapter-strengthening request is waiting for a background worker.</p>
           <button type="button" id="cancelStrengthenerJobBtn" class="secondary compact-upload" hidden>Cancel queued request</button>
         </div>
+        </div>
       </form>
 
-      <section class="card output-stack revision-output-panel">
+      <section class="card output-stack revision-output-panel" id="strengthenerReviewStep">
         <div>
           <div class="result-head">
             <div><h2>Strengthened chapter or selected sections</h2><p class="help">The output follows the scope selected on the form. Review every factual, methodological and citation change. This remains an editable working revision and is not submission-ready.</p></div>
@@ -281,11 +333,13 @@
         </div>
       </section>
     </section>
+      </div>
+    </div>
   </main>
 
   <footer class="footer">ProjectReady AI, self-service academic research support with user authorship, verification and supervisor review.</footer>
-  <script src="/static/projectready_payments.js?v=20260718-internal-access-v4"></script>
-  <script src="/static/chapter_strengthener.js?v=20260718-internal-access-v4"></script>
+  <script src="/static/projectready_payments.js?v=20260815-complimentary-v2"></script>
+  <script src="/static/chapter_strengthener.js?v=20260815-guided-flow-v2"></script>
   <script src="/static/guide_banner.js?v=20260719-user-guide-v1"></script>
 </body>
 </html>

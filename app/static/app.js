@@ -19,6 +19,131 @@ const CURRENT_PROJECT_STORAGE_KEY = "projectready-current-project";
 
 const WORKSPACE_NEW_JOB_PARAM = "new_job";
 
+
+let workspaceAccessState = null;
+let workspaceComplimentaryState = null;
+
+function workspaceDefaultMaxPages() {
+  const custom = currentPageTargetInput();
+  if (custom.mode === "custom" && custom.maximum) return Number(custom.maximum);
+  const level = $("level")?.value || "Bachelors";
+  const range = String(chapterPageTargets[level]?.[Number(currentChapter || 1)] || "");
+  const numbers = range.match(/\d+/g) || [];
+  return Number(numbers[numbers.length - 1] || 0);
+}
+
+function workspaceFreeStarterEligible() {
+  return Number(currentChapter || 1) === 1 && selectedSectionIds().length > 0 && selectedSectionIds().length <= 5 && !$("revisionMode")?.checked;
+}
+
+function workspaceHasPaidCredential() {
+  return Boolean(window.ProjectReadyPayments?.getCredential?.(currentProjectId, currentChapter));
+}
+
+function setWorkspaceFlowStep(name, complete, current) {
+  const node = document.querySelector(`#workspaceFlowSteps [data-flow-step="${name}"]`);
+  if (!node) return;
+  node.classList.toggle("complete", Boolean(complete));
+  node.classList.toggle("current", Boolean(current));
+}
+
+function updateWorkspaceFlow() {
+  const titleReady = Boolean($("title")?.value.trim());
+  const projectReady = Boolean(currentProjectId && titleReady);
+  const chapterReady = projectReady && selectedSectionIds().length > 0;
+  const answers = Array.from(document.querySelectorAll("#questionsBox textarea, #questionsBox input[type='text']"));
+  const detailsReady = chapterReady && (answers.length === 0 || answers.some(field => String(field.value || "").trim().length >= 3));
+  const evidenceOptionalReady = detailsReady;
+  const accessReady = Boolean(
+    workspaceAccessState?.temporary_open ||
+    workspaceComplimentaryState?.allowed ||
+    workspaceHasPaidCredential() ||
+    (workspaceAccessState?.free_starter_enabled && workspaceFreeStarterEligible())
+  );
+  const generated = Boolean($("draftOutput")?.value.trim() || savedProjectDrafts?.[String(currentChapter)] || savedProjectDrafts?.[currentChapter]);
+  const reviewed = Boolean($("scoreBox")?.textContent.trim() || $("downloadCheckBtn")?.disabled === false);
+  const states = [
+    ["project", projectReady], ["chapter", chapterReady], ["details", detailsReady],
+    ["evidence", evidenceOptionalReady], ["access", accessReady], ["generate", generated], ["review", reviewed]
+  ];
+  const firstIncomplete = states.find(([_, complete]) => !complete)?.[0] || "review";
+  states.forEach(([name, complete]) => setWorkspaceFlowStep(name, complete, name === firstIncomplete));
+  const completeCount = states.filter(([_, complete]) => complete).length;
+  if ($("workspaceFlowSummary")) {
+    const labels = {project:"Complete the project profile.",chapter:"Choose the chapter and sections.",details:"Add the chapter-specific details.",evidence:"Review evidence and alignment options.",access:"Confirm chapter access.",generate:"Develop the chapter working draft.",review:"Review, check and export the chapter."};
+    $("workspaceFlowSummary").textContent = completeCount === states.length ? "Chapter workflow complete. You can continue to the next chapter." : `${completeCount} of ${states.length} steps complete. ${labels[firstIncomplete] || "Continue below."}`;
+  }
+}
+
+function renderWorkspaceAccessStatus() {
+  const badge = $("workspaceAccessModeBadge");
+  const text = $("workspaceAccessModeText");
+  const unlock = $("workspaceUnlockBtn");
+  if (!badge || !text) return;
+  badge.className = "access-mode-badge";
+  if (unlock) unlock.hidden = true;
+  if (workspaceComplimentaryState?.allowed) {
+    badge.classList.add("complimentary");
+    badge.textContent = "Complimentary";
+    text.textContent = `${workspaceComplimentaryState.pages_remaining} of ${workspaceComplimentaryState.page_limit} page credits remain. Generation reserves the selected maximum page target.`;
+  } else if (workspaceAccessState?.temporary_open) {
+    badge.classList.add("open");
+    badge.textContent = "Open access";
+    const expiry = workspaceAccessState.open_until ? new Date(workspaceAccessState.open_until).toLocaleString() : "the developer closes it";
+    text.textContent = `Temporary open access is active until ${expiry}. Chapter payment is bypassed during this window.`;
+  } else if (workspaceAccessState?.payment_required) {
+    badge.classList.add("locked");
+    badge.textContent = "Payment required";
+    text.textContent = workspaceHasPaidCredential() ? "Paid chapter access is stored on this device." : "Free Starter is disabled. Use paid, authorised internal or complimentary access.";
+  } else {
+    badge.textContent = workspaceHasPaidCredential() ? "Paid" : "Commercial";
+    text.textContent = workspaceHasPaidCredential() ? "Paid chapter access is stored on this device." : "Normal access is active. Eligible Chapter One users may use the Free Starter, otherwise unlock the chapter or use a complimentary token.";
+  }
+  if (unlock && currentProjectId && !workspaceComplimentaryState?.allowed && !workspaceAccessState?.temporary_open && !workspaceHasPaidCredential() && !(workspaceAccessState?.free_starter_enabled && workspaceFreeStarterEligible())) unlock.hidden = false;
+  updateWorkspaceFlow();
+}
+
+async function refreshWorkspaceAccessStatus() {
+  if (!window.ProjectReadyPayments) return;
+  try { workspaceAccessState = await ProjectReadyPayments.accessStatus("thesis_workspace"); }
+  catch (_) { workspaceAccessState = {mode:"commercial",free_starter_enabled:true}; }
+  const stored = ProjectReadyPayments.getComplimentaryCredential?.();
+  if ($("workspaceComplimentaryToken") && stored?.token && !$("workspaceComplimentaryToken").value) $("workspaceComplimentaryToken").value = stored.token;
+  if ($("workspaceComplimentaryEmail") && stored?.email && !$("workspaceComplimentaryEmail").value) $("workspaceComplimentaryEmail").value = stored.email;
+  if (stored?.token) {
+    try { workspaceComplimentaryState = await ProjectReadyPayments.complimentaryStatus("thesis_workspace"); }
+    catch (_) { workspaceComplimentaryState = null; }
+  } else workspaceComplimentaryState = null;
+  const status = $("workspaceComplimentaryStatus");
+  if (status) {
+    if (workspaceComplimentaryState?.allowed) status.textContent = `${workspaceComplimentaryState.label || "Complimentary access"}: ${workspaceComplimentaryState.pages_remaining} page credit(s) remaining, expires ${new Date(workspaceComplimentaryState.expires_at).toLocaleDateString()}. Your selected maximum page target must fit within the remaining balance.`;
+    else if (stored?.token) status.textContent = workspaceComplimentaryState?.detail || "This saved complimentary token is not valid for Thesis Workspace.";
+    else status.textContent = "";
+  }
+  renderWorkspaceAccessStatus();
+}
+
+async function applyWorkspaceComplimentaryAccess() {
+  const token = $("workspaceComplimentaryToken")?.value.trim() || "";
+  const email = $("workspaceComplimentaryEmail")?.value.trim() || "";
+  if (!token) {
+    if ($("workspaceComplimentaryStatus")) $("workspaceComplimentaryStatus").textContent = "Enter the complimentary token first.";
+    return;
+  }
+  ProjectReadyPayments.saveComplimentaryCredential(token, email);
+  await refreshWorkspaceAccessStatus();
+  if (!workspaceComplimentaryState?.allowed && $("workspaceComplimentaryDetails")) $("workspaceComplimentaryDetails").open = true;
+}
+
+async function clearWorkspaceComplimentaryAccess() {
+  ProjectReadyPayments.clearComplimentaryCredential();
+  workspaceComplimentaryState = null;
+  if ($("workspaceComplimentaryToken")) $("workspaceComplimentaryToken").value = "";
+  if ($("workspaceComplimentaryEmail")) $("workspaceComplimentaryEmail").value = "";
+  if ($("workspaceComplimentaryStatus")) $("workspaceComplimentaryStatus").textContent = "Complimentary token cleared from this device.";
+  await refreshWorkspaceAccessStatus();
+}
+
 function ensureWorkspaceClearButton() {
   let button = $("clearWorkspaceBtn");
   if (button) {
@@ -353,6 +478,7 @@ async function protectedDownload(path, chapterNumber = currentChapter) {
 }
 
 async function updatePaymentPanel() {
+  await refreshWorkspaceAccessStatus().catch(() => {});
   const panel = $("chapterAccessPanel");
   const title = $("chapterPlanTitle");
   const status = $("chapterAccessStatus");
@@ -381,9 +507,23 @@ async function updatePaymentPanel() {
     }
   } catch (_) {}
   button.disabled = !currentProjectId;
+  button.hidden = false;
 
   if (!currentProjectId) {
-    status.textContent = "Create the project profile to activate checkout.";
+    status.textContent = "Create the project profile to activate chapter access.";
+    return;
+  }
+
+  if (workspaceComplimentaryState?.allowed) {
+    panel.classList.add("is-active");
+    status.textContent = `Complimentary access is active. ${workspaceComplimentaryState.pages_remaining} page credit(s) remain. The selected maximum page target must fit within this balance.`;
+    button.hidden = true;
+    return;
+  }
+  if (workspaceAccessState?.temporary_open) {
+    panel.classList.add("is-active");
+    status.textContent = "Temporary Open Access is active. No chapter payment is required during the developer-defined access window.";
+    button.hidden = true;
     return;
   }
 
@@ -411,7 +551,10 @@ async function updatePaymentPanel() {
   }
 
   button.textContent = "Unlock guided chapter development";
-  if (freeEligible) {
+  if (workspaceAccessState?.payment_required) {
+    panel.classList.add("is-warning");
+    status.textContent = "Payment Required mode is active. Free Starter is disabled. Use paid, authorised internal or complimentary access.";
+  } else if (freeEligible) {
     panel.classList.add("is-warning");
     status.textContent = "Free Starter applies to one limited Chapter One working draft with up to five selected sections. Strengthening, compliance review and DOCX export require paid access.";
   } else {
@@ -1012,6 +1155,7 @@ async function createProject() {
   updateChapterSpecificUi();
   await refreshResearchCockpit();
   await updatePaymentPanel();
+  updateWorkspaceFlow();
   return result.id;
 }
 
@@ -1460,6 +1604,7 @@ async function findSources() {
   const requested = result.requested_count || payload.max_results;
   $("sourceStatus").textContent = `Attached ${attached} relevant source(s) from a maximum of ${requested}. Rejected ${rejected} unrelated record(s). ${errors ? errors + " provider(s) could not be reached." : ""}`;
   await refreshResearchCockpit();
+  updateWorkspaceFlow();
 }
 
 function renderSources(result) {
@@ -1757,6 +1902,13 @@ if ($("draftOutput")) {
   $("draftOutput").addEventListener("input", () => renderDraftPreview($("draftOutput").value));
 }
 
+
+$("workspaceUnlockBtn")?.addEventListener("click", () => $("unlockChapterBtn")?.click());
+$("applyWorkspaceComplimentaryBtn")?.addEventListener("click", () => applyWorkspaceComplimentaryAccess().catch(err => { if ($("workspaceComplimentaryStatus")) $("workspaceComplimentaryStatus").textContent = err.message || "Token could not be applied."; }));
+$("clearWorkspaceComplimentaryBtn")?.addEventListener("click", () => clearWorkspaceComplimentaryAccess().catch(() => {}));
+document.addEventListener("input", (event) => { if (event.target?.closest?.(".workspace-guided-frame")) updateWorkspaceFlow(); });
+document.addEventListener("change", (event) => { if (event.target?.closest?.(".workspace-guided-frame")) { updateWorkspaceFlow(); refreshWorkspaceAccessStatus().catch(() => {}); } });
+window.addEventListener("projectready:session-ready", () => refreshWorkspaceAccessStatus().catch(() => {}));
 $("createProjectBtn").addEventListener("click", () => createProject().catch(err => handleWorkspaceError(err, "projectStatus")));
 if ($("saveProjectProfileBtn")) $("saveProjectProfileBtn").addEventListener("click", () => saveCurrentProjectProfile().catch(err => handleWorkspaceError(err, "projectStatus")));
 if ($("refreshCockpitBtn")) $("refreshCockpitBtn").addEventListener("click", () => refreshResearchCockpit().catch(err => handleWorkspaceError(err, "projectStatus")));
@@ -1825,6 +1977,8 @@ async function initialiseWorkspace() {
   }
   if (window.ProjectReadySessionBootstrap?.ready) await window.ProjectReadySessionBootstrap.ready;
   await loadTemplate();
+  await refreshWorkspaceAccessStatus();
+  updateWorkspaceFlow();
   if (explicitNewJob) {
     resetWorkspaceBrowserFields();
     prefillRecoveryEmail();
