@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="robots" content="noindex,nofollow,noarchive" />
   <title>Restricted Operations Portal</title>
-  <link rel="stylesheet" href="{{PORTAL_PATH}}/portal.css?v=20260718-internal-access-v4" />
+  <link rel="stylesheet" href="{{PORTAL_PATH}}/portal.css?v=20260815-access-control-v1" />
 </head>
 <body>
   <main class="portal-shell">
@@ -37,6 +37,70 @@
         <a href="{{PORTAL_PATH}}/topic-ideas">Topic Ideas</a>
         <a href="/user-guide" target="_blank" rel="noopener">User Guide</a>
       </div>
+
+      <section class="operations-section">
+        <div class="jobs-heading"><div><p class="eyebrow">Commercial access control</p><h2>Research workspace access mode</h2></div><button id="refreshAccessBtn" class="secondary" type="button">Refresh</button></div>
+        <p class="section-help">Controls Thesis Workspace, Chapter Strengthener and Topic Ideas. Normal commercial mode keeps configured free/paid access. Temporary Open bypasses the applicable payment gates until expiry. Payment Required disables free starter access while paid, internal and complimentary access remain valid.</p>
+        <div id="currentAccessPolicy" class="policy-banner">Loading current access mode…</div>
+        <div class="policy-controls">
+          <label>Access mode
+            <select id="accessMode">
+              <option value="commercial">Normal commercial mode</option>
+              <option value="temporary_open">Temporary Open Access</option>
+              <option value="payment_required">Payment Required, no Free Starter</option>
+            </select>
+          </label>
+          <label id="openHoursLabel">Open for
+            <select id="openHours">
+              <option value="1">1 hour</option>
+              <option value="3">3 hours</option>
+              <option value="6">6 hours</option>
+              <option value="12" selected>12 hours</option>
+              <option value="24">24 hours</option>
+              <option value="72">3 days</option>
+              <option value="168">7 days</option>
+            </select>
+          </label>
+          <button id="applyAccessPolicyBtn" type="button">Apply access mode</button>
+        </div>
+        <p id="accessPolicyStatus" class="status"></p>
+      </section>
+
+      <section class="operations-section">
+        <div class="jobs-heading"><div><p class="eyebrow">Complimentary access</p><h2>Create page-limited token</h2></div><button id="refreshTokensBtn" class="secondary" type="button">Refresh tokens</button></div>
+        <p class="section-help">Create a bearer token for a student or demonstration. Generation and strengthening reserve the selected maximum page target against the token balance. The raw token is shown once only.</p>
+        <form id="complimentaryTokenForm" class="token-form">
+          <label>Recipient / purpose
+            <input id="complimentaryLabel" maxlength="200" placeholder="e.g. MPhil pilot student" required />
+          </label>
+          <label>Assigned email, optional
+            <input id="complimentaryEmail" type="email" maxlength="254" placeholder="student@example.com" />
+          </label>
+          <label>Module
+            <select id="complimentaryProduct">
+              <option value="all">Thesis Workspace + Chapter Strengthener</option>
+              <option value="thesis_workspace">Thesis Workspace only</option>
+              <option value="chapter_strengthener">Chapter Strengthener only</option>
+            </select>
+          </label>
+          <label>Page credits
+            <input id="complimentaryPages" type="number" min="1" max="1000" value="20" required />
+          </label>
+          <label>Valid for days
+            <input id="complimentaryDays" type="number" min="1" max="365" value="30" required />
+          </label>
+          <button type="submit">Create complimentary token</button>
+        </form>
+        <div id="newComplimentaryToken" class="token-reveal" hidden></div>
+        <p id="complimentaryStatus" class="status"></p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>Recipient</th><th>Scope</th><th>Pages</th><th>Expires</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody id="complimentaryTokensBody"></tbody>
+          </table>
+        </div>
+      </section>
+
       <div class="jobs-heading"><h2>Recent background jobs</h2><button id="refreshJobsBtn" class="secondary" type="button">Refresh</button></div>
       <div class="table-wrap">
         <table>
@@ -47,6 +111,6 @@
       <p id="jobsStatus" class="status"></p>
     </section>
   </main>
-  <script src="{{PORTAL_PATH}}/portal.js?v=20260718-internal-access-v4"></script>
+  <script src="{{PORTAL_PATH}}/portal.js?v=20260815-access-control-v1"></script>
 </body>
 </html>
