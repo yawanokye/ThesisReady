@@ -9,6 +9,9 @@ from datetime import datetime
 from typing import Any
 
 from app.source_finder import search_literature_sources
+from app.citation_matrix import citation_target, citation_density_metrics, remove_unverified_generated_citations
+from app.provisional_statistics import provisional_statistic_prompt_context
+from app.selected_papers import paper_to_source_record, prompt_selected_papers
 from app.action_items import detach_action_items
 from app.ai_service import (
     _clean_chapter_references,
@@ -390,8 +393,21 @@ def _scope_to_selected_chapter(text: str, chapter_type: str, uploaded_content_sc
     }
 
 
-def _citation_target(level: str, chapter_type: str) -> tuple[int, int]:
-    return CITATION_DENSITY_TARGETS[_level_key(level)][_chapter_key(chapter_type)]
+def _citation_target(level: str, chapter_type: str, discipline: str = "") -> tuple[int, int]:
+    chapter_number = {
+        "introduction": 1,
+        "literature_review": 2,
+        "methodology": 3,
+        "results_discussion": 4,
+        "conclusion": 5,
+    }.get(_chapter_key(chapter_type), 1)
+    profile = {
+        "discipline": discipline,
+        "programme": discipline,
+        "citation_discipline_matrix": "auto",
+    }
+    target = citation_target(profile, chapter_number, chapter_type=chapter_type)
+    return int(target.get("minimum") or 0), int(target.get("maximum") or 0)
 
 
 def _revision_model(level: str) -> str:
@@ -444,6 +460,10 @@ def _source_context(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "doi": source.get("doi", ""),
             "url": source.get("url", ""),
             "abstract": str(source.get("abstract") or "")[:900],
+            "uploaded_evidence_excerpt": str(source.get("evidence_excerpt") or "")[:3600],
+            "attachment_origin": source.get("attachment_origin", ""),
+            "user_uploaded_full_text": bool(source.get("user_uploaded_full_text")),
+            "citation_eligible": bool(source.get("citation_eligible", True)),
             "database": source.get("database", ""),
             "apa_hint": source.get("apa_hint", ""),
         })
@@ -452,8 +472,14 @@ def _source_context(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _search_sources(payload: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     attached = [item for item in (payload.get("source_bank") or []) if isinstance(item, dict)]
+    for paper in payload.get("selected_papers") or []:
+        if not isinstance(paper, dict):
+            continue
+        source = paper_to_source_record(paper)
+        if source:
+            attached.append(source)
     blocked = [item for item in attached if _looks_retracted(item)]
-    safe = [item for item in attached if not _looks_retracted(item)]
+    safe = [item for item in attached if not _looks_retracted(item) and item.get("citation_eligible") is not False]
     search_result: dict[str, Any] = {"provider_errors": [], "sources": []}
 
     if bool(payload.get("include_source_search", True)):
@@ -749,12 +775,16 @@ def _citation_count(text: str) -> int:
 
 def _metrics(text: str) -> dict[str, Any]:
     words = _word_count(text)
-    citations = _citation_count(text)
+    density = citation_density_metrics(text)
+    reference_mentions = int(density.get("reference_mentions") or 0)
+    references_per_1000 = float(density.get("references_per_1000_words") or 0.0)
     return {
         "word_count": words,
         "estimated_pages": round(words / 350, 1) if words else 0.0,
-        "citation_occurrences": citations,
-        "citations_per_1000_words": round(citations * 1000 / words, 1) if words else 0.0,
+        "citation_occurrences": reference_mentions,
+        "reference_mentions": reference_mentions,
+        "citations_per_1000_words": references_per_1000,
+        "references_per_1000_words": references_per_1000,
     }
 
 
@@ -995,7 +1025,7 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("Select at least one section to strengthen or add before using selected-sections mode.")
 
     page_min, page_max = _resolved_page_target(payload, level, chapter_type)
-    citation_min, citation_max = _citation_target(level, chapter_type)
+    citation_min, citation_max = _citation_target(level, chapter_type, str(payload.get("discipline") or ""))
 
     sources, blocked, search_result = _search_sources(payload)
     source_records = _source_context(sources)
@@ -1032,6 +1062,11 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
                 "purpose_statement_style": str(payload.get("purpose_statement_style") or "concise_general_objective").strip(),
                 "target_pages": f"{page_min}-{page_max}",
                 "target_citations_per_1000_words": f"{citation_min}-{citation_max}",
+                "citation_matrix_standard": citation_target(
+                    {"discipline": str(payload.get("discipline") or ""), "citation_discipline_matrix": "auto"},
+                    {"introduction": 1, "literature_review": 2, "methodology": 3, "results_discussion": 4, "conclusion": 5}.get(_chapter_key(chapter_type), 1),
+                    chapter_type=chapter_type,
+                ),
                 "allow_missing_section_insertions": bool(payload.get("allow_missing_section_insertions", True)),
                 "uploaded_content_scope": str(payload.get("uploaded_content_scope") or "selected_chapter"),
                 "strengthening_scope": strengthening_scope,
@@ -1039,6 +1074,18 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
                 "standard_sections_to_add_if_missing": new_titles,
                 "custom_sections_to_add": custom_new_sections,
             },
+            "provisional_statistical_evidence": provisional_statistic_prompt_context({
+                "source_bank": sources,
+                "retrieved_sources": {"sources": sources},
+            }),
+            "user_selected_papers": prompt_selected_papers({
+                "title": str(payload.get("thesis_title") or ""),
+                "research_area": str(payload.get("research_area") or ""),
+                "study_context": str(payload.get("context") or ""),
+                "objectives": [line.strip() for line in re.split(r"[\n;]+", str(payload.get("objectives") or "")) if line.strip()],
+                "variables": {"raw_variables": [line.strip() for line in re.split(r"[\n;]+", str(payload.get("variables_constructs") or "")) if line.strip()]},
+                "selected_papers": payload.get("selected_papers") or [],
+            }, {"introduction": 1, "literature_review": 2, "methodology": 3, "results_discussion": 4, "conclusion": 5}.get(_chapter_key(chapter_type), 1)),
             "long_chapter_strengthening_strategy": _revision_long_chapter_strategy(level, chapter_type, page_min, page_max),
             "previous_chapters_for_alignment": _previous_chapters_revision_context(payload),
             "research_logic": {
@@ -1083,7 +1130,13 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
                 "Do not invent citations, references, data, analyses, instruments, ethics approvals, permissions, institutional rules, tables, figures or results.",
                 "Retain valid existing citations. Do not alter author names or publication years unless the supplied evidence confirms a correction.",
                 "Use retrieved metadata only when the title or abstract directly supports the claim. Never turn metadata into evidence for a result not reported by the source.",
-                "Increase citation density according to the stronger level- and chapter-specific target, but avoid citation padding and do not attach citations to unsupported claims.",
+                "Use user_selected_papers as a separate student-curated evidence library alongside automatic source search. Prioritise a selected paper when its uploaded text directly supports the section, but never force it into an unrelated claim.",
+                "For user-selected papers, inspect the uploaded evidence excerpt before describing a finding, method, statistic or conclusion. Never infer details from the filename, title or abstract alone when the excerpt does not support them.",
+                "A selected paper marked citation_eligible=false may inform understanding but must not receive a generated author-year citation or reference entry. Insert [confirm citation metadata for uploaded paper: filename] when the paper is essential but its bibliographic details are not yet verified or user-confirmed.",
+                "Increase citation density according to the discipline-and-section citation matrix, measured as verified referenced works per 1,000 substantive words. Treat it as a guide rather than a quota, avoid citation padding and do not attach citations to unsupported claims.",
+                "Never create a citation from model memory. A new citation must map to an existing citation in the uploaded chapter or to a structured source record in the verified source bank.",
+                "If the verified evidence bank cannot meet the matrix target, leave the chapter below target and insert a precise [insert verified source for this claim] action instead of inventing a source.",
+                "If a source-grounded numerical item from provisional_statistical_evidence is useful, keep it in the exact red confirmation marker required there until the user confirms it. Never invent or estimate a statistic.",
                 "For Chapter One, support most substantive background and problem paragraphs with at least one directly relevant source; evidence-heavy paragraphs may synthesise two or more sources.",
                 "For Chapter Two, make nearly every substantive paragraph evidence-supported and normally compare two to four relevant sources in thematic synthesis rather than repeating one citation.",
                 "Run a claim-evidence audit. Support every substantive factual, historical, policy, contextual, theoretical and empirical claim with a directly relevant and accurate source from the existing citations or verified source bank.",
@@ -1094,7 +1147,7 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
                 "For an Introduction chapter, if background_structure is continuous_narrative, keep Background to the Study under one main heading without internal numbered subheadings. Write Purpose of the Study concisely: one sentence when purpose_statement_style is concise_general_objective, or one short paragraph only when the school explicitly requires it. Do not add explanatory commentary after the purpose.",
                 "Present research objectives and research questions as clean standalone lists. Remove explanatory commentary, level-alignment notes and methodological justification after the list.",
                 "Restart research-question numbering at 1, independently of objective numbering. Use one numbered question for each item.",
-                "End the revised chapter with one clean APA 7 References section containing only cited sources, one complete entry per paragraph, deduplicated and alphabetised. Do not use bullets, numbering, annotations, source keys, relevance labels or a Source Use Audit.",
+                "End the revised chapter with one clean References section containing only cited sources. Format to the selected citation style where verified metadata permits. Build entries only from retrieved metadata or reference details already supplied by the user. Never guess a missing author, title, journal, DOI, volume, issue or page range.",
                 "Do not add mediation, moderation, causality, longitudinal design, multilevel structure, robustness tests or measurement validation unless they are justified by the approved study and available data.",
                 "Do not present a recommended analysis as completed. Use a concise bracketed action item such as [conduct and report the required diagnostic test] when essential evidence is missing.",
                 "Preserve chapter numbering and school-specific headings where supplied. Add a missing expected heading only when the chapter type, school guidelines, previous chapters or supervisor comments clearly require it.",
@@ -1195,6 +1248,15 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
     revised_chapter = _clean_chapter_references(revised_chapter)
     revised_chapter = _ensure_markdown_heading_spacing(revised_chapter)
     revised_chapter = detach_action_items(_finalise_chapter_text(revised_chapter))
+    provenance_profile = {
+        "source_bank": sources,
+        "retrieved_sources": {"sources": sources},
+        "previous_chapters_context": payload.get("previous_chapters_context") or "",
+    }
+    revised_chapter, revision_citation_integrity = remove_unverified_generated_citations(
+        revised_chapter, provenance_profile, original_text=chapter_text
+    )
+    revised_chapter = _clean_chapter_references(revised_chapter)
     strengthening_report = _finalise_chapter_text(strengthening_report)
     supervisor_matrix = _finalise_chapter_text(supervisor_matrix) if supervisor_matrix else ""
     metrics = _metrics(revised_chapter)
@@ -1214,7 +1276,8 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
         "scope_metadata": scope_metadata,
         "processed_original_chapter_text": chapter_text,
         "target_page_range": f"{page_min}-{page_max}",
-        "target_citation_density": f"{citation_min}-{citation_max} per 1,000 words",
+        "target_citation_density": f"{citation_min}-{citation_max} verified referenced works per 1,000 words",
+        "citation_integrity": revision_citation_integrity if mode == "ai_revision" else {"passed": True, "note": "No new AI citations were introduced in fallback mode."},
         **metrics,
         "source_records_used": source_records,
         "source_bank_count": len(source_records),
@@ -1244,6 +1307,7 @@ def chapter_planning_targets(
     level: str,
     chapter_type: str,
     *,
+    discipline: str = "",
     strengthening_scope: str = "whole_chapter",
     selected_section_count: int = 0,
     custom_target_pages_enabled: bool = False,
@@ -1258,12 +1322,12 @@ def chapter_planning_targets(
         "target_page_max": target_page_max,
     }
     page_min, page_max = _resolved_page_target(target_payload, level, chapter_type)
-    citation_min, citation_max = _citation_target(level, chapter_type)
+    citation_min, citation_max = _citation_target(level, chapter_type, discipline)
     return {
         "academic_level": level,
         "chapter_type": chapter_type,
         "page_range": {"minimum": page_min, "maximum": page_max},
-        "citation_density_per_1000_words": {"minimum": citation_min, "maximum": citation_max},
+        "citation_density_per_1000_words": {"minimum": citation_min, "maximum": citation_max, "unit": "verified referenced works per 1,000 substantive words"},
         "word_range_estimate": {"minimum": page_min * 330, "maximum": page_max * 380},
         "strengthening_scope": strengthening_scope,
         "custom_target_applied": bool(custom_target_pages_enabled),

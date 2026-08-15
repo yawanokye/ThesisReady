@@ -19,6 +19,7 @@ class ProjectCreate(BaseModel):
     background_structure: str = "continuous_narrative"
     purpose_statement_style: str = "concise_general_objective"
     automatic_source_support: bool = True
+    citation_discipline_matrix: str = "auto"
     research_area: str = ""
     study_context: str = ""
     citation_evidence_notes: str = ""
@@ -32,6 +33,7 @@ class ProjectCreate(BaseModel):
     notes: str = ""
     retrieved_sources: dict[str, Any] = Field(default_factory=dict)
     source_bank: list[dict[str, Any]] = Field(default_factory=list)
+    selected_papers: list[dict[str, Any]] = Field(default_factory=list)
     source_search_terms: str = ""
     other_chapter_title: str = ""
     other_chapter_instructions: str = ""
@@ -69,6 +71,7 @@ class DraftRequest(BaseModel):
     revision_filename: str = ""
     retrieved_sources: dict[str, Any] = Field(default_factory=dict)
     source_bank: list[dict[str, Any]] = Field(default_factory=list)
+    selected_papers: list[dict[str, Any]] = Field(default_factory=list)
     source_search_terms: str = ""
     other_chapter_title: str = ""
     other_chapter_instructions: str = ""
@@ -196,6 +199,7 @@ class ChapterRevisionRequest(BaseModel):
     target_page_min: int | None = None
     target_page_max: int | None = None
     source_bank: list[dict[str, Any]] = Field(default_factory=list)
+    selected_papers: list[dict[str, Any]] = Field(default_factory=list)
     save_to_project: bool = True
     academic_integrity_confirmed: bool = False
     user_contribution_confirmed: bool = False
@@ -284,6 +288,25 @@ class ChapterRevisionRequest(BaseModel):
     def validate_strengthener_source_bank(cls, value: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return [item for item in value if isinstance(item, dict)][:120]
 
+    @field_validator("selected_papers")
+    @classmethod
+    def validate_strengthener_selected_papers(cls, value: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [item for item in value if isinstance(item, dict)][:50]
+
+
+class SelectedPaperMetadataUpdate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    title: str = ""
+    authors: list[str] | str = Field(default_factory=list)
+    year: str = ""
+    source: str = ""
+    doi: str = ""
+    url: str = ""
+    confirm: bool = True
+
+
+
 
 class ChapterRevisionExportRequest(BaseModel):
     model_config = ConfigDict(extra="allow")
@@ -301,6 +324,7 @@ class ChapterRevisionExportRequest(BaseModel):
 class ChapterTargetRequest(BaseModel):
     academic_level: str = "Bachelors"
     chapter_type: str = "1. Introduction"
+    discipline: str = ""
     strengthening_scope: str = "whole_chapter"
     selected_section_count: int = 0
     custom_target_pages_enabled: bool = False

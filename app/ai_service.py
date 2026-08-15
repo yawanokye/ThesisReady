@@ -11,6 +11,14 @@ from dotenv import load_dotenv
 
 from app.template_store import get_chapter, selected_sections
 from app.action_items import detach_action_items
+from app.citation_matrix import (
+    build_section_citation_plan,
+    citation_density_metrics,
+    citation_provenance_audit,
+    remove_unverified_generated_citations,
+)
+from app.provisional_statistics import provisional_statistic_prompt_context
+from app.selected_papers import prompt_selected_papers
 from app.scholarly_humanizer import (
     analyse_scholarly_style,
     build_humanizer_batches,
@@ -178,7 +186,6 @@ def _chapter_length_requirements(
     max_words = max_pages * WORDS_PER_PAGE_ESTIMATE
     target_words = int(round(((min_words + max_words) / 2) / 100.0) * 100)
 
-    citation_range = CITATION_DENSITY_TARGETS.get(level, {}).get(chapter_number, (3, 6))
     selected_section_ids = [str(x) for x in (selected_section_ids or []) if str(x).strip()]
     weights = SECTION_DEPTH_WEIGHTS.get(chapter_number, {})
     selected_weights = {sid: float(weights.get(sid, 1.0)) for sid in selected_section_ids}
@@ -190,6 +197,10 @@ def _chapter_length_requirements(
         }
         for sid, weight in selected_weights.items()
     }
+    citation_plan = build_section_citation_plan(
+        profile, chapter_number, selected_section_ids, section_word_budgets
+    )
+    weighted_citation_target = citation_plan.get("weighted_selected_section_target") or citation_plan.get("matrix_target") or {"minimum": 3, "preferred": 6, "maximum": 10}
 
     requirements = {
         "length_level": level,
@@ -200,12 +211,19 @@ def _chapter_length_requirements(
         "minimum_words": min_words,
         "target_words": target_words,
         "maximum_words": max_words,
-        "citation_occurrences_per_1000_words": {
-            "minimum": citation_range[0],
-            "target": citation_range[1],
+        "citation_density_matrix": citation_plan,
+        "references_per_1000_words": {
+            "minimum": weighted_citation_target.get("minimum", 0),
+            "preferred": weighted_citation_target.get("preferred", 0),
+            "maximum": weighted_citation_target.get("maximum", 0),
+            "unit": "verified referenced works per 1,000 substantive words",
         },
-        "estimated_minimum_citation_occurrences": int(round(min_words * citation_range[0] / 1000)),
-        "estimated_target_citation_occurrences": int(round(target_words * citation_range[1] / 1000)),
+        "citation_occurrences_per_1000_words": {
+            "minimum": weighted_citation_target.get("minimum", 0),
+            "target": weighted_citation_target.get("preferred", 0),
+        },
+        "estimated_minimum_reference_mentions": int(round(min_words * float(weighted_citation_target.get("minimum", 0)) / 1000)),
+        "estimated_preferred_reference_mentions": int(round(target_words * float(weighted_citation_target.get("preferred", 0)) / 1000)),
         "section_word_budgets": section_word_budgets,
         "important_length_rules": [
             "Treat the page range as a depth target, not permission to add filler or repeat ideas.",
@@ -216,14 +234,16 @@ def _chapter_length_requirements(
             "When a chapter is very long, develop it as linked section batches and then merge for coherence instead of compressing the whole chapter into one shallow pass.",
         ],
         "citation_density_rules": [
-            "Use the citation-density range as a planning guide, never as a mechanical quota.",
+            "Use the discipline-and-section citation matrix as a planning guide, never as a mechanical quota.",
+            "The matrix is measured as individual referenced works per 1,000 substantive words, not citation brackets. A parenthetical group containing three different works counts as three references.",
+            "Only verified source records or citations explicitly supplied by the student may contribute to citation density.",
             "Every citation must directly support the sentence or paragraph in which it appears.",
             "Distribute citations across substantive paragraphs instead of placing a citation cluster only at the end of a section.",
             "In Chapter One, most substantive background and problem paragraphs should contain at least one directly relevant citation, and evidence-heavy paragraphs may synthesise two or more sources.",
             "In Chapter Two, nearly every substantive paragraph should be evidence-supported and thematic synthesis should normally compare two to four relevant sources rather than rely on one citation repeatedly.",
             "Chapter Two should compare multiple studies within thematic and objective-led synthesis, not present one study per paragraph as an annotated list.",
             "Chapter Four should keep results reporting evidence-based and citation-light, while the discussion should be citation-rich and connect findings to theory and prior studies.",
-            "Use a bracketed source placeholder when the evidence bank is insufficient. Never fabricate a source to meet the density target.",
+            "Use a bracketed source placeholder when the evidence bank is insufficient. Remain below the target rather than fabricate a source, bibliographic detail, DOI, quotation, page number or finding.",
         ],
     }
     requirements["long_chapter_strategy"] = _long_chapter_strategy(profile, chapter_number, selected_section_ids, requirements)
@@ -839,6 +859,10 @@ def _retrieved_sources_for_prompt(profile: dict[str, Any], chapter_number: int |
             "doi": src.get("doi", ""),
             "url": src.get("url", ""),
             "abstract": src.get("abstract", ""),
+            "uploaded_evidence_excerpt": str(src.get("evidence_excerpt") or "")[:3600],
+            "attachment_origin": src.get("attachment_origin", ""),
+            "user_uploaded_full_text": bool(src.get("user_uploaded_full_text")),
+            "citation_eligible": bool(src.get("citation_eligible", True)),
             "database": src.get("database", ""),
             "relevance_tier": src.get("relevance_tier", "unclassified"),
             "relevance_reason": src.get("relevance_reason", "No relevance explanation supplied."),
@@ -871,6 +895,8 @@ def _retrieved_sources_for_prompt(profile: dict[str, Any], chapter_number: int |
         "sources": compact_sources,
         "source_use_rules": [
             "Use retrieved_sources as an additional evidence bank alongside the student's project profile, pasted verified evidence, uploaded files, and placeholders.",
+            "When a source has user_uploaded_full_text=true, use its uploaded_evidence_excerpt to assess what the paper actually says instead of inferring findings from title or metadata alone.",
+            "Treat citation_eligible=false as a hard citation block. Such an uploaded paper may inform understanding, but do not generate an author-year citation or reference entry from it until its bibliographic metadata has been verified or confirmed by the user.",
             "Do not replace student-supplied evidence with search results; enrich the existing argument only where a retrieved source is directly relevant.",
             f"Use the recommended_relevant_sources_to_review value ({target}) only as a review guide, not as a compulsory citation quota.",
             "Prioritise sources marked highly_relevant, then partly_relevant. Use not_relevant sources only if a human has confirmed their relevance in the project notes.",
@@ -1128,7 +1154,7 @@ def build_drafting_prompt(
     prompt_profile = {
         key: value
         for key, value in profile.items()
-        if key not in {"source_bank", "attached_sources", "retrieved_sources", "previous_chapters_context", "uploaded_alignment_chapters"}
+        if key not in {"source_bank", "attached_sources", "retrieved_sources", "selected_papers", "previous_chapters_context", "uploaded_alignment_chapters"}
     }
 
     prompt = {
@@ -1150,6 +1176,8 @@ def build_drafting_prompt(
         "analysis_evidence_for_this_chapter": _uploaded_results_for_chapter(profile, chapter_number),
         "previous_chapters_for_alignment": _previous_chapters_for_alignment(profile, chapter_number),
         "retrieved_sources": _retrieved_sources_for_prompt(profile, chapter_number),
+        "user_selected_papers": prompt_selected_papers(profile, chapter_number),
+        "provisional_statistical_evidence": provisional_statistic_prompt_context(profile),
         "selected_sections": section_payload,
         "extra_instructions": extra_instructions,
         "chapter_specific_requirements": _chapter_specific_requirements(chapter_number),
@@ -1160,7 +1188,7 @@ def build_drafting_prompt(
             "Follow the level_based_model_quality_route: the user is paying for guided working-draft development, so the main prose must be academically strong at the selected level; do not produce low-tier, shallow or mechanical writing.",
             "Follow chapter_page_word_and_citation_targets. Aim to finish within its minimum and maximum word range, distribute the target across selected sections using section_word_budgets, and do not stop after a brief overview.",
             "Meet the depth target through evidence, synthesis, comparison, critique, methodological explanation, interpretation and study-specific application. Never meet it through repetition, generic padding, duplicated definitions or inflated wording.",
-            "Use the stated citation-occurrences-per-1,000-words range as a planning guide. Increase citation density across substantive paragraphs while preserving strict relevance and source integrity.",
+            "Use the stated verified-referenced-works-per-1,000-words range as a planning guide. Increase evidence density across substantive paragraphs only with verified or user-supplied sources, while preserving strict relevance and source integrity.",
             "Follow the human_scholarly_style_requirements and student_contribution_and_style_controls so the writing sounds natural, rigorous, context-specific, evidence-led and carefully supervised rather than generic or mechanical.",
             "In all generated chapters, use protected scholarly variation: natural sentence and paragraph rhythm, context-specific transitions and moderate lexical variety without sacrificing clarity, evidence, APA accuracy or methodological precision.",
             "Use the student's central argument, local context notes, evidence anchors, supervisor comments, preferred writing style and supplied writing sample as style/context guidance; do not copy the writing sample verbatim unless the user has written it as content to include.",
@@ -1181,15 +1209,20 @@ def build_drafting_prompt(
             "Do not copy large passages from previous_chapters_for_alignment. Use it to detect contradictions, omissions and missing links. Where alignment cannot be confirmed, insert a precise bracketed attention placeholder such as [confirm alignment with Chapter One objective wording].",
             "Use retrieved_sources as an additional evidence bank where the user has run the source finder. Do not replace the project profile, user-provided evidence, uploaded files, or placeholders; enrich the draft with relevant retrieved sources.",
             "When retrieved_sources contains sources marked highly_relevant or partly_relevant, review them carefully and integrate those that directly support the chapter argument. Do not cite not_relevant sources, and do not cite any source merely to increase citation count.",
-            "Every chapter must end with one clean References section containing complete entries only for sources cited in the chapter body. Use available reference_entry_hint/apa_hint details, remove duplicates, omit bullets and numbering, and alphabetise entries by the first author or institutional author.",
-            "Increase in-text citation density in line with the stronger level-specific planning range. Chapter One should support most substantive background and problem paragraphs with directly relevant citations; Chapter Two should be citation-rich and synthesise multiple studies in most substantive paragraphs; Chapter Three should cite methodological and measurement authorities where appropriate; Chapter Four discussion should cite theory and directly comparable studies.",
+            "Use user_selected_papers alongside ProjectReady-discovered literature. Give the student's selected papers priority when they directly support the active section, but do not force them into unrelated claims.",
+            "For user_selected_papers, inspect the uploaded evidence excerpt before using a paper. Citation-ready papers may be cited from their confirmed metadata. Papers marked citation_eligible=false must never receive a generated author-year citation; if essential, use [confirm citation metadata for uploaded paper: filename].",
+            "Every chapter must end with one clean References section containing only sources actually cited in the chapter body. Build entries only from retrieved metadata or reference details supplied by the student. If complete verified details are unavailable, use an attention placeholder instead of inventing bibliographic fields.",
+            "Increase in-text citation density in line with the discipline-and-section citation matrix measured as verified referenced works per 1,000 substantive words. Chapter One should support most substantive background and problem paragraphs with directly relevant citations; Chapter Two should be citation-rich and synthesise multiple studies in most substantive paragraphs; Chapter Three should cite methodological and measurement authorities where appropriate; Chapter Four discussion should cite theory and directly comparable studies.",
             "If the user did not manually attach sources, use the automatically enriched source bank when available. A source may be cited more than once only when it directly supports each claim. Never use a citation merely as decoration.",
             "Run a claim-evidence pass before finalising. Every substantive factual, historical, policy, contextual, theoretical or empirical claim must be supported by a directly relevant and accurate citation from the supplied or retrieved evidence bank. Do not leave long substantive paragraphs without support.",
-            "For Chapter One, follow the level-specific citation range in chapter_page_word_and_citation_targets. Support substantive contextual, theoretical, policy, historical and empirical claims throughout the section, not only at paragraph endings. Accuracy and direct relevance remain more important than numerical padding.",
+            "For Chapter One, follow the discipline-and-section citation matrix in chapter_page_word_and_citation_targets. Support substantive contextual, theoretical, policy, historical and empirical claims throughout the section, not only at paragraph endings. Accuracy and direct relevance remain more important than numerical padding.",
             "Do not embed instructions, confirmations or missing-evidence commentary inside academic prose. Put each unresolved item on its own bracketed line beginning [ACTION REQUIRED: ...] immediately after the sentence or paragraph that requires the action, so the full instruction is exported in red at the exact point of need.",
             "If retrieved_sources do not provide enough support for a required claim, insert a bracketed placeholder such as [insert verified source for this claim] rather than guessing.",
-            "For Chapter One, make the Background and Statement of the Problem factual and evidence-led. Use relevant accurate statistics, policy evidence, institutional evidence, or empirical findings to support the problem where supplied or confidently known.",
-            "Do not fabricate citations, statistics, or reference-list entries. Use verified/supplied citations and facts where available. Where a required source, statistic, or fact is not supplied or cannot be stated confidently, insert a bracketed placeholder rather than inventing it.",
+            "Never use model memory to create a citation. Every new citation must map to a structured source record supplied in retrieved_sources/source_bank, or to a citation already supplied by the student. If the target density cannot be reached with verified evidence, leave the section below target and report the evidence gap.",
+            "For Chapter One, make the Background and Statement of the Problem factual and evidence-led. Use statistics only when they are user-supplied and verifiable or appear in provisional_statistical_evidence. Never supply a number from model memory.",
+            "When a pending item from provisional_statistical_evidence is useful, keep it visibly provisional in the chapter using the exact red-confirmation marker specified there, with its source label and DOI/URL. Do not silently convert it into ordinary prose.",
+            "If a useful statistical fact cannot be sourced from the available evidence, use [PROVIDE VERIFIED STATISTIC AND SOURCE: describe the needed statistic] rather than estimating or inventing a value.",
+            "Do not fabricate citations, authors, years, titles, DOIs, journals, volume/issue details, page ranges, URLs, quotations, findings, statistics, or reference-list entries. Use verified/supplied citations and facts where available. Where a required source, statistic, or fact is not supplied or cannot be stated confidently, insert a bracketed placeholder rather than inventing it.",
             "Use clear numbered headings matching the selected sections.",
             "For Research Objectives and Research Questions sections, restart the ordered list at 1 within each section. Do not continue numbering from a previous section.",
             "Do not attach explanatory commentary, level-alignment notes, methodological justification or summary prose after research objectives or research questions. Return clean standalone numbered items only. Discard generated commentary rather than converting it into an action item.",
@@ -2376,7 +2409,7 @@ def _generate_chapter_in_chunks(
 
     bodies: list[str] = []
     references: list[str] = []
-    citation_density = full_req.get("citation_occurrences_per_1000_words") or {}
+    citation_density = full_req.get("references_per_1000_words") or full_req.get("citation_occurrences_per_1000_words") or {}
 
     for chunk_index, chunk_sections in enumerate(chunks, start=1):
         chunk_ids = [str(section.get("section_id") or "") for section in chunk_sections]
@@ -2403,7 +2436,7 @@ def _generate_chapter_in_chunks(
             "Use long_chapter_development_plan to keep the chunk connected to the full chapter argument, objectives, constructs, theories and gaps.",
             "Where a broad section is assigned a large word budget, subdivide it with meaningful lower-level headings such as conceptual dimensions, theoretical comparison, empirical clusters by objective, methodological patterns, contextual evidence, contradictions and gaps.",
             f"Develop this chunk to approximately {chunk_target_words:,} words and at least {chunk_min_words:,} words, subject to evidence availability.",
-            f"Plan for about {citation_density.get('minimum', 3)}-{citation_density.get('target', 6)} accurate citation occurrences per 1,000 substantive words, without forcing irrelevant sources.",
+            f"Plan for about {citation_density.get('minimum', 3)}-{citation_density.get('maximum', citation_density.get('preferred', 6))} verified referenced works per 1,000 substantive words, using the section-specific citation matrix and never forcing irrelevant sources.",
             "At the end, add a heading exactly named '## References Used in This Chunk' and list complete APA 7 entries only for sources cited in this chunk.",
             "Do not add a Source Use Audit. The final chapter must end with the clean consolidated References list only.",
         ]
@@ -2543,17 +2576,30 @@ def chapter_output_metrics(
     selected_section_ids: list[str],
     text: str,
 ) -> dict[str, Any]:
-    """Return transparent length and citation estimates for the workspace response."""
+    """Return transparent length, citation-matrix and provenance estimates."""
     requirements = _chapter_length_requirements(profile, chapter_number, selected_section_ids)
     words = _chapter_word_count(text)
     estimated_pages = round(words / WORDS_PER_PAGE_ESTIMATE, 1) if words else 0.0
-    citations = _citation_occurrence_count(text)
-    per_1000 = round(citations * 1000 / words, 1) if words else 0.0
+    target = requirements.get("references_per_1000_words") or {}
+    provenance = citation_provenance_audit(text, profile)
+    raw_density = citation_density_metrics(text, target)
+    verified_mentions = raw_density.get("reference_mentions", 0)
+    if not provenance.get("passed"):
+        verified_mentions = max(0, int(verified_mentions) - int(provenance.get("unverified_source_count") or 0))
+    density = citation_density_metrics(text, target, verified_count=verified_mentions)
     return {
         "word_count": words,
         "estimated_pages": estimated_pages,
-        "citation_occurrences": citations,
-        "citation_occurrences_per_1000_words": per_1000,
+        "reference_mentions": density.get("reference_mentions", 0),
+        "references_per_1000_words": density.get("references_per_1000_words", 0.0),
+        "verified_reference_mentions": density.get("verified_reference_mentions", 0),
+        "verified_references_per_1000_words": density.get("verified_references_per_1000_words", 0.0),
+        "citation_occurrences": density.get("reference_mentions", 0),
+        "citation_occurrences_per_1000_words": density.get("verified_references_per_1000_words", 0.0),
+        "citation_density_status": density.get("status", ""),
+        "citation_matrix": requirements.get("citation_density_matrix") or {},
+        "citation_target": target,
+        "citation_integrity": provenance,
         "target_page_range": requirements.get("target_page_range"),
         "minimum_words": requirements.get("minimum_words"),
         "target_words": requirements.get("target_words"),
@@ -2692,6 +2738,11 @@ def generate_chapter(
             # 7. Final output controls for structure, dashes, attention placeholders and table noise.
             polished = _finalise_output_controls(polished)
             polished = detach_action_items(polished)
+
+            # Fail closed on citation provenance. Unknown generated citations are
+            # removed rather than allowed to satisfy the density matrix.
+            polished, citation_integrity_audit = remove_unverified_generated_citations(polished, profile)
+            profile["last_citation_integrity_audit"] = citation_integrity_audit
 
             generation_mode = "chunked_depth" if chunked_generation else "single_pass_depth"
             return polished, f"openai_responses_api:{model_route}:{model}:{generation_mode}"
