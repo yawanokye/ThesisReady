@@ -182,3 +182,66 @@ def test_portal_assets_use_private_scoped_api_paths():
     assert "portalBase" in portal_js
     assert "portalBase" in module_js
     assert "/api/internal/module-access" not in module_js
+
+
+def test_restricted_portal_controls_open_payment_and_complimentary_access(monkeypatch, tmp_path):
+    _internal_access, _guard, _portal, main = _reload_for_internal_access(
+        monkeypatch, str(tmp_path / "access-controls.db")
+    )
+    with TestClient(main.app) as client:
+        activated = client.post(
+            PORTAL_PATH + "/api/session",
+            json={"email": "aadam@ucc.edu.gh", "key": "123456"},
+        )
+        assert activated.status_code == 200
+
+        opened = client.post(
+            PORTAL_PATH + "/api/access-policy",
+            json={"mode": "temporary_open", "open_hours": 1},
+        )
+        assert opened.status_code == 200
+        assert opened.json()["policy"]["temporary_open"] is True
+        public = client.get("/api/access/status?product_area=thesis_workspace")
+        assert public.status_code == 200
+        assert public.json()["temporary_open"] is True
+
+        locked = client.post(
+            PORTAL_PATH + "/api/access-policy",
+            json={"mode": "payment_required"},
+        )
+        assert locked.status_code == 200
+        assert locked.json()["policy"]["free_starter_enabled"] is False
+
+        created = client.post(
+            PORTAL_PATH + "/api/complimentary-tokens",
+            json={
+                "label": "Pilot",
+                "assigned_email": "pilot@example.com",
+                "product_area": "chapter_strengthener",
+                "page_limit": 9,
+                "validity_days": 7,
+            },
+        )
+        assert created.status_code == 200
+        token = created.json()["token"]
+        token_id = created.json()["id"]
+        status = client.get(
+            "/api/access/complimentary/status?product_area=chapter_strengthener",
+            headers={
+                "X-ProjectReady-Complimentary-Token": token,
+                "X-ProjectReady-Complimentary-Email": "pilot@example.com",
+            },
+        )
+        assert status.status_code == 200
+        assert status.json()["pages_remaining"] == 9
+
+        revoked = client.post(PORTAL_PATH + f"/api/complimentary-tokens/{token_id}/revoke", json={})
+        assert revoked.status_code == 200
+        denied = client.get(
+            "/api/access/complimentary/status?product_area=chapter_strengthener",
+            headers={
+                "X-ProjectReady-Complimentary-Token": token,
+                "X-ProjectReady-Complimentary-Email": "pilot@example.com",
+            },
+        )
+        assert denied.status_code == 403
