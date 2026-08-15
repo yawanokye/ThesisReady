@@ -58,6 +58,51 @@
     <div><strong>6</strong><span>Review & export</span></div>
   </section>
 
+  <section id="researchCockpit" class="research-cockpit" hidden aria-live="polite">
+    <div class="cockpit-head">
+      <div>
+        <p class="eyebrow">Student Research Cockpit</p>
+        <h2 id="cockpitProjectTitle">Research project progress</h2>
+        <p id="cockpitReadinessLabel" class="hint">Project workflow readiness, not a grade.</p>
+      </div>
+      <button id="refreshCockpitBtn" type="button" class="secondary-action">Refresh research logic</button>
+    </div>
+    <div class="cockpit-progress-row">
+      <div class="cockpit-score"><strong id="cockpitReadinessScore">0%</strong><span>overall readiness</span></div>
+      <progress id="cockpitReadinessProgress" max="100" value="0"></progress>
+    </div>
+    <div class="cockpit-metrics">
+      <div><strong id="cockpitChapterProgress">0%</strong><span>chapter progress</span></div>
+      <div><strong id="cockpitAlignmentScore">0%</strong><span>research alignment</span></div>
+      <div><strong id="cockpitSourceCount">0</strong><span>attached sources</span></div>
+      <div><strong id="cockpitComplianceScore">—</strong><span>compliance average</span></div>
+    </div>
+    <div class="cockpit-next-action">
+      <div><span class="cockpit-next-label">Recommended next action</span><strong id="cockpitNextActionLabel">Complete the project profile</strong><p id="cockpitNextActionMessage" class="hint"></p></div>
+      <button id="cockpitNextActionBtn" type="button" class="primary-action">Continue my research</button>
+    </div>
+    <div id="cockpitChapterTrack" class="cockpit-chapter-track" aria-label="Chapter progress"></div>
+    <details class="cockpit-details">
+      <summary>Research alignment matrix</summary>
+      <div class="table-wrap">
+        <table class="cockpit-table">
+          <thead><tr><th>Objective</th><th>Research question</th><th>Hypothesis</th><th>Chapter 4</th><th>Chapter 5</th><th>Status</th></tr></thead>
+          <tbody id="objectiveMatrixBody"></tbody>
+        </table>
+      </div>
+      <p id="objectiveMatrixEmpty" class="hint">Add objectives to activate the research alignment matrix.</p>
+    </details>
+    <details class="cockpit-details">
+      <summary>Issues that need attention <span id="cockpitIssueCount" class="issue-count">0</span></summary>
+      <div id="cockpitIssues" class="cockpit-issues"></div>
+    </details>
+    <details class="cockpit-details" id="versionHistoryDetails">
+      <summary>Chapter version history</summary>
+      <div class="row-between version-history-head"><p class="hint">Every successful chapter development or strengthening pass is saved as a recoverable snapshot.</p><button id="refreshVersionsBtn" type="button" class="secondary-action">Refresh versions</button></div>
+      <div id="versionHistoryList" class="version-history-list"></div>
+    </details>
+  </section>
+
   <main class="layout">
     <section class="card">
       <div class="row-between workspace-section-heading">
@@ -284,6 +329,18 @@
         <label class="priority-field"><span class="field-label">Objectives, one per line</span>
           <textarea id="objectives" rows="4" placeholder="Examine the effect of X on Y&#10;Assess the role of Z"></textarea>
         </label>
+        <label class="priority-field"><span class="field-label">Research questions, one per line</span>
+          <textarea id="research_questions" rows="4" placeholder="What is the effect of X on Y?&#10;How does Z influence Y?"></textarea>
+          <span class="field-help">ProjectReady maps these to the objectives and checks whether later chapters answer them.</span>
+        </label>
+        <details class="optional-fields compact-optional" data-optional-group>
+          <summary><span>Hypotheses for quantitative or mixed-method studies</span><small class="optional-summary-state"></small></summary>
+          <div class="optional-fields-body">
+            <label>Hypotheses, one per line
+              <textarea id="hypotheses" rows="3" placeholder="H1: X has a significant positive effect on Y"></textarea>
+            </label>
+          </div>
+        </details>
         <details class="optional-fields compact-optional" data-optional-group>
           <summary><span>Key constructs or variables</span><small class="optional-summary-state"></small></summary>
           <div class="optional-fields-body">
@@ -332,6 +389,7 @@
 
       <div class="actions project-start-actions">
         <button id="createProjectBtn" class="primary-action">Create research project</button>
+        <button id="saveProjectProfileBtn" type="button" class="secondary-action" disabled>Save research logic</button>
         <button id="clearWorkspaceBtn" type="button" class="secondary-action workspace-clear-action">Clear and start new job</button>
       </div>
       <p id="projectStatus" class="status"></p>
@@ -456,10 +514,11 @@
       </div>
       <div class="action-callout">Free Starter covers one limited Chapter One working draft with up to five selected sections. Paid access includes one guided working-draft development, one strengthening revision, one compliance review and one editable DOCX export.</div>
       <div class="actions">
-        <button id="draftBtn" class="primary-action">Develop working draft</button>
+        <button id="draftBtn" class="primary-action">Develop Chapter Draft</button>
         <button id="checkBtn" class="secondary-action">Run academic compliance review</button>
         <button id="downloadDraftBtn" disabled>Export working draft DOCX</button>
         <button id="downloadCheckBtn" disabled>Export compliance report DOCX</button>
+        <button id="downloadProjectBtn" class="secondary-action" disabled>Compile Project Working File DOCX</button>
       </div>
       <p id="draftStatus" class="status"></p>
       <div id="backgroundJobPanel" class="background-job-panel" hidden>

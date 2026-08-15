@@ -14,7 +14,7 @@ let activeBackgroundJob = null;
 
 const $ = (id) => document.getElementById(id);
 
-const APP_STATIC_VERSION = "20260718-workspace-clear-visible-v2";
+const APP_STATIC_VERSION = "20260815-research-cockpit-v1";
 const CURRENT_PROJECT_STORAGE_KEY = "projectready-current-project";
 
 const WORKSPACE_NEW_JOB_PARAM = "new_job";
@@ -106,7 +106,11 @@ function resetWorkspaceBrowserFields() {
   if ($("draftStatus")) $("draftStatus").textContent = "";
   if ($("downloadDraftBtn")) $("downloadDraftBtn").disabled = true;
   if ($("downloadCheckBtn")) $("downloadCheckBtn").disabled = true;
+  if ($("downloadProjectBtn")) $("downloadProjectBtn").disabled = true;
   if ($("saveRecoveryBtn")) $("saveRecoveryBtn").disabled = true;
+  if ($("saveProjectProfileBtn")) $("saveProjectProfileBtn").disabled = true;
+  if ($("researchCockpit")) $("researchCockpit").hidden = true;
+  currentResearchCockpit = null;
   if ($("projectStatus")) $("projectStatus").textContent = "Old project entries were cleared. Complete the new project profile to begin.";
 
   if ($("chapterSelect")) {
@@ -433,6 +437,16 @@ async function restoreCurrentProject() {
     if ($("automaticSourceSupport")) $("automaticSourceSupport").checked = profile.automatic_source_support !== false;
     if ($("research_area")) $("research_area").value = profile.research_area || "";
     if ($("study_context")) $("study_context").value = profile.study_context || "";
+    if ($("citation_evidence_notes")) $("citation_evidence_notes").value = profile.citation_evidence_notes || "";
+    if ($("research_approach") && profile.research_approach) $("research_approach").value = profile.research_approach;
+    if ($("data_type") && profile.data_type) $("data_type").value = profile.data_type;
+    if ($("objectives")) $("objectives").value = (profile.objectives || []).join("\n");
+    if ($("research_questions")) $("research_questions").value = (profile.research_questions || []).join("\n");
+    if ($("hypotheses")) $("hypotheses").value = (profile.hypotheses || []).join("\n");
+    const restoredVariables = profile.variables?.raw_variables || profile.variables?.constructs || [];
+    if ($("variables_constructs")) $("variables_constructs").value = Array.isArray(restoredVariables) ? restoredVariables.join("\n") : String(restoredVariables || "");
+    accumulatedSourceBank = Array.isArray(profile.source_bank) ? profile.source_bank : [];
+    latestSourceSearchResult = profile.retrieved_sources && typeof profile.retrieved_sources === "object" ? profile.retrieved_sources : null;
     const contribution = profile.student_contribution || {};
     if ($("draftMaturity")) $("draftMaturity").value = contribution.draft_maturity || profile.draft_maturity || $("draftMaturity").value;
     if ($("centralArgument")) $("centralArgument").value = contribution.central_argument || "";
@@ -455,9 +469,12 @@ async function restoreCurrentProject() {
       $("previousChapterStatus").textContent = `${alignmentCount} previous-chapter/full-work alignment upload(s) are already attached to this project.`;
     }
     if ($("saveRecoveryBtn")) $("saveRecoveryBtn").disabled = false;
+    if ($("saveProjectProfileBtn")) $("saveProjectProfileBtn").disabled = false;
+    if ($("downloadProjectBtn")) $("downloadProjectBtn").disabled = Object.keys(savedProjectDrafts || {}).length === 0;
     if ($("projectStatus")) $("projectStatus").textContent = project.recovery_enabled
       ? `Project restored: ${project.id}. Recovery is enabled.`
       : `Project restored: ${project.id}. Add a recovery email and PIN to make the ID recoverable.`;
+    await refreshResearchCockpit();
   } catch (_) {
     localStorage.removeItem(CURRENT_PROJECT_STORAGE_KEY);
     currentProjectId = null;
@@ -736,6 +753,7 @@ async function loadTemplate() {
     syncPageTargetControlsForChapter();
     updateLevelHint();
     updatePaymentPanel();
+    refreshVersionHistory();
   });
   renderSections();
   syncPageTargetControlsForChapter();
@@ -851,8 +869,8 @@ function collectProfile() {
     other_chapter_title: $("otherChapterTitle") ? $("otherChapterTitle").value.trim() : "",
     other_chapter_instructions: $("otherChapterInstructions") ? $("otherChapterInstructions").value.trim() : "",
     objectives: lines($("objectives").value),
-    research_questions: [],
-    hypotheses: [],
+    research_questions: lines($("research_questions") ? $("research_questions").value : ""),
+    hypotheses: lines($("hypotheses") ? $("hypotheses").value : ""),
     notes: $("format_notes") ? $("format_notes").value.trim() : ""
   };
 }
@@ -986,11 +1004,13 @@ async function createProject() {
   currentProjectId = result.id;
   localStorage.setItem(CURRENT_PROJECT_STORAGE_KEY, result.id);
   if ($("saveRecoveryBtn")) $("saveRecoveryBtn").disabled = false;
+  if ($("saveProjectProfileBtn")) $("saveProjectProfileBtn").disabled = false;
   $("projectStatus").textContent = result.recovery_enabled
     ? `Project created: ${result.id}. Recovery is enabled for the saved email and PIN.`
     : `Project created: ${result.id}. Add a recovery email and PIN to protect access if the ID is lost.`;
   ensureWorkspaceClearButton();
   updateChapterSpecificUi();
+  await refreshResearchCockpit();
   await updatePaymentPanel();
   return result.id;
 }
@@ -1159,6 +1179,8 @@ function applyDraftResult(result) {
     $("draftStatus").textContent = result.warning + " Review the working draft and complete every placeholder before export.";
   }
   $("downloadDraftBtn").disabled = false;
+  if ($("downloadProjectBtn")) $("downloadProjectBtn").disabled = false;
+  refreshResearchCockpit();
 }
 
 async function resumeBackgroundDraftIfAvailable() {
@@ -1182,7 +1204,7 @@ async function resumeBackgroundDraftIfAvailable() {
     handleWorkspaceError(error, "draftStatus");
   } finally {
     draftRequestInFlight = false;
-    if ($("draftBtn")) { $("draftBtn").disabled = false; $("draftBtn").textContent = "Develop working draft"; }
+    if ($("draftBtn")) { $("draftBtn").disabled = false; $("draftBtn").textContent = "Develop Chapter Draft"; }
   }
 }
 
@@ -1203,7 +1225,7 @@ async function generateDraft() {
   if (draftRequestInFlight) return;
   draftRequestInFlight = true;
   const draftButton = $("draftBtn");
-  const originalButtonText = draftButton?.textContent || "Develop working draft";
+  const originalButtonText = draftButton?.textContent || "Develop Chapter Draft";
   if (draftButton) {
     draftButton.disabled = true;
     draftButton.textContent = "Queueing request…";
@@ -1313,13 +1335,7 @@ async function autofillFromChapterOneUpload() {
   if (fillFieldFromSuggestion("objectives", (suggestions.objectives || []).join("\n"), mode)) filled += 1;
   if (fillFieldFromSuggestion("variables_constructs", (suggestions.variables || []).join("\n"), mode)) filled += 1;
   const questionText = (suggestions.research_questions || []).join("\n");
-  if (questionText) {
-    const notes = $("format_notes");
-    if (notes && (mode === "replace" || !notes.value.trim())) {
-      notes.value = `${notes.value.trim() ? `${notes.value.trim()}\n\n` : ""}Research questions extracted from Chapter One:\n${questionText}`.trim();
-      filled += 1;
-    }
-  }
+  if (fillFieldFromSuggestion("research_questions", questionText, mode)) filled += 1;
   if (preview) preview.textContent = data.preview || "No preview available.";
   if (status) status.textContent = filled
     ? `Autofill completed. ${filled} field(s) were updated. Review all extracted content before creating or drafting the project.`
@@ -1443,6 +1459,7 @@ async function findSources() {
   const rejected = result.rejected_irrelevant_count || 0;
   const requested = result.requested_count || payload.max_results;
   $("sourceStatus").textContent = `Attached ${attached} relevant source(s) from a maximum of ${requested}. Rejected ${rejected} unrelated record(s). ${errors ? errors + " provider(s) could not be reached." : ""}`;
+  await refreshResearchCockpit();
 }
 
 function renderSources(result) {
@@ -1501,6 +1518,7 @@ async function runCheck() {
   renderCheck(result);
   $("draftStatus").textContent = "Academic compliance review completed. This does not replace supervisor or institutional approval.";
   $("downloadCheckBtn").disabled = false;
+  await refreshResearchCockpit();
 }
 
 function renderCheck(result) {
@@ -1518,6 +1536,177 @@ function renderCheck(result) {
     `;
     tbody.appendChild(tr);
   }
+}
+
+
+let currentResearchCockpit = null;
+
+async function saveCurrentProjectProfile() {
+  if (!currentProjectId) return createProject();
+  const profile = collectProfile();
+  if (!profile.title) throw new Error("Enter the project title before saving the research logic.");
+  if (!responsibleUseConfirmed()) throw new Error("Confirm the academic-integrity and user-contribution declarations before saving.");
+  delete profile.recovery_email;
+  delete profile.recovery_pin;
+  const result = await api(`/api/projects/${encodeURIComponent(currentProjectId)}/profile`, {
+    method: "PUT",
+    body: JSON.stringify(profile),
+  });
+  if ($("projectStatus")) $("projectStatus").textContent = "Research logic saved. ProjectReady will use the updated objectives, questions, hypotheses, variables and study decisions across later chapters.";
+  renderResearchCockpit(result.research_logic || null);
+  return result;
+}
+
+function logicStatusLabel(value) {
+  return value === "aligned" ? "Aligned" : value === "partial" ? "Partial" : "Needs action";
+}
+
+function renderResearchCockpit(data) {
+  const panel = $("researchCockpit");
+  if (!panel) return;
+  if (!data) {
+    panel.hidden = true;
+    return;
+  }
+  currentResearchCockpit = data;
+  panel.hidden = false;
+  if ($("cockpitProjectTitle")) $("cockpitProjectTitle").textContent = data.project_title || "Research project progress";
+  if ($("cockpitReadinessLabel")) $("cockpitReadinessLabel").textContent = data.readiness_label || "Project workflow readiness, not a grade";
+  if ($("cockpitReadinessScore")) $("cockpitReadinessScore").textContent = `${Math.round(Number(data.readiness_score || 0))}%`;
+  if ($("cockpitReadinessProgress")) $("cockpitReadinessProgress").value = Math.max(0, Math.min(100, Number(data.readiness_score || 0)));
+  if ($("cockpitChapterProgress")) $("cockpitChapterProgress").textContent = `${Math.round(Number(data.chapter_progress || 0))}%`;
+  if ($("cockpitAlignmentScore")) $("cockpitAlignmentScore").textContent = `${Math.round(Number(data.alignment_score || 0))}%`;
+  if ($("cockpitSourceCount")) $("cockpitSourceCount").textContent = String(data.source_count || 0);
+  if ($("cockpitComplianceScore")) $("cockpitComplianceScore").textContent = data.compliance_score === null || data.compliance_score === undefined ? "—" : `${Math.round(Number(data.compliance_score))}%`;
+
+  const next = data.next_action || {};
+  if ($("cockpitNextActionLabel")) $("cockpitNextActionLabel").textContent = next.label || "Continue my research";
+  if ($("cockpitNextActionMessage")) $("cockpitNextActionMessage").textContent = next.message || "";
+  if ($("cockpitNextActionBtn")) $("cockpitNextActionBtn").dataset.actionType = next.type || "chapter";
+  if ($("cockpitNextActionBtn")) $("cockpitNextActionBtn").dataset.chapterNumber = String(next.chapter_number || 1);
+
+  const track = $("cockpitChapterTrack");
+  if (track) {
+    track.innerHTML = (data.chapter_status || []).map(item => `
+      <button type="button" class="cockpit-chapter-chip ${escapeHtml(item.status)}" data-cockpit-chapter="${Number(item.chapter_number)}">
+        <strong>Chapter ${Number(item.chapter_number)}</strong>
+        <span>${escapeHtml(item.status === "developed" ? "Developed" : item.status === "started" ? "Started" : "Not started")}</span>
+        <small>${Number(item.word_count || 0).toLocaleString()} words</small>
+      </button>`).join("");
+    track.querySelectorAll("[data-cockpit-chapter]").forEach(button => button.addEventListener("click", () => {
+      const chapter = Number(button.dataset.cockpitChapter || 1);
+      focusChapterForDevelopment(chapter);
+    }));
+  }
+
+  const tbody = $("objectiveMatrixBody");
+  const matrix = data.objective_matrix || [];
+  if (tbody) {
+    tbody.innerHTML = matrix.map(row => `
+      <tr>
+        <td><strong>${Number(row.objective_number)}.</strong> ${escapeHtml(row.objective || "")}</td>
+        <td>${escapeHtml(row.research_question || "Not mapped")}</td>
+        <td>${escapeHtml(row.hypothesis || "Not mapped / not required")}</td>
+        <td>${row.result_covered ? "✓ Trace found" : "—"}</td>
+        <td>${row.conclusion_covered ? "✓ Trace found" : "—"}</td>
+        <td><span class="logic-status ${escapeHtml(row.status || "needs_action")}">${escapeHtml(logicStatusLabel(row.status))}</span></td>
+      </tr>`).join("");
+  }
+  if ($("objectiveMatrixEmpty")) $("objectiveMatrixEmpty").hidden = matrix.length > 0;
+
+  const issues = data.issues || [];
+  if ($("cockpitIssueCount")) $("cockpitIssueCount").textContent = String(issues.length);
+  if ($("cockpitIssues")) {
+    $("cockpitIssues").innerHTML = issues.length
+      ? issues.map(item => `<div class="cockpit-issue ${escapeHtml(item.severity || "advisory")}"><strong>${escapeHtml((item.severity || "advisory").replace(/_/g, " "))}</strong><div>${escapeHtml(item.message || "")}</div></div>`).join("")
+      : `<div class="cockpit-issue advisory">No deterministic alignment warning is currently detected. Supervisor and disciplinary review are still required.</div>`;
+  }
+}
+
+async function refreshResearchCockpit() {
+  const panel = $("researchCockpit");
+  if (!currentProjectId) {
+    if (panel) panel.hidden = true;
+    return null;
+  }
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(currentProjectId)}/research-logic`);
+    renderResearchCockpit(data);
+    await refreshVersionHistory();
+    return data;
+  } catch (error) {
+    if (panel) panel.hidden = false;
+    if ($("cockpitNextActionMessage")) $("cockpitNextActionMessage").textContent = `Research logic could not refresh: ${error.message || error}`;
+    return null;
+  }
+}
+
+function focusChapterForDevelopment(chapterNumber) {
+  const chapter = Number(chapterNumber || 1);
+  if ($("chapterSelect")?.querySelector(`option[value="${chapter}"]`)) {
+    $("chapterSelect").value = String(chapter);
+    currentChapter = chapter;
+    renderSections();
+    updateChapterSpecificUi();
+    refreshVersionHistory();
+  }
+  $("chapterSelect")?.scrollIntoView({behavior: "smooth", block: "center"});
+}
+
+function continueFromCockpit() {
+  const button = $("cockpitNextActionBtn");
+  const type = button?.dataset.actionType || currentResearchCockpit?.next_action?.type || "chapter";
+  const chapter = Number(button?.dataset.chapterNumber || currentResearchCockpit?.next_action?.chapter_number || 1);
+  if (type === "sources") {
+    const target = $("sourceSearchQuery");
+    const details = target?.closest("details");
+    if (details) details.open = true;
+    target?.scrollIntoView({behavior: "smooth", block: "center"});
+    target?.focus();
+    return;
+  }
+  if (type === "project_logic") {
+    const target = !lines($("objectives")?.value || "").length ? $("objectives") : $("research_questions") || $("objectives");
+    target?.scrollIntoView({behavior: "smooth", block: "center"});
+    target?.focus();
+    return;
+  }
+  focusChapterForDevelopment(chapter);
+}
+
+async function refreshVersionHistory() {
+  const box = $("versionHistoryList");
+  if (!box || !currentProjectId) return;
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(currentProjectId)}/versions/${Number(currentChapter || 1)}?limit=15`);
+    const versions = data.versions || [];
+    if (!versions.length) {
+      box.innerHTML = `<p class="hint">No saved version yet for Chapter ${Number(currentChapter || 1)}. A snapshot is created after each successful draft or strengthening pass.</p>`;
+      return;
+    }
+    box.innerHTML = versions.map(version => {
+      const created = version.created_at ? new Date(version.created_at) : null;
+      const dateText = created && !Number.isNaN(created.getTime()) ? created.toLocaleString() : String(version.created_at || "");
+      return `<div class="version-row">
+        <div><strong>Version ${Number(version.version_number)}</strong><div class="version-meta">${escapeHtml(version.label || version.source || "Chapter snapshot")} · ${Number(version.character_count || 0).toLocaleString()} characters · ${escapeHtml(dateText)}</div></div>
+        <div class="version-actions"><button type="button" class="secondary-action" data-restore-version="${escapeHtml(version.id)}">Restore this version</button></div>
+      </div>`;
+    }).join("");
+    box.querySelectorAll("[data-restore-version]").forEach(button => button.addEventListener("click", () => restoreChapterVersion(button.dataset.restoreVersion).catch(error => handleWorkspaceError(error, "draftStatus"))));
+  } catch (error) {
+    box.innerHTML = `<p class="hint">Version history could not be loaded: ${escapeHtml(error.message || error)}</p>`;
+  }
+}
+
+async function restoreChapterVersion(versionId) {
+  if (!currentProjectId || !versionId) return;
+  const result = await api(`/api/projects/${encodeURIComponent(currentProjectId)}/versions/${Number(currentChapter || 1)}/${encodeURIComponent(versionId)}/restore`, {method: "POST"});
+  $("draftOutput").value = result.draft || "";
+  savedProjectDrafts[String(currentChapter)] = result.draft || "";
+  renderDraftPreview(result.draft || "");
+  if ($("draftStatus")) $("draftStatus").textContent = `Version ${result.restored_from} restored as a new recoverable snapshot. Review it before continuing.`;
+  $("downloadDraftBtn").disabled = false;
+  await refreshResearchCockpit();
 }
 
 function escapeHtml(value) {
@@ -1569,6 +1758,10 @@ if ($("draftOutput")) {
 }
 
 $("createProjectBtn").addEventListener("click", () => createProject().catch(err => handleWorkspaceError(err, "projectStatus")));
+if ($("saveProjectProfileBtn")) $("saveProjectProfileBtn").addEventListener("click", () => saveCurrentProjectProfile().catch(err => handleWorkspaceError(err, "projectStatus")));
+if ($("refreshCockpitBtn")) $("refreshCockpitBtn").addEventListener("click", () => refreshResearchCockpit().catch(err => handleWorkspaceError(err, "projectStatus")));
+if ($("cockpitNextActionBtn")) $("cockpitNextActionBtn").addEventListener("click", continueFromCockpit);
+if ($("refreshVersionsBtn")) $("refreshVersionsBtn").addEventListener("click", () => refreshVersionHistory().catch(err => handleWorkspaceError(err, "draftStatus")));
 if ($("saveRecoveryBtn")) $("saveRecoveryBtn").addEventListener("click", () => saveCurrentProjectRecovery().catch(err => handleWorkspaceError(err, "projectStatus")));
 if ($("recoverProjectBtn")) $("recoverProjectBtn").addEventListener("click", () => recoverWorkspaceProjects().catch(err => handleWorkspaceError(err, "projectStatus")));
 $("draftBtn").addEventListener("click", () => generateDraft().catch(err => handleWorkspaceError(err, "draftStatus")));
@@ -1604,6 +1797,10 @@ $("downloadDraftBtn").addEventListener("click", () => {
     .catch(err => handleWorkspaceError(err, "draftStatus"));
 });
 $("downloadCheckBtn").addEventListener("click", () => download(`/api/projects/${currentProjectId}/export/check/${currentChapter}`));
+if ($("downloadProjectBtn")) $("downloadProjectBtn").addEventListener("click", () => {
+  if (!currentProjectId) return handleWorkspaceError(new Error("Create or restore a project first."), "draftStatus");
+  download(`/api/projects/${currentProjectId}/export/project-working-file`);
+});
 if ($("unlockChapterBtn")) $("unlockChapterBtn").addEventListener("click", () => openCurrentCheckout().catch(err => handleWorkspaceError(err, "chapterAccessStatus")));
 if ($("accessPayBtn")) $("accessPayBtn").addEventListener("click", () => openCurrentCheckout({direct: true}).catch(err => handleWorkspaceError(err, "draftStatus")));
 if ($("accessDismissBtn")) $("accessDismissBtn").addEventListener("click", hideAccessRequiredNotice);
