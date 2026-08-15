@@ -198,3 +198,11 @@ See `PROJECT_RECOVERY_AND_REVISION_ONLY_UPDATE.md` for configuration and routes.
 ProjectReady now includes a Student Research Cockpit, deterministic Research Logic alignment monitoring, chapter version history and one-click compilation of saved chapters into an editable Project Working File DOCX. Full chapter draft development remains a primary workflow and has not been removed.
 
 See `FLAGSHIP_STUDENT_UPGRADE_2026-08-15.md` for the release details and validation results.
+
+## Guided workspace and developer access control, 15 August 2026
+
+Thesis Workspace and Chapter Strengthener now use a simpler left-guided research journey with a standalone main generation/revision form. Optional Strengthener section selection, alignment, supervisor comments and literature support are collapsed until needed.
+
+The restricted internal developer portal can switch the research workspaces between Normal Commercial, Temporary Open Access and Payment Required modes. It can also issue revocable, expiring complimentary tokens with a server-enforced page-credit limit and optional assigned email/module scope.
+
+See `GUIDED_WORKSPACE_ACCESS_CONTROL_UPDATE_2026-08-15.md` for behaviour, security and validation details.
