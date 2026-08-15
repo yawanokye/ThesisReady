@@ -15,6 +15,13 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from app.database import get_conn
+from app.access_control import (
+    get_access_policy,
+    issue_complimentary_token,
+    list_complimentary_tokens,
+    revoke_complimentary_token,
+    set_access_policy,
+)
 from app.jobs.store import cancel_job, get_job, init_job_tables, list_jobs, retry_job
 from app.payments.internal_access import internal_access_configured, issue_internal_access, validate_internal_access
 
@@ -66,6 +73,19 @@ def _portal_headers() -> dict[str, str]:
 class InternalLoginRequest(BaseModel):
     email: str = Field(min_length=5, max_length=254)
     key: str = Field(min_length=6, max_length=6)
+
+
+class AccessPolicyUpdateRequest(BaseModel):
+    mode: str = Field(min_length=4, max_length=40)
+    open_hours: float | None = Field(default=None, ge=0.25, le=168)
+
+
+class ComplimentaryTokenCreateRequest(BaseModel):
+    label: str = Field(default="Complimentary access", max_length=200)
+    assigned_email: str = Field(default="", max_length=254)
+    product_area: str = Field(default="all", max_length=80)
+    page_limit: int = Field(ge=1, le=1000)
+    validity_days: int = Field(default=30, ge=1, le=365)
 
 
 def _now() -> datetime:
@@ -326,6 +346,71 @@ def internal_module_access(request: Request) -> dict[str, Any]:
     }
 
 
+@router.get(PORTAL_PATH + "/api/access-policy")
+@router.get("/api/internal/access-policy")
+def internal_access_policy(request: Request) -> dict[str, Any]:
+    session = internal_session_or_none(request)
+    if not session:
+        raise HTTPException(status_code=404, detail="Resource not found.")
+    return {"ok": True, "policy": get_access_policy()}
+
+
+@router.post(PORTAL_PATH + "/api/access-policy")
+@router.post("/api/internal/access-policy")
+def internal_update_access_policy(payload: AccessPolicyUpdateRequest, request: Request) -> dict[str, Any]:
+    session = internal_session_or_none(request)
+    if not session:
+        raise HTTPException(status_code=404, detail="Resource not found.")
+    try:
+        policy = set_access_policy(
+            payload.mode,
+            open_hours=payload.open_hours,
+            updated_by=str(session.get("email") or "internal_developer"),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "policy": policy}
+
+
+@router.get(PORTAL_PATH + "/api/complimentary-tokens")
+@router.get("/api/internal/complimentary-tokens")
+def internal_complimentary_tokens(request: Request, limit: int = 100) -> dict[str, Any]:
+    if not internal_session_or_none(request):
+        raise HTTPException(status_code=404, detail="Resource not found.")
+    return {"ok": True, "tokens": list_complimentary_tokens(limit=limit)}
+
+
+@router.post(PORTAL_PATH + "/api/complimentary-tokens")
+@router.post("/api/internal/complimentary-tokens")
+def internal_create_complimentary_token(payload: ComplimentaryTokenCreateRequest, request: Request) -> dict[str, Any]:
+    session = internal_session_or_none(request)
+    if not session:
+        raise HTTPException(status_code=404, detail="Resource not found.")
+    try:
+        return issue_complimentary_token(
+            page_limit=payload.page_limit,
+            label=payload.label,
+            assigned_email=payload.assigned_email,
+            product_area=payload.product_area,
+            validity_days=payload.validity_days,
+            created_by=str(session.get("email") or "internal_developer"),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post(PORTAL_PATH + "/api/complimentary-tokens/{token_id}/revoke")
+@router.post("/api/internal/complimentary-tokens/{token_id}/revoke")
+def internal_revoke_complimentary_token(token_id: str, request: Request) -> dict[str, Any]:
+    session = internal_session_or_none(request)
+    if not session:
+        raise HTTPException(status_code=404, detail="Resource not found.")
+    try:
+        return revoke_complimentary_token(token_id, updated_by=str(session.get("email") or "internal_developer"))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.get(PORTAL_PATH + "/api/jobs")
 @router.get("/api/internal/jobs")
 def internal_jobs(request: Request, limit: int = 50) -> dict[str, Any]:
@@ -358,5 +443,5 @@ def internal_retry_job(job_id: str, request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="Resource not found.")
     claim = (job.get("payload") or {}).get("_preauthorized_claim") or {}
     if claim.get("claimed") and not claim.get("internal_access"):
-        raise HTTPException(status_code=409, detail="A paid failed job must be resubmitted by the user so a fresh entitlement can be reserved.")
+        raise HTTPException(status_code=409, detail="A failed paid or complimentary job must be resubmitted by the user so a fresh entitlement or page-credit reservation can be created.")
     return {"ok": True, "job": retry_job(job_id)}

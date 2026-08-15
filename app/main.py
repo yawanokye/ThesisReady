@@ -10,10 +10,11 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.database import init_db
+from app.access_control import init_access_control_tables
 from app.internal_portal import init_internal_portal_tables, internal_session_or_none, router as internal_portal_router
 from app.jobs.store import init_job_tables
 from app.payments.store import init_payment_tables
-from app.routers import chapter_strengthener, generation, jobs, journal_article, payments, projects, sources, templates, topic_ideas
+from app.routers import access, chapter_strengthener, generation, jobs, journal_article, payments, projects, sources, templates, topic_ideas
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -34,6 +35,7 @@ def _allowed_origins() -> list[str]:
 async def lifespan(_: FastAPI):
     init_db()
     init_payment_tables()
+    init_access_control_tables()
     init_job_tables()
     init_internal_portal_tables()
     yield
@@ -73,9 +75,12 @@ app.add_middleware(
         "X-ProjectReady-Purchase-Id",
         "X-ProjectReady-Access-Token",
         "X-ProjectReady-Job-Token",
+        "X-ProjectReady-Complimentary-Token",
+        "X-ProjectReady-Complimentary-Email",
     ],
 )
 
+app.include_router(access.router)
 app.include_router(templates.router)
 app.include_router(projects.router)
 app.include_router(sources.router)
