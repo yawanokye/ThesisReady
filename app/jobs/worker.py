@@ -21,6 +21,7 @@ from app.jobs.store import (
     update_job,
 )
 from app.payments.store import complete_claim, init_payment_tables, rollback_claim
+from app.access_control import complete_complimentary_usage, init_access_control_tables, rollback_complimentary_usage
 
 POLL_SECONDS = max(1.0, float(os.getenv("PROJECTREADY_WORKER_POLL_SECONDS", "2") or 2))
 LEASE_SECONDS = max(600, int(os.getenv("PROJECTREADY_WORKER_LEASE_SECONDS", "2700") or 2700))
@@ -38,6 +39,9 @@ def _complete_entitlement(job: dict[str, Any]) -> None:
     usage_id = str(claim.get("usage_id") or "")
     if usage_id and claim.get("claimed"):
         complete_claim(usage_id)
+    complimentary_usage_id = str(claim.get("complimentary_usage_id") or "")
+    if complimentary_usage_id and claim.get("claimed"):
+        complete_complimentary_usage(complimentary_usage_id)
 
 
 def _rollback_entitlement(job: dict[str, Any]) -> None:
@@ -45,6 +49,9 @@ def _rollback_entitlement(job: dict[str, Any]) -> None:
     usage_id = str(claim.get("usage_id") or "")
     if usage_id and claim.get("claimed"):
         rollback_claim(usage_id)
+    complimentary_usage_id = str(claim.get("complimentary_usage_id") or "")
+    if complimentary_usage_id and claim.get("claimed"):
+        rollback_complimentary_usage(complimentary_usage_id)
 
 
 @contextmanager
@@ -103,6 +110,7 @@ def run_once() -> bool:
 def main() -> None:
     init_db()
     init_payment_tables()
+    init_access_control_tables()
     init_job_tables()
     print(
         f"ProjectReady background worker started: id={WORKER_ID}, poll={POLL_SECONDS}s, lease={LEASE_SECONDS}s",
