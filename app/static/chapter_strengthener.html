@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/static/chapter_strengthener.css?v=20260718-all-clear-trend-v1">
   <link rel="stylesheet" href="/static/projectready_payments.css?v=20260709-live-payments-v1">
   <link rel="stylesheet" href="/static/user_guide_shared.css?v=20260719-user-guide-v1">
-  <link rel="stylesheet" href="/static/guided-workspace.css?v=20260815-guided-flow-v2">
+  <link rel="stylesheet" href="/static/guided-workspace.css?v=20260815-selected-papers-v1">
 </head>
 <body class="chapter-strengthener-page" data-guide-module="chapter-strengthener">
   <header class="topbar">
@@ -239,6 +239,25 @@
         </div>
         <label><span class="field-label">Citation style</span><select id="citationStyle"><option>APA 7th</option><option>Harvard</option><option>Chicago author-date</option><option>Vancouver</option><option>IEEE</option><option>School-specific style</option></select></label>
 
+        <details class="secondary-options citation-matrix-details">
+          <summary><strong>Citation-density standard</strong><span>Verified evidence only</span></summary>
+          <div class="secondary-options-body">
+            <p class="help">ProjectReady selects the matrix from the discipline/programme above. Values are individual verified or user-supplied referenced works per 1,000 substantive words. The range guides evidence density and is never filled with invented or padded citations.</p>
+            <div class="citation-matrix-table-wrap">
+              <table class="citation-matrix-table">
+                <thead><tr><th>Discipline</th><th>Intro</th><th>Literature</th><th>Methods</th><th>Results / Discussion</th><th>Conclusion</th></tr></thead>
+                <tbody>
+                  <tr><th>STEM</th><td>5–10</td><td>15–25</td><td>2–5</td><td>8–15</td><td>0–3</td></tr>
+                  <tr><th>Social Sciences</th><td>8–12</td><td>20–35</td><td>4–8</td><td>12–20</td><td>2–5</td></tr>
+                  <tr><th>Humanities</th><td>10–15</td><td>25–40</td><td>1–3</td><td>15–25</td><td>3–6</td></tr>
+                  <tr><th>Professional &amp; Health</th><td>8–15</td><td>20–30</td><td>5–10</td><td>10–18</td><td>1–4</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="help"><strong>Fail-closed rule:</strong> if suitable verified evidence cannot be found, ProjectReady leaves the section below target and flags the evidence gap. It never fabricates an author, year, DOI, source, statistic or finding.</p>
+          </div>
+        </details>
+
         </div>
 
         <div class="form-section-marker" id="strengthenerDirectionStep">
@@ -285,6 +304,16 @@
         <label class="check"><input type="checkbox" id="includeSourceSearch" checked> Search scholarly metadata to strengthen evidence and discussion</label>
         <label><span class="field-label">Focused source search terms</span><textarea id="sourceSearchTerms" rows="2"></textarea></label>
         <label class="check"><input type="checkbox" id="includeOlderFoundational" checked> Include relevant foundational literature</label>
+
+        <div class="selected-paper-library strengthener-selected-paper-library">
+          <h3>My selected papers</h3>
+          <p class="help">Upload up to <strong>50 papers</strong> you want considered alongside ProjectReady's scholarly search. Relevant uploaded papers are prioritised across literature review, methodology, discussion and other evidence-led sections. A paper without verified or user-confirmed citation details remains evidence-only and will not be cited automatically.</p>
+          <label><span class="field-label">Selected papers</span><input id="strengthenerSelectedPaperFiles" type="file" multiple accept=".pdf,.docx,.txt,.md,.rtf"></label>
+          <button type="button" class="secondary compact-upload" id="extractSelectedPapersBtn">Attach selected papers</button>
+          <p id="strengthenerSelectedPapersStatus" class="status"></p>
+          <div id="strengthenerSelectedPapersList" class="selected-paper-list"></div>
+        </div>
+
         <label class="check"><input type="checkbox" id="saveToProject" checked> Save the strengthened version as the current project chapter draft</label>
 
           </div>
@@ -339,7 +368,7 @@
 
   <footer class="footer">ProjectReady AI, self-service academic research support with user authorship, verification and supervisor review.</footer>
   <script src="/static/projectready_payments.js?v=20260815-complimentary-v2"></script>
-  <script src="/static/chapter_strengthener.js?v=20260815-guided-flow-v2"></script>
+  <script src="/static/chapter_strengthener.js?v=20260815-selected-papers-v1"></script>
   <script src="/static/guide_banner.js?v=20260719-user-guide-v1"></script>
 </body>
 </html>

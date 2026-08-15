@@ -24,6 +24,7 @@ const STRENGTHENER_NEW_JOB_PARAM = 'new_job';
 let strengthenerAccessState = null;
 let strengthenerComplimentaryState = null;
 let lastStrengthenerTarget = null;
+let strengthenerSelectedPapers = [];
 
 function setStrengthenerFlowStep(name, complete, current) {
   const node = document.querySelector(`#strengthenerFlowSteps [data-flow-step="${name}"]`);
@@ -175,6 +176,9 @@ function resetStrengthenerForNewJob() {
   supervisorMatrixPanel.hidden = true;
   lastResult = null;
   currentProject = null;
+  strengthenerSelectedPapers = [];
+  if (byId('strengthenerSelectedPapersList')) byId('strengthenerSelectedPapersList').innerHTML = '';
+  if (byId('strengthenerSelectedPapersStatus')) byId('strengthenerSelectedPapersStatus').textContent = '';
   customNewSections = [];
   activeStrengthenerJob = null;
   strengthenerJobInFlight = false;
@@ -389,6 +393,7 @@ async function updateTargetNote() {
       body: JSON.stringify({
         academic_level: byId('academicLevel').value,
         chapter_type: byId('chapterType').value,
+        discipline: byId('discipline')?.value.trim() || '',
         strengthening_scope: byId('strengtheningScope')?.value || 'whole_chapter',
         selected_section_count: strengthen.length + add.length + customNewSections.length,
         ...customTargetPayload(),
@@ -398,7 +403,7 @@ async function updateTargetNote() {
     if (!response.ok) return;
     lastStrengthenerTarget = data;
     const scopeLabel = data.strengthening_scope === 'selected_sections' ? 'selected-section output' : 'complete selected chapter';
-    targetNote.textContent = `Planning target for the ${scopeLabel}: ${data.page_range.minimum}-${data.page_range.maximum} pages, approximately ${Number(data.word_range_estimate.minimum).toLocaleString()}-${Number(data.word_range_estimate.maximum).toLocaleString()} words, and ${data.citation_density_per_1000_words.minimum}-${data.citation_density_per_1000_words.maximum} citation occurrences per 1,000 words.${data.custom_target_applied ? ' Custom page target applied.' : ''}`;
+    targetNote.textContent = `Planning target for the ${scopeLabel}: ${data.page_range.minimum}-${data.page_range.maximum} pages, approximately ${Number(data.word_range_estimate.minimum).toLocaleString()}-${Number(data.word_range_estimate.maximum).toLocaleString()} words, and ${data.citation_density_per_1000_words.minimum}-${data.citation_density_per_1000_words.maximum} verified referenced works per 1,000 words.${data.custom_target_applied ? ' Custom page target applied.' : ''}`;
     if (!byId('customTargetPagesEnabled')?.checked) {
       if (byId('targetPageMin')) byId('targetPageMin').placeholder = String(data.page_range.minimum);
       if (byId('targetPageMax')) byId('targetPageMax').placeholder = String(data.page_range.maximum);
@@ -412,6 +417,10 @@ async function updateTargetNote() {
 byId('academicLevel').addEventListener('change', () => {
   updateTargetNote();
   updateAccessSummary();
+});
+
+byId('discipline').addEventListener('change', () => {
+  updateTargetNote();
 });
 byId('chapterType').addEventListener('change', () => {
   renderStrengthenerSections();
@@ -440,6 +449,128 @@ byId('addCustomNewSectionBtn')?.addEventListener('click', () => {
 });
 loadStrengthenerTemplate();
 updateTargetNote();
+
+
+function strengthenerPaperAuthors(paper) {
+  return Array.isArray(paper?.authors) ? paper.authors.join('; ') : String(paper?.authors || '');
+}
+
+function strengthenerPersistedPapers() {
+  const papers = currentProject?.profile?.selected_papers;
+  return Array.isArray(papers) ? papers : [];
+}
+
+function renderStrengthenerSelectedPapers() {
+  const box = byId('strengthenerSelectedPapersList');
+  const status = byId('strengthenerSelectedPapersStatus');
+  if (!box) return;
+  const persisted = strengthenerPersistedPapers();
+  const persistedKeys = new Set(persisted.map((paper) => String(paper?.doi || paper?.id || paper?.filename || '').toLowerCase()));
+  const pending = strengthenerSelectedPapers.filter((paper) => !persistedKeys.has(String(paper?.doi || paper?.id || paper?.filename || '').toLowerCase()));
+  const all = [
+    ...persisted.map((paper) => ({paper, persisted: true})),
+    ...pending.map((paper) => ({paper, persisted: false})),
+  ];
+  if (!all.length) {
+    box.innerHTML = '<p class="help">No selected papers are attached. Automatic scholarly search can still support the strengthening request.</p>';
+    if (status) status.textContent = '';
+    return;
+  }
+  const ready = all.filter(({paper}) => paper?.citation_eligible).length;
+  if (status) status.textContent = `${all.length} of 50 selected papers available; ${ready} citation-ready.`;
+  box.innerHTML = all.map(({paper, persisted}, index) => {
+    const citationReady = Boolean(paper.citation_eligible);
+    const authors = strengthenerPaperAuthors(paper);
+    return `
+      <article class="selected-paper-card" data-strengthener-paper-id="${String(paper.id || '').replace(/"/g, '&quot;')}">
+        <div class="selected-paper-card-head">
+          <div><span class="selected-paper-number">Paper ${index + 1}</span><strong>${escapeHtmlLocal(paper.title || paper.filename || 'Uploaded paper')}</strong><small>${escapeHtmlLocal(paper.filename || '')}</small></div>
+          <span class="selected-paper-badge ${citationReady ? 'ready' : 'needs-confirmation'}">${citationReady ? 'Citation ready' : 'Confirm metadata'}</span>
+        </div>
+        <div class="selected-paper-meta"><span>${escapeHtmlLocal(authors || 'Author details not confirmed')}</span><span>${escapeHtmlLocal(paper.year || 'Year not confirmed')}</span></div>
+        <p class="help">${escapeHtmlLocal(paper.provenance_note || '')}</p>
+        ${persisted ? '<p class="help">Saved with this project. Manage or remove it from the Thesis Workspace source library if needed.</p>' : `
+        <details class="selected-paper-metadata-editor">
+          <summary>${citationReady ? 'Review citation details' : 'Confirm citation details before citing'}</summary>
+          <div class="selected-paper-editor-grid">
+            <label>Title<input data-strengthener-paper-field="title" value="${escapeHtmlLocal(paper.title || '')}"></label>
+            <label>Authors, separate with semicolons<input data-strengthener-paper-field="authors" value="${escapeHtmlLocal(authors)}"></label>
+            <label>Year<input data-strengthener-paper-field="year" value="${escapeHtmlLocal(paper.year || '')}" maxlength="5"></label>
+            <label>Journal / source<input data-strengthener-paper-field="source" value="${escapeHtmlLocal(paper.source || '')}"></label>
+            <label>DOI<input data-strengthener-paper-field="doi" value="${escapeHtmlLocal(paper.doi || '')}"></label>
+            <label>Stable URL<input data-strengthener-paper-field="url" value="${escapeHtmlLocal(paper.url || '')}"></label>
+          </div>
+          <div class="actions compact-actions"><button type="button" class="secondary compact-upload" data-strengthener-paper-confirm="${String(paper.id || '').replace(/"/g, '&quot;')}">Confirm citation details</button><button type="button" class="secondary compact-upload" data-strengthener-paper-remove="${String(paper.id || '').replace(/"/g, '&quot;')}">Remove</button></div>
+        </details>`}
+      </article>`;
+  }).join('');
+  box.querySelectorAll('[data-strengthener-paper-confirm]').forEach((button) => button.addEventListener('click', () => confirmStrengthenerPaperMetadata(button.dataset.strengthenerPaperConfirm)));
+  box.querySelectorAll('[data-strengthener-paper-remove]').forEach((button) => button.addEventListener('click', () => removeStrengthenerSelectedPaper(button.dataset.strengthenerPaperRemove)));
+}
+
+function escapeHtmlLocal(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char]));
+}
+
+async function attachStrengthenerSelectedPapers() {
+  const input = byId('strengthenerSelectedPaperFiles');
+  const files = Array.from(input?.files || []);
+  if (!files.length) {
+    byId('strengthenerSelectedPapersStatus').textContent = 'Choose one or more papers first.';
+    return;
+  }
+  const existingCount = strengthenerPersistedPapers().length + strengthenerSelectedPapers.length;
+  if (existingCount + files.length > 50) {
+    byId('strengthenerSelectedPapersStatus').textContent = `Up to 50 selected papers are allowed. ${existingCount} are already attached or pending.`;
+    return;
+  }
+  const formData = new FormData();
+  files.forEach((file) => formData.append('files', file));
+  byId('strengthenerSelectedPapersStatus').textContent = `Extracting ${files.length} selected paper(s)…`;
+  const response = await fetch('/api/chapter-strengthener/extract-selected-papers', {method:'POST', body: formData});
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.detail || 'Selected papers could not be processed.');
+  const currentKeys = new Set([
+    ...strengthenerPersistedPapers(), ...strengthenerSelectedPapers,
+  ].map((paper) => String(paper?.doi || paper?.filename || paper?.id || '').toLowerCase()));
+  for (const paper of data.papers || []) {
+    const key = String(paper?.doi || paper?.filename || paper?.id || '').toLowerCase();
+    if (!key || currentKeys.has(key)) continue;
+    currentKeys.add(key);
+    strengthenerSelectedPapers.push(paper);
+  }
+  if (input) input.value = '';
+  renderStrengthenerSelectedPapers();
+  byId('strengthenerSelectedPapersStatus').textContent = `${strengthenerSelectedPapers.length} new paper(s) ready for this strengthening request. ${data.citation_ready || 0} were citation-ready automatically. Papers without confirmed metadata remain evidence-only.`;
+  updateStrengthenerFlow();
+}
+
+function confirmStrengthenerPaperMetadata(paperId) {
+  const card = document.querySelector(`.selected-paper-card[data-strengthener-paper-id="${String(paperId || '')}"]`);
+  const paper = strengthenerSelectedPapers.find((item) => String(item.id || '') === String(paperId || ''));
+  if (!card || !paper) return;
+  const val = (name) => card.querySelector(`[data-strengthener-paper-field="${name}"]`)?.value.trim() || '';
+  const authors = val('authors').split(/\s*;\s*|\n+/).map((item) => item.trim()).filter(Boolean);
+  const year = val('year');
+  if (!val('title') || !authors.length || !/^(?:19|20)\d{2}[a-z]?$/.test(year)) {
+    byId('strengthenerSelectedPapersStatus').textContent = 'To make a paper citation-ready, confirm its title, at least one author and a four-digit publication year.';
+    return;
+  }
+  Object.assign(paper, {
+    title: val('title'), authors, year, source: val('source'), doi: val('doi'), url: val('url'),
+    user_metadata_confirmed: true, citation_eligible: true, user_verified: true,
+    metadata_status: paper.metadata_verified ? 'verified_crossref' : 'confirmed_by_user',
+    provenance_note: paper.metadata_verified ? 'Full text was uploaded by the user and citation metadata was verified.' : 'Full text and citation details were uploaded/confirmed by the user.',
+  });
+  renderStrengthenerSelectedPapers();
+  byId('strengthenerSelectedPapersStatus').textContent = 'Citation details confirmed for this paper. It may now be cited only where its uploaded evidence supports the claim.';
+}
+
+function removeStrengthenerSelectedPaper(paperId) {
+  strengthenerSelectedPapers = strengthenerSelectedPapers.filter((item) => String(item.id || '') !== String(paperId || ''));
+  renderStrengthenerSelectedPapers();
+  byId('strengthenerSelectedPapersStatus').textContent = `${strengthenerSelectedPapers.length} new selected paper(s) remain for this request.`;
+}
 
 function payloadFromForm() {
   return {
@@ -493,6 +624,7 @@ function payloadFromForm() {
     source_search_terms: byId('sourceSearchTerms').value.trim(),
     source_limit: 45,
     source_bank: Array.isArray(currentProject?.profile?.source_bank) ? currentProject.profile.source_bank : [],
+    selected_papers: strengthenerSelectedPapers,
     save_to_project: byId('saveToProject').checked,
     academic_integrity_confirmed: byId('strengthenerIntegrityDeclaration').checked,
     user_contribution_confirmed: byId('strengthenerContributionDeclaration').checked,
@@ -615,6 +747,7 @@ function fillFromProject(project) {
   customNewSections = Array.isArray(profile.custom_new_sections) ? profile.custom_new_sections : customNewSections;
   renderCustomNewSections();
   renderStrengthenerSections();
+  renderStrengthenerSelectedPapers();
 
   localStorage.setItem(PROJECT_STORAGE_KEY, project.id);
   const external = profile.project_kind === 'external_revision';
@@ -668,6 +801,8 @@ async function createExternalRevisionProject(payload) {
   const data = await response.json();
   if (!response.ok) throw new Error(data.detail || 'The revision-only project could not be created.');
   fillFromProject(data);
+  strengthenerSelectedPapers = [];
+  renderStrengthenerSelectedPapers();
   return data;
 }
 
@@ -852,7 +987,7 @@ function applyStrengthenerResult(data) {
   const isolatedText = data.scope_metadata?.chapter_isolated
     ? ` A complete thesis was uploaded and Chapter ${data.scope_metadata.selected_chapter_number} was isolated before strengthening.`
     : '';
-  revisionMeta.innerHTML = `<strong>${data.mode === 'ai_revision' ? 'Revision completed' : 'Fallback output returned'}.</strong> ${scopeText}. ${sourceCount} scholarly record(s) passed to the revision workflow. Estimated length: ${Number(data.estimated_pages || 0).toLocaleString()} pages and ${Number(data.word_count || 0).toLocaleString()} words. Citation density: ${Number(data.citations_per_1000_words || 0).toLocaleString()} per 1,000 words. Target: ${data.target_page_range || ''} pages and ${data.target_citation_density || ''}.${isolatedText} ${data.revision_colour_note || ''}`;
+  revisionMeta.innerHTML = `<strong>${data.mode === 'ai_revision' ? 'Revision completed' : 'Fallback output returned'}.</strong> ${scopeText}. ${sourceCount} scholarly record(s) passed to the revision workflow. Estimated length: ${Number(data.estimated_pages || 0).toLocaleString()} pages and ${Number(data.word_count || 0).toLocaleString()} words. Verified/user-supplied reference density: ${Number(data.references_per_1000_words ?? data.citations_per_1000_words ?? 0).toLocaleString()} per 1,000 words. Target: ${data.target_page_range || ''} pages and ${data.target_citation_density || ''}.${isolatedText} ${data.revision_colour_note || ''}`;
 
   enableOutputs(Boolean(revisedChapter.value.trim()));
   const errors = Array.isArray(data.provider_errors) ? data.provider_errors.filter(Boolean) : [];
@@ -1013,6 +1148,7 @@ window.addEventListener('projectready:session-ready', () => {
 
 byId('applyStrengthenerComplimentaryBtn')?.addEventListener('click', () => applyStrengthenerComplimentaryAccess().then(updateAccessSummary).catch((error) => { if (byId('strengthenerComplimentaryStatus')) byId('strengthenerComplimentaryStatus').textContent = error.message || 'Token could not be applied.'; }));
 byId('clearStrengthenerComplimentaryBtn')?.addEventListener('click', () => clearStrengthenerComplimentaryAccess().then(updateAccessSummary).catch(() => {}));
+byId('extractSelectedPapersBtn')?.addEventListener('click', () => attachStrengthenerSelectedPapers().catch((error) => { if (byId('strengthenerSelectedPapersStatus')) byId('strengthenerSelectedPapersStatus').textContent = error.message || 'Selected papers could not be attached.'; }));
 document.addEventListener('input', (event) => { if (event.target?.closest?.('.strengthener-guided-frame')) updateStrengthenerFlow(); });
 document.addEventListener('change', (event) => { if (event.target?.closest?.('.strengthener-guided-frame')) { updateStrengthenerFlow(); refreshStrengthenerAccessStatus().catch(() => {}); } });
 

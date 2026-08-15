@@ -4,6 +4,7 @@ let currentChapter = 1;
 let currentSections = [];
 let latestSourceSearchResult = null;
 let accumulatedSourceBank = [];
+let selectedPapers = [];
 let uploadedRevisionText = "";
 let uploadedRevisionFilename = "";
 let alignmentUploadAttached = false;
@@ -11,10 +12,11 @@ let savedProjectDrafts = {};
 let draftRequestInFlight = false;
 let customPageTargets = {};
 let activeBackgroundJob = null;
+let currentContinuation = null;
 
 const $ = (id) => document.getElementById(id);
 
-const APP_STATIC_VERSION = "20260815-research-cockpit-v1";
+const APP_STATIC_VERSION = "20260815-selected-papers-v1";
 const CURRENT_PROJECT_STORAGE_KEY = "projectready-current-project";
 
 const WORKSPACE_NEW_JOB_PARAM = "new_job";
@@ -209,6 +211,7 @@ function resetWorkspaceBrowserFields() {
   currentSections = [];
   latestSourceSearchResult = null;
   accumulatedSourceBank = [];
+  selectedPapers = [];
   uploadedRevisionText = "";
   uploadedRevisionFilename = "";
   alignmentUploadAttached = false;
@@ -223,6 +226,8 @@ function resetWorkspaceBrowserFields() {
   if ($("scoreBox")) $("scoreBox").textContent = "";
   if ($("checkTable")) $("checkTable").querySelector("tbody").innerHTML = "";
   if ($("sourceResults")) $("sourceResults").innerHTML = "";
+  if ($("selectedPapersList")) $("selectedPapersList").innerHTML = "";
+  if ($("selectedPapersStatus")) $("selectedPapersStatus").textContent = "";
   if ($("workspaceRecoveryResults")) $("workspaceRecoveryResults").innerHTML = "";
   if ($("previousChapterStatus")) $("previousChapterStatus").textContent = "";
   if ($("revisionStatus")) $("revisionStatus").textContent = "";
@@ -579,6 +584,7 @@ async function restoreCurrentProject() {
     if ($("purposeStatementStyle")) $("purposeStatementStyle").value = profile.purpose_statement_style || "concise_general_objective";
     if ($("automaticSourceSupport")) $("automaticSourceSupport").checked = profile.automatic_source_support !== false;
     if ($("research_area")) $("research_area").value = profile.research_area || "";
+    if ($("citationDisciplineMatrix")) $("citationDisciplineMatrix").value = profile.citation_discipline_matrix || "auto";
     if ($("study_context")) $("study_context").value = profile.study_context || "";
     if ($("citation_evidence_notes")) $("citation_evidence_notes").value = profile.citation_evidence_notes || "";
     if ($("research_approach") && profile.research_approach) $("research_approach").value = profile.research_approach;
@@ -589,6 +595,8 @@ async function restoreCurrentProject() {
     const restoredVariables = profile.variables?.raw_variables || profile.variables?.constructs || [];
     if ($("variables_constructs")) $("variables_constructs").value = Array.isArray(restoredVariables) ? restoredVariables.join("\n") : String(restoredVariables || "");
     accumulatedSourceBank = Array.isArray(profile.source_bank) ? profile.source_bank : [];
+    selectedPapers = Array.isArray(profile.selected_papers) ? profile.selected_papers : [];
+    renderSelectedPapers();
     latestSourceSearchResult = profile.retrieved_sources && typeof profile.retrieved_sources === "object" ? profile.retrieved_sources : null;
     const contribution = profile.student_contribution || {};
     if ($("draftMaturity")) $("draftMaturity").value = contribution.draft_maturity || profile.draft_maturity || $("draftMaturity").value;
@@ -986,6 +994,7 @@ function collectProfile() {
     background_structure: $("backgroundStructure") ? $("backgroundStructure").value : "continuous_narrative",
     purpose_statement_style: $("purposeStatementStyle") ? $("purposeStatementStyle").value : "concise_general_objective",
     automatic_source_support: $("automaticSourceSupport") ? $("automaticSourceSupport").checked : true,
+    citation_discipline_matrix: $("citationDisciplineMatrix") ? $("citationDisciplineMatrix").value : "auto",
     research_area: $("research_area").value.trim(),
     study_context: $("study_context").value.trim(),
     citation_evidence_notes: $("citation_evidence_notes") ? $("citation_evidence_notes").value.trim() : "",
@@ -1236,11 +1245,24 @@ function showDraftQualityHint(text, metrics = null) {
   const count = genericLanguageAudit(text);
   const status = $("draftStatus");
   if (!status) return;
+  const matrix = metrics?.citation_matrix || {};
+  const discipline = matrix.discipline_label || "Auto-detected discipline";
+  const target = metrics?.citation_target || {};
+  const verifiedDensity = Number(metrics?.verified_references_per_1000_words ?? metrics?.citation_occurrences_per_1000_words ?? 0);
+  const targetText = target.minimum !== undefined
+    ? `${target.minimum}-${target.maximum} verified referenced works per 1,000 words`
+    : "the discipline-and-section matrix";
+  const integrity = metrics?.citation_integrity || {};
+  const integrityText = integrity.unverified_source_count
+    ? ` ${integrity.unverified_source_count} unverified generated citation(s) were blocked.`
+    : " Citation integrity gate passed.";
   const metricText = metrics
-    ? ` Estimated ${metrics.estimated_pages} pages from ${Number(metrics.word_count || 0).toLocaleString()} words, against a ${metrics.target_page_range}-page target. Citation density: ${metrics.citation_occurrences_per_1000_words} occurrences per 1,000 words.`
+    ? ` Estimated ${metrics.estimated_pages} pages from ${Number(metrics.word_count || 0).toLocaleString()} words. Verified citation density: ${verifiedDensity} per 1,000 words, target ${targetText} for ${discipline}.${integrityText}`
     : "";
   if (metrics && !metrics.depth_target_reached) {
     status.textContent = `Working draft developed but remains below the planned depth target.${metricText} Add more verified evidence, results or source material, then revise or regenerate.`;
+  } else if (metrics?.citation_density_status === "under_target") {
+    status.textContent = `Working draft developed.${metricText} Citation density remains below the matrix range because ProjectReady will not fabricate or pad sources. Add or find more verified evidence if the section genuinely needs it.`;
   } else if (count > 8) {
     status.textContent = `Working draft developed.${metricText} Review generic transitions and add more project-specific evidence before any submission.`;
   } else {
@@ -1324,7 +1346,144 @@ function applyDraftResult(result) {
   }
   $("downloadDraftBtn").disabled = false;
   if ($("downloadProjectBtn")) $("downloadProjectBtn").disabled = false;
+  renderChapterContinuation(result.next_chapter || null);
   refreshResearchCockpit();
+}
+
+function continuationLines(value) {
+  return Array.isArray(value) ? value.join("\n") : String(value || "");
+}
+
+function renderProvisionalStatistics(items = []) {
+  const panel = $("provisionalStatisticsPanel");
+  const list = $("provisionalStatisticsList");
+  if (!panel || !list) return;
+  const usable = (items || []).filter(item => item && item.status !== "rejected");
+  panel.hidden = usable.length === 0;
+  list.innerHTML = usable.map(item => {
+    const status = item.status === "confirmed" ? "Confirmed" : "Needs confirmation";
+    const actions = item.status === "confirmed"
+      ? `<button type="button" class="secondary-action" data-stat-decision="rejected" data-stat-id="${escapeHtml(item.id)}">Reject</button>`
+      : `<button type="button" class="primary-action" data-stat-decision="confirmed" data-stat-id="${escapeHtml(item.id)}">Confirm source and context</button><button type="button" class="secondary-action" data-stat-decision="rejected" data-stat-id="${escapeHtml(item.id)}">Reject</button>`;
+    const locator = item.source_locator ? `<a href="${escapeHtml(item.source_locator)}" target="_blank" rel="noopener">Open source</a>` : "";
+    return `<article class="provisional-statistic-card ${item.status === "confirmed" ? "confirmed" : "pending"}">
+      <div class="provisional-statistic-status">${escapeHtml(status)}</div>
+      <p class="provisional-statistic-text">${escapeHtml(item.statement || "")}</p>
+      <p class="provisional-statistic-source"><strong>Source:</strong> ${escapeHtml(item.source_label || item.source_title || "Verified source record")} ${locator}</p>
+      <div class="actions compact-actions">${actions}</div>
+    </article>`;
+  }).join("");
+  list.querySelectorAll("[data-stat-decision]").forEach(button => button.addEventListener("click", () => {
+    decideProvisionalStatistic(button.dataset.statId, button.dataset.statDecision).catch(err => {
+      if ($("continuationSaveStatus")) $("continuationSaveStatus").textContent = err.message || "The statistic decision could not be saved.";
+    });
+  }));
+}
+
+function renderChapterContinuation(linkage) {
+  const panel = $("chapterContinuationPanel");
+  if (!panel) return;
+  currentContinuation = linkage && linkage.available ? linkage : null;
+  panel.hidden = !currentContinuation;
+  if (!currentContinuation) return;
+  const from = Number(currentContinuation.completed_chapter || currentChapter || 1);
+  const next = Number(currentContinuation.next_chapter || from + 1);
+  if ($("continuationTitle")) $("continuationTitle").textContent = `Chapter ${from} is saved. Add Chapter ${next}?`;
+  if ($("continuationMessage")) $("continuationMessage").textContent = currentContinuation.automatic_alignment || `ProjectReady will use Chapter ${from} automatically to align Chapter ${next}.`;
+  const citation = currentContinuation.citation_target || {};
+  const needs = currentContinuation.needs_confirmation || [];
+  const carry = $("continuationCarryForward");
+  if (carry) {
+    carry.innerHTML = `<div><strong>Carried forward automatically</strong><span>Title, objectives, research questions, hypotheses, variables, terminology and Chapter ${from} context.</span></div>
+      <div><strong>Next citation range</strong><span>${escapeHtml(citation.discipline_label || "Auto-detected discipline")}: ${escapeHtml(citation.minimum ?? "")}-${escapeHtml(citation.maximum ?? "")} verified referenced works per 1,000 words.</span></div>
+      <div><strong>Needs your attention</strong><span>${needs.length ? escapeHtml(needs.map(item => item.label).join(", ")) : "No mandatory research-logic gap detected. You can still edit the carried-forward information."}</span></div>`;
+  }
+  if ($("continuationResearchTitle")) $("continuationResearchTitle").value = currentContinuation.title || "";
+  if ($("continuationStudyContext")) $("continuationStudyContext").value = currentContinuation.study_context || "";
+  if ($("continuationObjectives")) $("continuationObjectives").value = continuationLines(currentContinuation.objectives);
+  if ($("continuationQuestions")) $("continuationQuestions").value = continuationLines(currentContinuation.research_questions);
+  if ($("continuationHypotheses")) $("continuationHypotheses").value = continuationLines(currentContinuation.hypotheses);
+  if ($("continuationVariables")) $("continuationVariables").value = continuationLines(currentContinuation.variables);
+  if ($("continuationResearchApproach")) $("continuationResearchApproach").value = currentContinuation.research_approach || "";
+  if ($("continuationNotes")) $("continuationNotes").value = "";
+  if ($("continuationCorrectionDetails")) $("continuationCorrectionDetails").open = needs.length > 0;
+  renderProvisionalStatistics(currentContinuation.provisional_statistics || []);
+}
+
+async function loadChapterContinuation(completedChapter = currentChapter) {
+  if (!currentProjectId) return null;
+  const result = await api(`/api/projects/${encodeURIComponent(currentProjectId)}/continuation/${Number(completedChapter)}`);
+  renderChapterContinuation(result.linkage || null);
+  return result.linkage || null;
+}
+
+async function saveContinuationChanges() {
+  if (!currentProjectId || !currentContinuation) throw new Error("No next-chapter transition is active.");
+  const next = Number(currentContinuation.next_chapter || currentChapter + 1);
+  const transitionNote = $("continuationNotes")?.value.trim() || "";
+  const profilePatch = {
+    title: $("continuationResearchTitle")?.value.trim() || currentContinuation.title || "",
+    study_context: $("continuationStudyContext")?.value.trim() || "",
+    objectives: lines($("continuationObjectives")?.value || ""),
+    research_questions: lines($("continuationQuestions")?.value || ""),
+    hypotheses: lines($("continuationHypotheses")?.value || ""),
+    variables: {raw_variables: lines($("continuationVariables")?.value || "")},
+    research_approach: $("continuationResearchApproach")?.value.trim() || "",
+  };
+  if (transitionNote) profilePatch.chapter_transition_notes = {[String(next)]: transitionNote};
+  const result = await api(`/api/projects/${encodeURIComponent(currentProjectId)}/profile`, {
+    method: "PUT",
+    body: JSON.stringify(profilePatch),
+  });
+  if ($("title")) $("title").value = profilePatch.title;
+  if ($("study_context")) $("study_context").value = profilePatch.study_context;
+  if ($("research_approach")) $("research_approach").value = profilePatch.research_approach;
+  if ($("objectives")) $("objectives").value = profilePatch.objectives.join("\n");
+  if ($("research_questions")) $("research_questions").value = profilePatch.research_questions.join("\n");
+  if ($("hypotheses")) $("hypotheses").value = profilePatch.hypotheses.join("\n");
+  if ($("variables_constructs")) $("variables_constructs").value = profilePatch.variables.raw_variables.join("\n");
+  if ($("extraInstructions") && transitionNote) {
+    $("extraInstructions").value = [$("extraInstructions").value.trim(), `Chapter ${next} transition information: ${transitionNote}`].filter(Boolean).join("\n\n");
+  }
+  if ($("continuationSaveStatus")) $("continuationSaveStatus").textContent = "Changes saved. They will guide the next chapter and later cross-chapter alignment.";
+  await loadChapterContinuation(Number(currentContinuation.completed_chapter || currentChapter));
+  return result;
+}
+
+async function decideProvisionalStatistic(statisticId, decision) {
+  if (!currentProjectId) throw new Error("Create or restore the project first.");
+  const result = await api(`/api/projects/${encodeURIComponent(currentProjectId)}/provisional-statistics/${encodeURIComponent(statisticId)}/decision`, {
+    method: "POST",
+    body: JSON.stringify({decision}),
+  });
+  if ($("continuationSaveStatus")) $("continuationSaveStatus").textContent = result.message || "Statistic decision saved.";
+  if (currentContinuation) {
+    const refreshed = await loadChapterContinuation(Number(currentContinuation.completed_chapter || currentChapter));
+    return refreshed;
+  }
+  return result;
+}
+
+async function continueToNextChapter() {
+  if (!currentContinuation?.available) return;
+  const completedChapter = Number(currentContinuation.completed_chapter || currentChapter);
+  const next = Number(currentContinuation.next_chapter || currentChapter + 1);
+  await saveContinuationChanges();
+  if ($("chapterSelect")?.querySelector(`option[value="${next}"]`)) {
+    $("chapterSelect").value = String(next);
+    currentChapter = next;
+    renderSections();
+    syncPageTargetControlsForChapter();
+    updateLevelHint();
+    await updatePaymentPanel();
+    await refreshWorkspaceAccessStatus();
+    if ($("draftOutput")) $("draftOutput").value = savedProjectDrafts[String(next)] || "";
+    renderDraftPreview($("draftOutput")?.value || "");
+    if ($("chapterContinuationPanel")) $("chapterContinuationPanel").hidden = true;
+    $("chapterSelectionStep")?.scrollIntoView({behavior: "smooth", block: "start"});
+    if ($("draftStatus")) $("draftStatus").textContent = `Chapter ${completedChapter} remains linked automatically. Review the Chapter ${next} fields, add any new information needed, then develop the next chapter.`;
+    updateWorkspaceFlow();
+  }
 }
 
 async function resumeBackgroundDraftIfAvailable() {
@@ -1648,6 +1807,131 @@ function renderSources(result) {
   box.innerHTML = meta + cards;
 }
 
+
+function selectedPaperAuthorsText(paper) {
+  return Array.isArray(paper?.authors) ? paper.authors.join("; ") : String(paper?.authors || "");
+}
+
+function renderSelectedPapers() {
+  const box = $("selectedPapersList");
+  const status = $("selectedPapersStatus");
+  if (!box) return;
+  const papers = Array.isArray(selectedPapers) ? selectedPapers : [];
+  const ready = papers.filter((paper) => paper?.citation_eligible).length;
+  if (status && papers.length) {
+    status.textContent = `${papers.length} of 50 selected papers attached. ${ready} citation-ready; ${papers.length - ready} need citation metadata confirmation.`;
+  }
+  if (!papers.length) {
+    box.innerHTML = '<p class="hint">No selected papers have been uploaded. ProjectReady can still find literature automatically.</p>';
+    return;
+  }
+  box.innerHTML = papers.map((paper, index) => {
+    const ready = Boolean(paper.citation_eligible);
+    const statusLabel = ready ? (paper.metadata_verified ? "Citation ready · verified" : "Citation ready · user confirmed") : "Metadata confirmation needed";
+    const authors = selectedPaperAuthorsText(paper);
+    const doi = paper.doi ? `<span><strong>DOI:</strong> ${escapeHtml(paper.doi)}</span>` : '';
+    return `
+      <article class="selected-paper-card" data-paper-id="${escapeHtml(paper.id || '')}">
+        <div class="selected-paper-card-head">
+          <div>
+            <span class="selected-paper-number">Paper ${index + 1}</span>
+            <strong>${escapeHtml(paper.title || paper.filename || 'Uploaded paper')}</strong>
+            <small>${escapeHtml(paper.filename || '')}</small>
+          </div>
+          <span class="selected-paper-badge ${ready ? 'ready' : 'needs-confirmation'}">${escapeHtml(statusLabel)}</span>
+        </div>
+        <div class="selected-paper-meta">
+          ${authors ? `<span>${escapeHtml(authors)}</span>` : '<span>Author details not confirmed</span>'}
+          ${paper.year ? `<span>${escapeHtml(paper.year)}</span>` : '<span>Year not confirmed</span>'}
+          ${doi}
+        </div>
+        <p class="hint">${escapeHtml(paper.provenance_note || '')}</p>
+        <details class="selected-paper-metadata-editor">
+          <summary>${ready ? 'Review citation details' : 'Confirm citation details before citing'}</summary>
+          <div class="selected-paper-editor-grid">
+            <label>Title<input data-paper-field="title" value="${escapeHtml(paper.title || '')}" /></label>
+            <label>Authors, separate with semicolons<input data-paper-field="authors" value="${escapeHtml(authors)}" placeholder="First Author; Second Author" /></label>
+            <label>Year<input data-paper-field="year" value="${escapeHtml(paper.year || '')}" inputmode="numeric" maxlength="5" /></label>
+            <label>Journal / source<input data-paper-field="source" value="${escapeHtml(paper.source || '')}" /></label>
+            <label>DOI<input data-paper-field="doi" value="${escapeHtml(paper.doi || '')}" placeholder="10.xxxx/xxxxx" /></label>
+            <label>Stable URL<input data-paper-field="url" value="${escapeHtml(paper.url || '')}" /></label>
+          </div>
+          <div class="actions compact-actions">
+            <button type="button" class="secondary-action" data-paper-save="${escapeHtml(paper.id || '')}">Save and confirm citation details</button>
+            <button type="button" class="secondary-action danger-lite" data-paper-delete="${escapeHtml(paper.id || '')}">Remove paper</button>
+          </div>
+        </details>
+      </article>`;
+  }).join('');
+
+  box.querySelectorAll('[data-paper-save]').forEach((button) => {
+    button.addEventListener('click', () => saveSelectedPaperMetadata(button.dataset.paperSave).catch(err => handleWorkspaceError(err, 'selectedPapersStatus')));
+  });
+  box.querySelectorAll('[data-paper-delete]').forEach((button) => {
+    button.addEventListener('click', () => removeSelectedPaper(button.dataset.paperDelete).catch(err => handleWorkspaceError(err, 'selectedPapersStatus')));
+  });
+}
+
+async function uploadSelectedPapers() {
+  if (!currentProjectId) await createProject();
+  const input = $("selectedPaperFiles");
+  const files = Array.from(input?.files || []);
+  if (!files.length) {
+    $("selectedPapersStatus").textContent = "Choose one or more papers first.";
+    return;
+  }
+  if (selectedPapers.length + files.length > 50) {
+    $("selectedPapersStatus").textContent = `A project can contain up to 50 selected papers. You currently have ${selectedPapers.length}.`;
+    return;
+  }
+  const form = new FormData();
+  files.forEach((file) => form.append('files', file));
+  $("selectedPapersStatus").textContent = `Uploading and extracting ${files.length} selected paper(s)…`;
+  const response = await fetch(`/api/projects/${currentProjectId}/selected-papers`, { method: 'POST', body: form });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(typeof result.detail === 'string' ? result.detail : 'Selected paper upload failed.');
+  selectedPapers = Array.isArray(result.papers) ? result.papers : [];
+  accumulatedSourceBank = Array.isArray(result.source_bank) ? result.source_bank : accumulatedSourceBank;
+  if (input) input.value = '';
+  renderSelectedPapers();
+  const errors = Array.isArray(result.errors) ? result.errors.length : 0;
+  $("selectedPapersStatus").textContent = `${result.uploaded_count || 0} paper(s) added. ${result.citation_ready || 0} citation-ready; ${result.needs_metadata_confirmation || 0} need citation metadata confirmation.${errors ? ` ${errors} file(s) could not be processed.` : ''}`;
+  await refreshResearchCockpit();
+  updateWorkspaceFlow();
+}
+
+async function saveSelectedPaperMetadata(paperId) {
+  const card = document.querySelector(`.selected-paper-card[data-paper-id="${CSS.escape(String(paperId || ''))}"]`);
+  if (!card) return;
+  const value = (field) => card.querySelector(`[data-paper-field="${field}"]`)?.value.trim() || '';
+  const payload = {
+    title: value('title'),
+    authors: value('authors'),
+    year: value('year'),
+    source: value('source'),
+    doi: value('doi'),
+    url: value('url'),
+    confirm: true,
+  };
+  $("selectedPapersStatus").textContent = "Checking and saving citation details…";
+  const result = await api(`/api/projects/${currentProjectId}/selected-papers/${encodeURIComponent(paperId)}`, { method: 'PATCH', body: JSON.stringify(payload) });
+  selectedPapers = Array.isArray(result.papers) ? result.papers : selectedPapers;
+  accumulatedSourceBank = Array.isArray(result.source_bank) ? result.source_bank : accumulatedSourceBank;
+  renderSelectedPapers();
+  $("selectedPapersStatus").textContent = result.paper?.citation_eligible
+    ? "Citation details confirmed. ProjectReady may now cite this uploaded paper when the full-text evidence directly supports the claim."
+    : "The paper remains evidence-only. Confirm a title, author(s) and publication year before ProjectReady can create a new citation from it.";
+}
+
+async function removeSelectedPaper(paperId) {
+  const result = await api(`/api/projects/${currentProjectId}/selected-papers/${encodeURIComponent(paperId)}`, { method: 'DELETE' });
+  selectedPapers = Array.isArray(result.papers) ? result.papers : [];
+  accumulatedSourceBank = Array.isArray(result.source_bank) ? result.source_bank : accumulatedSourceBank;
+  renderSelectedPapers();
+  $("selectedPapersStatus").textContent = `${selectedPapers.length} selected paper(s) remain attached.`;
+  await refreshResearchCockpit();
+}
+
 async function runCheck() {
   if (!currentProjectId) {
     $("draftStatus").textContent = "Create a research project and develop a working draft first.";
@@ -1917,6 +2201,9 @@ if ($("refreshVersionsBtn")) $("refreshVersionsBtn").addEventListener("click", (
 if ($("saveRecoveryBtn")) $("saveRecoveryBtn").addEventListener("click", () => saveCurrentProjectRecovery().catch(err => handleWorkspaceError(err, "projectStatus")));
 if ($("recoverProjectBtn")) $("recoverProjectBtn").addEventListener("click", () => recoverWorkspaceProjects().catch(err => handleWorkspaceError(err, "projectStatus")));
 $("draftBtn").addEventListener("click", () => generateDraft().catch(err => handleWorkspaceError(err, "draftStatus")));
+if ($("saveContinuationChangesBtn")) $("saveContinuationChangesBtn").addEventListener("click", () => saveContinuationChanges().catch(err => handleWorkspaceError(err, "continuationSaveStatus")));
+if ($("continueNextChapterBtn")) $("continueNextChapterBtn").addEventListener("click", () => continueToNextChapter().catch(err => handleWorkspaceError(err, "continuationSaveStatus")));
+if ($("stayCurrentChapterBtn")) $("stayCurrentChapterBtn").addEventListener("click", () => { if ($("chapterContinuationPanel")) $("chapterContinuationPanel").hidden = true; });
 if ($("cancelBackgroundJobBtn")) $("cancelBackgroundJobBtn").addEventListener("click", () => cancelActiveBackgroundJob().catch(err => handleWorkspaceError(err, "draftStatus")));
 const clearWorkspaceButton = ensureWorkspaceClearButton();
 if (clearWorkspaceButton) clearWorkspaceButton.addEventListener("click", () => clearWorkspaceAndStartNewJob().catch(err => handleWorkspaceError(err, "projectStatus")));
@@ -1942,6 +2229,9 @@ if ($("research_approach")) $("research_approach").addEventListener("change", up
 if ($("findSourcesBtn")) {
   $("findSourcesBtn").addEventListener("click", () => findSources().catch(err => handleWorkspaceError(err, "sourceStatus")));
 }
+if ($("uploadSelectedPapersBtn")) {
+  $("uploadSelectedPapersBtn").addEventListener("click", () => uploadSelectedPapers().catch(err => handleWorkspaceError(err, "selectedPapersStatus")));
+}
 $("checkBtn").addEventListener("click", () => runCheck().then(updatePaymentPanel).catch(err => handleWorkspaceError(err, "draftStatus")));
 $("downloadDraftBtn").addEventListener("click", () => {
   protectedDownload(`/api/projects/${currentProjectId}/export/chapter/${currentChapter}`, currentChapter)
@@ -1957,6 +2247,7 @@ if ($("unlockChapterBtn")) $("unlockChapterBtn").addEventListener("click", () =>
 if ($("accessPayBtn")) $("accessPayBtn").addEventListener("click", () => openCurrentCheckout({direct: true}).catch(err => handleWorkspaceError(err, "draftStatus")));
 if ($("accessDismissBtn")) $("accessDismissBtn").addEventListener("click", hideAccessRequiredNotice);
 if ($("revisionMode")) $("revisionMode").addEventListener("change", updatePaymentPanel);
+if ($("citationDisciplineMatrix")) $("citationDisciplineMatrix").addEventListener("change", () => { if (currentProjectId) saveCurrentProjectProfile().catch(() => {}); });
 if ($("level")) {
   $("level").addEventListener("change", () => { updateLevelHint(); updatePaymentPanel(); });
   updateLevelHint();
