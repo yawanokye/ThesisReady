@@ -12,8 +12,11 @@ from typing import Any
 from fastapi import APIRouter, File, Header, HTTPException, Request, UploadFile
 
 from app.database import get_conn, get_draft_version, list_draft_versions, row_to_dict, save_draft_version
+from app.chapter_continuation import build_chapter_linkage, chapter_selection_is_complete, store_chapter_linkage
+from app.provisional_statistics import refresh_provisional_statistics
 from app.project_recovery import recover_projects, recovery_enabled, set_project_recovery
 from app.result_uploads import extract_result_file
+from app.selected_papers import public_paper_record, public_source_bank
 from app.research_logic import build_research_logic
 from app.payments.store import rotate_project_access_tokens
 from app.schemas import (
@@ -308,6 +311,14 @@ def configure_project_recovery(project_id: str, payload: ProjectRecoverySetupReq
 @router.get("/{project_id}")
 def get_project(project_id: str):
     project = _get_project_or_404(project_id)
+    profile = dict(project.get("profile") or {})
+    papers = profile.get("selected_papers") or []
+    if isinstance(papers, list):
+        profile["selected_papers"] = [public_paper_record(item) for item in papers if isinstance(item, dict)]
+    bank = profile.get("source_bank") or []
+    if isinstance(bank, list):
+        profile["source_bank"] = public_source_bank(bank)
+    project["profile"] = profile
     project["recovery_enabled"] = recovery_enabled(project_id)
     return project
 
@@ -327,7 +338,7 @@ def update_project_profile(project_id: str, payload: dict[str, Any]):
         "other_chapter_title", "other_chapter_instructions", "draft_maturity", "humanizer_mode",
         "student_contribution", "academic_integrity_confirmed", "user_contribution_confirmed",
         "allow_provisional_drafting", "draft_consideration_warnings", "custom_page_targets",
-        "current_custom_page_target",
+        "current_custom_page_target", "citation_discipline_matrix", "chapter_transition_notes",
     }
     for key in allowed:
         if key not in payload:
@@ -339,6 +350,10 @@ def update_project_profile(project_id: str, payload: dict[str, Any]):
                 raise HTTPException(status_code=422, detail="Project title must contain at least 3 characters.")
             project["title"] = title
             profile["title"] = title
+            continue
+        if key == "chapter_transition_notes" and isinstance(value, dict):
+            existing_notes = profile.get("chapter_transition_notes") if isinstance(profile.get("chapter_transition_notes"), dict) else {}
+            profile[key] = {**existing_notes, **value}
             continue
         profile[key] = value
     with get_conn() as conn:
@@ -402,6 +417,78 @@ def restore_project_draft_version(project_id: str, chapter_number: int, version_
         "draft": draft_text,
         "restored_from": version.get("version_number"),
         "new_version": restored_snapshot,
+    }
+
+
+@router.get("/{project_id}/continuation/{completed_chapter}")
+def chapter_continuation(project_id: str, completed_chapter: int):
+    project = _get_project_or_404(project_id)
+    drafts = project.get("drafts") or {}
+    if not str(drafts.get(str(int(completed_chapter))) or "").strip():
+        raise HTTPException(status_code=409, detail=f"Chapter {completed_chapter} has not been developed and saved yet.")
+    selected = project.get("selected_sections") or {}
+    selected_ids = selected.get(str(int(completed_chapter))) if isinstance(selected, dict) else []
+    if not chapter_selection_is_complete(int(completed_chapter), selected_ids):
+        return {
+            "project_id": project_id,
+            "linkage": {
+                "available": False,
+                "completed_chapter": int(completed_chapter),
+                "reason": "Complete the full standard chapter before continuing automatically to the next chapter.",
+            },
+        }
+    profile = project.get("profile") or {}
+    linkage = build_chapter_linkage(
+        profile,
+        int(completed_chapter),
+        draft_text=str(drafts.get(str(int(completed_chapter))) or ""),
+    )
+    if linkage.get("available"):
+        store_chapter_linkage(profile, linkage)
+        with get_conn() as conn:
+            conn.execute(
+                "UPDATE projects SET profile_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (json.dumps(profile), project_id),
+            )
+            conn.commit()
+    return {"project_id": project_id, "linkage": linkage}
+
+
+@router.post("/{project_id}/provisional-statistics/{statistic_id}/decision")
+def decide_provisional_statistic(project_id: str, statistic_id: str, payload: dict[str, Any]):
+    project = _get_project_or_404(project_id)
+    decision = str(payload.get("decision") or "").strip().lower()
+    if decision not in {"confirmed", "rejected", "pending"}:
+        raise HTTPException(status_code=422, detail="Decision must be confirmed, rejected or pending.")
+    profile = project.get("profile") or {}
+    candidates = refresh_provisional_statistics(profile)
+    candidate = next((item for item in candidates if str(item.get("id")) == str(statistic_id)), None)
+    if not candidate:
+        raise HTTPException(status_code=404, detail="The sourced statistic candidate was not found in the current verified source bank.")
+    confirmations = profile.get("provisional_statistics_confirmations") or {}
+    if not isinstance(confirmations, dict):
+        confirmations = {}
+    confirmations[str(statistic_id)] = decision
+    profile["provisional_statistics_confirmations"] = confirmations
+    candidates = refresh_provisional_statistics(profile)
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE projects SET profile_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (json.dumps(profile), project_id),
+        )
+        conn.commit()
+    updated = next((item for item in candidates if str(item.get("id")) == str(statistic_id)), None)
+    return {
+        "ok": True,
+        "project_id": project_id,
+        "statistic": updated,
+        "message": (
+            "Statistic confirmed for future chapter use. Verify the original source context before final submission."
+            if decision == "confirmed"
+            else "Statistic rejected and will not be proposed for future chapter use."
+            if decision == "rejected"
+            else "Statistic returned to pending confirmation."
+        ),
     }
 
 

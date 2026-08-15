@@ -314,6 +314,7 @@ def queue_chapter_strengthener(project_id: str, payload: ChapterRevisionRequest,
     planning = chapter_planning_targets(
         payload.academic_level,
         payload.chapter_type,
+        discipline=payload.discipline,
         strengthening_scope=payload.strengthening_scope,
         selected_section_count=selected_count,
         custom_target_pages_enabled=payload.custom_target_pages_enabled,

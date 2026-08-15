@@ -4,11 +4,20 @@ import json
 import re
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from app.database import get_conn, row_to_dict
-from app.schemas import SourceSearchRequest
+from app.schemas import SelectedPaperMetadataUpdate, SourceSearchRequest
 from app.source_finder import search_literature_sources
+from app.selected_papers import (
+    MAX_SELECTED_PAPERS,
+    MAX_SELECTED_PAPERS_TOTAL_BYTES,
+    build_selected_paper_record,
+    public_paper_record,
+    public_source_bank,
+    sync_selected_papers_to_source_bank,
+    update_selected_paper_metadata,
+)
 
 router = APIRouter(prefix="/api/projects", tags=["sources"])
 
@@ -91,7 +100,7 @@ def find_sources(project_id: str, payload: SourceSearchRequest):
         src for src in existing_sources
         if isinstance(src, dict) and (
             bool(src.get("user_verified"))
-            or str(src.get("attachment_origin") or "") in {"manual", "uploaded", "user_verified"}
+            or str(src.get("attachment_origin") or "") in {"manual", "uploaded", "user_verified", "uploaded_selected_paper"}
         )
     ]
     profile["source_bank"] = _merge_sources(preserved_sources, new_sources)
@@ -125,6 +134,169 @@ def find_sources(project_id: str, payload: SourceSearchRequest):
         "attached_count_this_search": len(new_sources),
         "source_bank": profile.get("source_bank") or [],
         **result,
+    }
+
+
+def _save_profile(project_id: str, profile: dict[str, Any]) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE projects SET profile_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (json.dumps(profile), project_id),
+        )
+        conn.commit()
+
+
+def _selected_paper_summaries(profile: dict[str, Any]) -> list[dict[str, Any]]:
+    papers = profile.get("selected_papers") or []
+    if not isinstance(papers, list):
+        return []
+    return [public_paper_record(item) for item in papers if isinstance(item, dict)]
+
+
+@router.get("/{project_id}/selected-papers")
+def list_selected_papers(project_id: str) -> dict[str, Any]:
+    project = _get_project_or_404(project_id)
+    profile = project.get("profile") or {}
+    papers = _selected_paper_summaries(profile)
+    return {
+        "project_id": project_id,
+        "papers": papers,
+        "count": len(papers),
+        "maximum": MAX_SELECTED_PAPERS,
+        "capacity_remaining": max(0, MAX_SELECTED_PAPERS - len(papers)),
+        "citation_ready": sum(1 for item in papers if item.get("citation_eligible")),
+        "needs_metadata_confirmation": sum(1 for item in papers if not item.get("citation_eligible")),
+    }
+
+
+@router.post("/{project_id}/selected-papers")
+async def upload_selected_papers(
+    project_id: str,
+    files: list[UploadFile] = File(...),
+) -> dict[str, Any]:
+    project = _get_project_or_404(project_id)
+    profile = project.get("profile") or {}
+    existing = profile.get("selected_papers") or []
+    if not isinstance(existing, list):
+        existing = []
+    incoming = [file for file in files if file and file.filename]
+    if not incoming:
+        raise HTTPException(status_code=400, detail="Choose at least one paper to upload.")
+    if len(existing) + len(incoming) > MAX_SELECTED_PAPERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"A project can contain up to {MAX_SELECTED_PAPERS} selected papers. Remove some papers or upload fewer files.",
+        )
+
+    uploaded: list[dict[str, Any]] = []
+    skipped_duplicates: list[str] = []
+    errors: list[dict[str, str]] = []
+    existing_keys = {
+        (str(item.get("doi") or "").strip().lower() or str(item.get("filename") or "").strip().lower())
+        for item in existing if isinstance(item, dict)
+    }
+    total_bytes = 0
+    for file in incoming:
+        try:
+            content = await file.read()
+            total_bytes += len(content)
+            if total_bytes > MAX_SELECTED_PAPERS_TOTAL_BYTES:
+                raise ValueError(f"The combined selected-paper upload exceeds the {MAX_SELECTED_PAPERS_TOTAL_BYTES // (1024 * 1024)} MB request limit.")
+            record = build_selected_paper_record(file.filename or "selected-paper", content)
+            key = str(record.get("doi") or "").strip().lower() or str(record.get("filename") or "").strip().lower()
+            if key and key in existing_keys:
+                skipped_duplicates.append(record.get("filename") or file.filename or "paper")
+                continue
+            if key:
+                existing_keys.add(key)
+            existing.append(record)
+            uploaded.append(record)
+        except ValueError as exc:
+            errors.append({"filename": file.filename or "paper", "error": str(exc)})
+        except Exception as exc:
+            errors.append({"filename": file.filename or "paper", "error": f"Could not process this paper: {str(exc)[:200]}"})
+
+    profile["selected_papers"] = existing[:MAX_SELECTED_PAPERS]
+    source_bank = sync_selected_papers_to_source_bank(profile)
+    _save_profile(project_id, profile)
+    papers = _selected_paper_summaries(profile)
+    return {
+        "project_id": project_id,
+        "papers": papers,
+        "count": len(papers),
+        "maximum": MAX_SELECTED_PAPERS,
+        "capacity_remaining": max(0, MAX_SELECTED_PAPERS - len(papers)),
+        "uploaded_count": len(uploaded),
+        "skipped_duplicates": skipped_duplicates,
+        "errors": errors,
+        "citation_ready": sum(1 for item in papers if item.get("citation_eligible")),
+        "needs_metadata_confirmation": sum(1 for item in papers if not item.get("citation_eligible")),
+        "source_bank": public_source_bank(source_bank),
+        "message": (
+            "Selected papers attached. Crossref-verified papers are citation-ready. "
+            "Any paper without verified bibliographic metadata remains usable as uploaded evidence, but ProjectReady will not create a new citation from it until the user confirms its citation details."
+        ),
+    }
+
+
+@router.patch("/{project_id}/selected-papers/{paper_id}")
+def confirm_selected_paper_metadata(
+    project_id: str,
+    paper_id: str,
+    payload: SelectedPaperMetadataUpdate,
+) -> dict[str, Any]:
+    project = _get_project_or_404(project_id)
+    profile = project.get("profile") or {}
+    papers = profile.get("selected_papers") or []
+    if not isinstance(papers, list):
+        papers = []
+    found = False
+    updated_papers: list[dict[str, Any]] = []
+    for paper in papers:
+        if not isinstance(paper, dict):
+            continue
+        if str(paper.get("id") or "") == paper_id:
+            paper = update_selected_paper_metadata(paper, payload.model_dump())
+            found = True
+        updated_papers.append(paper)
+    if not found:
+        raise HTTPException(status_code=404, detail="Selected paper not found.")
+    profile["selected_papers"] = updated_papers[:MAX_SELECTED_PAPERS]
+    source_bank = sync_selected_papers_to_source_bank(profile)
+    _save_profile(project_id, profile)
+    papers_public = _selected_paper_summaries(profile)
+    updated = next(item for item in papers_public if str(item.get("id") or "") == paper_id)
+    return {
+        "project_id": project_id,
+        "paper": updated,
+        "papers": papers_public,
+        "source_bank": public_source_bank(source_bank),
+        "citation_ready": sum(1 for item in papers_public if item.get("citation_eligible")),
+        "needs_metadata_confirmation": sum(1 for item in papers_public if not item.get("citation_eligible")),
+    }
+
+
+@router.delete("/{project_id}/selected-papers/{paper_id}")
+def delete_selected_paper(project_id: str, paper_id: str) -> dict[str, Any]:
+    project = _get_project_or_404(project_id)
+    profile = project.get("profile") or {}
+    papers = profile.get("selected_papers") or []
+    if not isinstance(papers, list):
+        papers = []
+    kept = [item for item in papers if isinstance(item, dict) and str(item.get("id") or "") != paper_id]
+    if len(kept) == len([item for item in papers if isinstance(item, dict)]):
+        raise HTTPException(status_code=404, detail="Selected paper not found.")
+    profile["selected_papers"] = kept
+    source_bank = sync_selected_papers_to_source_bank(profile)
+    _save_profile(project_id, profile)
+    public = _selected_paper_summaries(profile)
+    return {
+        "project_id": project_id,
+        "papers": public,
+        "count": len(public),
+        "maximum": MAX_SELECTED_PAPERS,
+        "capacity_remaining": max(0, MAX_SELECTED_PAPERS - len(public)),
+        "source_bank": public_source_bank(source_bank),
     }
 
 

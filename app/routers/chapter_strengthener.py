@@ -10,6 +10,12 @@ from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app.chapter_file_extractor import extract_uploaded_text
+from app.selected_papers import (
+    MAX_SELECTED_PAPERS,
+    MAX_SELECTED_PAPERS_TOTAL_BYTES,
+    build_selected_paper_record,
+    sync_selected_papers_to_source_bank,
+)
 from app.chapter_revision_service import (
     chapter_planning_targets,
     export_revised_chapter_docx,
@@ -189,12 +195,28 @@ def _merge_project_profile(payload: dict[str, Any], project: dict[str, Any]) -> 
         if not str(merged.get(key) or "").strip() and str(value or "").strip():
             merged[key] = value
 
+    existing_selected = profile.get("selected_papers") or []
+    supplied_selected = merged.get("selected_papers") or []
+    combined_selected: list[dict[str, Any]] = []
+    selected_seen: set[str] = set()
+    for item in [*(existing_selected if isinstance(existing_selected, list) else []), *(supplied_selected if isinstance(supplied_selected, list) else [])]:
+        if not isinstance(item, dict):
+            continue
+        identity = str(item.get("doi") or item.get("id") or item.get("filename") or "").strip().lower()
+        if not identity or identity in selected_seen:
+            continue
+        selected_seen.add(identity)
+        combined_selected.append(item)
+        if len(combined_selected) >= MAX_SELECTED_PAPERS:
+            break
+    merged["selected_papers"] = combined_selected
+
     existing_bank = profile.get("source_bank") or []
     supplied_bank = merged.get("source_bank") or []
     if isinstance(existing_bank, list) and isinstance(supplied_bank, list):
         combined: list[dict[str, Any]] = []
         seen: set[str] = set()
-        for item in [*supplied_bank, *existing_bank]:
+        for item in [*existing_bank, *supplied_bank]:
             if not isinstance(item, dict):
                 continue
             identity = str(item.get("doi") or item.get("title") or "").strip().lower()
@@ -205,6 +227,8 @@ def _merge_project_profile(payload: dict[str, Any], project: dict[str, Any]) -> 
             if len(combined) >= 120:
                 break
         merged["source_bank"] = combined
+
+    sync_selected_papers_to_source_bank(merged)
 
     chapter_number = _chapter_number(str(merged.get("chapter_type") or ""))
     if not str(merged.get("data_and_results") or "").strip():
@@ -236,11 +260,42 @@ async def extract_chapter_strengthener_file(file: UploadFile = File(...)) -> dic
         ) from exc
 
 
+@router.post("/api/chapter-strengthener/extract-selected-papers")
+async def extract_strengthener_selected_papers(files: list[UploadFile] = File(...)) -> dict[str, Any]:
+    incoming = [file for file in files if file and file.filename]
+    if not incoming:
+        raise HTTPException(status_code=400, detail="Choose at least one paper to upload.")
+    if len(incoming) > MAX_SELECTED_PAPERS:
+        raise HTTPException(status_code=400, detail=f"You can attach up to {MAX_SELECTED_PAPERS} selected papers.")
+    papers: list[dict[str, Any]] = []
+    errors: list[dict[str, str]] = []
+    total_bytes = 0
+    for file in incoming:
+        try:
+            content = await file.read()
+            total_bytes += len(content)
+            if total_bytes > MAX_SELECTED_PAPERS_TOTAL_BYTES:
+                raise ValueError(f"The combined selected-paper upload exceeds the {MAX_SELECTED_PAPERS_TOTAL_BYTES // (1024 * 1024)} MB request limit.")
+            papers.append(build_selected_paper_record(file.filename or "selected-paper", content))
+        except Exception as exc:
+            errors.append({"filename": file.filename or "paper", "error": str(exc)[:220]})
+    return {
+        "papers": papers,
+        "count": len(papers),
+        "maximum": MAX_SELECTED_PAPERS,
+        "errors": errors,
+        "citation_ready": sum(1 for paper in papers if paper.get("citation_eligible")),
+        "needs_metadata_confirmation": sum(1 for paper in papers if not paper.get("citation_eligible")),
+        "message": "Selected papers extracted. Citation-ready metadata is used only when verified; other papers remain evidence-only until citation metadata is confirmed.",
+    }
+
+
 @router.post("/api/chapter-strengthener/targets")
 def chapter_strengthener_targets(payload: ChapterTargetRequest) -> dict[str, Any]:
     return chapter_planning_targets(
         payload.academic_level,
         payload.chapter_type,
+        discipline=payload.discipline,
         strengthening_scope=payload.strengthening_scope,
         selected_section_count=payload.selected_section_count,
         custom_target_pages_enabled=payload.custom_target_pages_enabled,
@@ -279,6 +334,7 @@ def create_external_revision_project(payload: ExternalRevisionProjectCreate) -> 
         "variables": {"raw_variables": [line.strip() for line in payload.variables_constructs.splitlines() if line.strip()]},
         "format_notes": payload.school_guidelines,
         "source_bank": payload.source_bank,
+        "selected_papers": payload.selected_papers[:MAX_SELECTED_PAPERS],
         "source_search_terms": payload.source_search_terms,
         "project_kind": "external_revision",
         "external_revision_chapter_number": chapter_number,
@@ -305,6 +361,7 @@ def create_external_revision_project(payload: ExternalRevisionProjectCreate) -> 
         "academic_integrity_confirmed": True,
         "user_contribution_confirmed": True,
     }
+    sync_selected_papers_to_source_bank(profile)
     drafts = {str(chapter_number): payload.chapter_text}
     with get_conn() as conn:
         conn.execute(
@@ -384,6 +441,7 @@ def strengthen_project_chapter(
     planning = chapter_planning_targets(
         str(merged_payload.get("academic_level") or payload.academic_level),
         str(merged_payload.get("chapter_type") or payload.chapter_type),
+        discipline=str(merged_payload.get("discipline") or ""),
         strengthening_scope=str(merged_payload.get("strengthening_scope") or "whole_chapter"),
         selected_section_count=selected_count,
         custom_target_pages_enabled=bool(merged_payload.get("custom_target_pages_enabled")),
@@ -410,6 +468,9 @@ def strengthen_project_chapter(
 
             if bool(merged_payload.get("save_to_project", True)):
                 profile = project.get("profile") or {}
+                if merged_payload.get("selected_papers"):
+                    profile["selected_papers"] = merged_payload.get("selected_papers")[:MAX_SELECTED_PAPERS]
+                    sync_selected_papers_to_source_bank(profile)
                 strengthener_store = profile.get("chapter_strengthener") or {}
                 strengthener_store[str(chapter_number)] = {
                     "chapter_type": payload.chapter_type,

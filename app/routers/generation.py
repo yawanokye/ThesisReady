@@ -11,6 +11,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
 from app.ai_service import _chapter_length_requirements, chapter_output_metrics, generate_chapter
+from app.chapter_continuation import build_chapter_linkage, chapter_selection_is_complete, store_chapter_linkage
 from app.compliance import check_chapter
 from app.database import get_conn, row_to_dict, save_draft_version
 from app.export import export_chapter_docx, export_compliance_docx, export_instrument_docx, export_methods_supplement_docx, export_project_working_file_docx
@@ -140,7 +141,7 @@ def _apply_profile_updates(project: dict[str, Any], payload: DraftRequest) -> No
         "student_contribution", "academic_integrity_confirmed",
         "user_contribution_confirmed", "allow_provisional_drafting",
         "draft_consideration_warnings", "custom_page_targets", "current_custom_page_target",
-        "expected_chapters",
+        "expected_chapters", "citation_discipline_matrix", "chapter_transition_notes",
     }
     for key in allowed:
         if key not in updates:
@@ -151,6 +152,10 @@ def _apply_profile_updates(project: dict[str, Any], payload: DraftRequest) -> No
             if title:
                 project["title"] = title
                 profile["title"] = title
+            continue
+        if key == "chapter_transition_notes" and isinstance(value, dict):
+            existing_notes = profile.get("chapter_transition_notes") if isinstance(profile.get("chapter_transition_notes"), dict) else {}
+            profile[key] = {**existing_notes, **value}
             continue
         profile[key] = value
     project["profile"] = profile
@@ -646,6 +651,30 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
             label="Strengthened revision" if revision_mode else "Chapter working draft",
         )
 
+        full_chapter_complete = chapter_selection_is_complete(payload.chapter_number, payload.selected_section_ids)
+        next_chapter = (
+            build_chapter_linkage(
+                project.get("profile", {}),
+                payload.chapter_number,
+                draft_version=draft_version,
+                draft_text=draft,
+            )
+            if full_chapter_complete
+            else {
+                "available": False,
+                "completed_chapter": int(payload.chapter_number),
+                "reason": "The next-chapter prompt appears after the complete standard chapter has been developed, not after a selected-section draft.",
+            }
+        )
+        if not revision_mode and next_chapter.get("available"):
+            store_chapter_linkage(project["profile"], next_chapter)
+            with get_conn() as conn:
+                conn.execute(
+                    "UPDATE projects SET profile_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (json.dumps(project.get("profile", {})), project_id),
+                )
+                conn.commit()
+
         if not generation_warning and str(source).startswith("local_template_fallback"):
             generation_warning = (
                 "The AI provider did not return a full chapter, so ProjectReady AI produced an expanded local thesis draft. "
@@ -677,6 +706,7 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
             "generation_metrics": metrics,
             "draft_version": draft_version,
             "automatic_source_support": source_support_summary,
+            "next_chapter": next_chapter if not revision_mode else {"available": False},
             "working_draft_notice": "AI-assisted working draft. Review, verify and revise it before any academic use or submission.",
         }
 
