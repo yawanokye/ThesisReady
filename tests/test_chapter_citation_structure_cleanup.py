@@ -90,7 +90,9 @@ What is X? 2. How is X related to Y?
 
 def test_strengthener_uses_higher_citation_targets():
     target = chapter_planning_targets("Bachelors", "1. Introduction")
-    assert target["citation_density_per_1000_words"] == {"minimum": 12, "maximum": 16}
+    assert target["citation_density_per_1000_words"]["minimum"] == 8
+    assert target["citation_density_per_1000_words"]["maximum"] == 12
+    assert "verified referenced works" in target["citation_density_per_1000_words"]["unit"]
 
 
 def test_compliance_does_not_require_source_use_audit():
