@@ -15,6 +15,8 @@ from app.citation_matrix import (
     build_section_citation_plan,
     citation_density_metrics,
     citation_provenance_audit,
+    citation_target,
+    paragraph_citation_audit,
     remove_unverified_generated_citations,
 )
 from app.provisional_statistics import provisional_statistic_prompt_context
@@ -239,8 +241,11 @@ def _chapter_length_requirements(
             "Only verified source records or citations explicitly supplied by the student may contribute to citation density.",
             "Every citation must directly support the sentence or paragraph in which it appears.",
             "Distribute citations across substantive paragraphs instead of placing a citation cluster only at the end of a section.",
-            "In Chapter One, most substantive background and problem paragraphs should contain at least one directly relevant citation, and evidence-heavy paragraphs may synthesise two or more sources.",
-            "In Chapter Two, nearly every substantive paragraph should be evidence-supported and thematic synthesis should normally compare two to four relevant sources rather than rely on one citation repeatedly.",
+            "For every substantive evidence-led paragraph, normally integrate at least two and preferably three distinct verified citations when two or three suitable sources genuinely support the paragraph. This is a source-quality rule, not permission to pad citations.",
+            "If only one suitable verified source supports a paragraph, use that one source and leave the paragraph below target. Never add an irrelevant second or third source merely to satisfy the paragraph rule.",
+            "Do not force citations into research objectives, research questions, standalone hypotheses, project-specific procedures, the student's own results, or finding-led conclusions/recommendations when external evidence is not academically required.",
+            "In Chapter One, substantive background, problem, gap, hypothesis-rationale and evidence-led significance paragraphs should normally carry two to three distinct verified sources.",
+            "In Chapter Two, nearly every substantive paragraph should normally carry two to three distinct verified sources, with thematic synthesis comparing evidence rather than relying repeatedly on one source.",
             "Chapter Two should compare multiple studies within thematic and objective-led synthesis, not present one study per paragraph as an annotated list.",
             "Chapter Four should keep results reporting evidence-based and citation-light, while the discussion should be citation-rich and connect findings to theory and prior studies.",
             "Use a bracketed source placeholder when the evidence bank is insufficient. Remain below the target rather than fabricate a source, bibliographic detail, DOI, quotation, page number or finding.",
@@ -502,7 +507,8 @@ def _citation_and_evidence_requirements(chapter_number: int) -> dict[str, Any]:
     current_year = datetime.now().year
     start_year = current_year - 5
     common_rules = [
-        "Include relevant and accurate in-text citations in every substantive section of the write-up.",
+        "Include relevant and accurate in-text citations in every substantive evidence-led section of the write-up.",
+        "Each substantive evidence-led paragraph should normally contain at least two and preferably three distinct verified citations when suitable evidence exists. Never force an irrelevant citation to meet this target.",
         "Use author-year citation style unless the user or institution requests another style.",
         "Do not cite a source unless the source was supplied by the student, included in the profile/reference notes, present in uploaded material, or can be stated confidently without guessing.",
         "Where a citation is needed but no reliable source details are available, insert a bracketed attention placeholder in the draft, such as [insert verified source for this claim] rather than inventing a citation.",
@@ -779,11 +785,11 @@ def _source_attention_target(profile: dict[str, Any], chapter_number: int, sourc
         return 0
     level = _length_level(profile)
     targets = {
-        "bachelors": {1: 12, 2: 25, 3: 10, 4: 12, 5: 8},
-        "nonresearch_masters": {1: 15, 2: 35, 3: 14, 4: 16, 5: 10},
-        "research_masters": {1: 20, 2: 50, 3: 18, 4: 22, 5: 12},
-        "professional_doctorate": {1: 24, 2: 60, 3: 24, 4: 28, 5: 16},
-        "phd": {1: 30, 2: 75, 3: 30, 4: 40, 5: 22},
+        "bachelors": {1: 20, 2: 38, 3: 14, 4: 18, 5: 10},
+        "nonresearch_masters": {1: 24, 2: 48, 3: 16, 4: 22, 5: 12},
+        "research_masters": {1: 30, 2: 62, 3: 22, 4: 28, 5: 14},
+        "professional_doctorate": {1: 36, 2: 78, 3: 28, 4: 34, 5: 18},
+        "phd": {1: 44, 2: 90, 3: 34, 4: 44, 5: 24},
     }
     target = targets.get(level, {}).get(int(chapter_number or 0), 10)
     return min(source_count, target)
@@ -863,6 +869,8 @@ def _retrieved_sources_for_prompt(profile: dict[str, Any], chapter_number: int |
             "attachment_origin": src.get("attachment_origin", ""),
             "user_uploaded_full_text": bool(src.get("user_uploaded_full_text")),
             "citation_eligible": bool(src.get("citation_eligible", True)),
+            "claim_support_eligible": bool(src.get("claim_support_eligible", bool(src.get("abstract") or src.get("evidence_excerpt")))),
+            "metadata_verified": bool(src.get("metadata_verified", src.get("citation_eligible", True))),
             "database": src.get("database", ""),
             "relevance_tier": src.get("relevance_tier", "unclassified"),
             "relevance_reason": src.get("relevance_reason", "No relevance explanation supplied."),
@@ -897,6 +905,8 @@ def _retrieved_sources_for_prompt(profile: dict[str, Any], chapter_number: int |
             "Use retrieved_sources as an additional evidence bank alongside the student's project profile, pasted verified evidence, uploaded files, and placeholders.",
             "When a source has user_uploaded_full_text=true, use its uploaded_evidence_excerpt to assess what the paper actually says instead of inferring findings from title or metadata alone.",
             "Treat citation_eligible=false as a hard citation block. Such an uploaded paper may inform understanding, but do not generate an author-year citation or reference entry from it until its bibliographic metadata has been verified or confirmed by the user.",
+            "For a new substantive claim, prefer sources with claim_support_eligible=true. This means accessible abstract/full-text evidence is available to support what the paragraph says. A metadata-only record must not be used to invent a finding or detailed claim.",
+            "Aim for two to three distinct verified sources in each substantive evidence-led paragraph when the available source evidence genuinely supports that paragraph. If not, use fewer citations and surface an evidence gap rather than forcing unrelated sources.",
             "Do not replace student-supplied evidence with search results; enrich the existing argument only where a retrieved source is directly relevant.",
             f"Use the recommended_relevant_sources_to_review value ({target}) only as a review guide, not as a compulsory citation quota.",
             "Prioritise sources marked highly_relevant, then partly_relevant. Use not_relevant sources only if a human has confirmed their relevance in the project notes.",
@@ -1952,6 +1962,9 @@ def _review_source_integration(
             "Do not cite sources marked not_relevant unless the student's own notes explicitly confirm their relevance.",
             "Do not cite a source unless it supports the specific sentence or paragraph being written.",
             "If no searched source fits a claim, keep or add a bracketed placeholder instead of forcing a citation.",
+            "For every substantive evidence-led paragraph, aim for at least two and preferably three distinct verified sources where the evidence bank contains genuinely relevant support. This is a paragraph-level evidence rule, not a decorative citation quota.",
+            "Do not count or retain a citation merely because its metadata looks plausible. New detailed claims should use source records with claim_support_eligible=true, so accessible abstract or uploaded full-text evidence supports what is said.",
+            "Where fewer than two suitable verified sources exist for a substantive paragraph, use the smaller number and add a precise evidence-gap placeholder rather than inventing, stretching or misapplying a citation.",
             "Increase citation density only where doing so improves scholarly support and accuracy.",
             "End the chapter with a References section for sources actually cited in the body.",
             "Do not invent new sources, statistics, page numbers, quotations, findings, or reference details.",
@@ -2587,6 +2600,9 @@ def chapter_output_metrics(
     if not provenance.get("passed"):
         verified_mentions = max(0, int(verified_mentions) - int(provenance.get("unverified_source_count") or 0))
     density = citation_density_metrics(text, target, verified_count=verified_mentions)
+    paragraph_coverage = paragraph_citation_audit(
+        text, profile, chapter_number=chapter_number
+    )
     return {
         "word_count": words,
         "estimated_pages": estimated_pages,
@@ -2600,6 +2616,7 @@ def chapter_output_metrics(
         "citation_matrix": requirements.get("citation_density_matrix") or {},
         "citation_target": target,
         "citation_integrity": provenance,
+        "paragraph_citation_coverage": paragraph_coverage,
         "target_page_range": requirements.get("target_page_range"),
         "minimum_words": requirements.get("minimum_words"),
         "target_words": requirements.get("target_words"),
@@ -2742,6 +2759,11 @@ def generate_chapter(
             # Fail closed on citation provenance. Unknown generated citations are
             # removed rather than allowed to satisfy the density matrix.
             polished, citation_integrity_audit = remove_unverified_generated_citations(polished, profile)
+            chapter_citation_target = citation_target(profile, chapter_number)
+            citation_integrity_audit["density"] = citation_density_metrics(polished, chapter_citation_target)
+            citation_integrity_audit["paragraph_coverage"] = paragraph_citation_audit(
+                polished, profile, chapter_number=chapter_number
+            )
             profile["last_citation_integrity_audit"] = citation_integrity_audit
 
             generation_mode = "chunked_depth" if chunked_generation else "single_pass_depth"

@@ -60,11 +60,14 @@ def _level_key(profile: dict[str, Any]) -> str:
 
 
 _AUTO_SOURCE_MINIMUMS: dict[str, dict[int, int]] = {
-    "bachelors": {1: 16, 2: 28, 3: 10, 4: 14, 5: 8},
-    "nonresearch_masters": {1: 20, 2: 36, 3: 12, 4: 16, 5: 10},
-    "research_masters": {1: 24, 2: 48, 3: 18, 4: 22, 5: 12},
-    "professional_doctorate": {1: 28, 2: 56, 3: 22, 4: 26, 5: 15},
-    "phd": {1: 32, 2: 72, 3: 28, 4: 36, 5: 20},
+    # Higher support-ready pools are intentional. They give the writer enough
+    # verified evidence to sustain 2-3 sources per substantive paragraph without
+    # reusing one citation mechanically or inventing a source.
+    "bachelors": {1: 22, 2: 40, 3: 14, 4: 20, 5: 10},
+    "nonresearch_masters": {1: 26, 2: 50, 3: 16, 4: 22, 5: 12},
+    "research_masters": {1: 32, 2: 64, 3: 22, 4: 28, 5: 14},
+    "professional_doctorate": {1: 38, 2: 80, 3: 28, 4: 34, 5: 18},
+    "phd": {1: 45, 2: 90, 3: 34, 4: 44, 5: 24},
 }
 
 
@@ -88,6 +91,7 @@ def _query_candidates(profile: dict[str, Any], chapter_number: int) -> list[str]
     if isinstance(objectives, str):
         objectives = [line.strip() for line in re.split(r"\n|;", objectives) if line.strip()]
     objective_text = _normalise(" ".join(str(item) for item in objectives[:2]))
+    objective_queries = [_normalise(item) for item in objectives[:4] if _normalise(item)]
     variables = profile.get("variables") or {}
     variable_text = _normalise(variables.get("raw_variables") if isinstance(variables, dict) else variables)
 
@@ -97,6 +101,7 @@ def _query_candidates(profile: dict[str, Any], chapter_number: int) -> list[str]
         candidates.append(concept_query)
     if objective_text:
         candidates.append(objective_text)
+    candidates.extend(objective_queries)
 
     # Keep searches concept-led. Chapter labels are added only to direct the evidence type.
     suffixes = {
@@ -124,6 +129,21 @@ def _query_candidates(profile: dict[str, Any], chapter_number: int) -> list[str]
     return output
 
 
+def _claim_support_ready(source: dict[str, Any]) -> bool:
+    if not isinstance(source, dict) or source.get("citation_eligible") is False:
+        return False
+    evidence = _normalise(source.get("evidence_excerpt") or source.get("abstract"))
+    if not evidence:
+        return False
+    authors = source.get("authors") or []
+    if isinstance(authors, str):
+        authors = [authors]
+    year = _normalise(source.get("year"))
+    title = _normalise(source.get("title"))
+    locator = _normalise(source.get("doi") or source.get("url"))
+    return bool(title and authors and re.fullmatch(r"(?:19|20)\d{2}", year) and locator)
+
+
 def ensure_automatic_source_support(profile: dict[str, Any], chapter_number: int) -> dict[str, Any]:
     """Enrich a thin evidence bank before drafting, without blocking on provider failure.
 
@@ -138,19 +158,21 @@ def ensure_automatic_source_support(profile: dict[str, Any], chapter_number: int
         return {"enabled": False, "searched": False, "reason": "disabled for this project"}
 
     existing = _existing_sources(profile)
+    existing_support_ready = [source for source in existing if _claim_support_ready(source)]
     minimum = _AUTO_SOURCE_MINIMUMS.get(_level_key(profile), {}).get(int(chapter_number or 0), 10)
     minimum = max(6, int(os.getenv("PROJECTREADY_AUTO_SOURCE_MINIMUM_OVERRIDE", "0") or 0) or minimum)
-    if len(existing) >= minimum:
+    if len(existing_support_ready) >= minimum:
         return {
             "enabled": True,
             "searched": False,
-            "reason": "existing evidence bank is sufficient",
+            "reason": "existing claim-support evidence bank is sufficient",
             "source_count": len(existing),
+            "claim_support_ready_count": len(existing_support_ready),
             "minimum_source_target": minimum,
         }
 
-    query_limit = max(1, min(3, int(os.getenv("PROJECTREADY_AUTO_SOURCE_QUERY_COUNT", "3") or 3)))
-    max_results = max(8, min(30, int(os.getenv("PROJECTREADY_AUTO_SOURCE_RESULTS_PER_QUERY", "18") or 18)))
+    query_limit = max(1, min(5, int(os.getenv("PROJECTREADY_AUTO_SOURCE_QUERY_COUNT", "5") or 5)))
+    max_results = max(8, min(30, int(os.getenv("PROJECTREADY_AUTO_SOURCE_RESULTS_PER_QUERY", "24") or 24)))
     queries = _query_candidates(profile, chapter_number)[:query_limit]
     gathered: list[dict[str, Any]] = []
     provider_errors: list[dict[str, str]] = []
@@ -175,7 +197,8 @@ def ensure_automatic_source_support(profile: dict[str, Any], chapter_number: int
             if database not in databases:
                 databases.append(database)
 
-    merged = _merge_sources(existing, gathered)
+    merged = _merge_sources(existing, gathered, limit=180)
+    support_ready_after = [source for source in merged if _claim_support_ready(source)]
     if merged:
         profile["source_bank"] = merged
         current = profile.get("retrieved_sources") or {}
@@ -200,7 +223,9 @@ def ensure_automatic_source_support(profile: dict[str, Any], chapter_number: int
         "searched": bool(queries),
         "queries": queries,
         "source_count_before": len(existing),
+        "claim_support_ready_before": len(existing_support_ready),
         "source_count_after": len(merged),
+        "claim_support_ready_after": len(support_ready_after),
         "minimum_source_target": minimum,
         "provider_errors": provider_errors,
         "databases": databases,

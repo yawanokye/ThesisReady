@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Any
 
 from app.source_finder import search_literature_sources
-from app.citation_matrix import citation_target, citation_density_metrics, remove_unverified_generated_citations
+from app.citation_matrix import citation_target, citation_density_metrics, paragraph_citation_audit, remove_unverified_generated_citations
 from app.provisional_statistics import provisional_statistic_prompt_context
 from app.selected_papers import paper_to_source_record, prompt_selected_papers
 from app.action_items import detach_action_items
@@ -450,7 +450,7 @@ def _source_identity(source: dict[str, Any]) -> str:
 
 def _source_context(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
     result = []
-    for index, source in enumerate(sources[:60], start=1):
+    for index, source in enumerate(sources[:90], start=1):
         result.append({
             "key": f"S{index}",
             "title": source.get("title", ""),
@@ -464,6 +464,8 @@ def _source_context(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "attachment_origin": source.get("attachment_origin", ""),
             "user_uploaded_full_text": bool(source.get("user_uploaded_full_text")),
             "citation_eligible": bool(source.get("citation_eligible", True)),
+            "claim_support_eligible": bool(source.get("claim_support_eligible", bool(source.get("abstract") or source.get("evidence_excerpt")))),
+            "metadata_verified": bool(source.get("metadata_verified", source.get("citation_eligible", True))),
             "database": source.get("database", ""),
             "apa_hint": source.get("apa_hint", ""),
         })
@@ -506,7 +508,7 @@ def _search_sources(payload: dict[str, Any]) -> tuple[list[dict[str, Any]], list
             search_result = search_literature_sources(
                 profile=profile,
                 query=query,
-                max_results=max(12, min(int(payload.get("source_limit") or 45), 60)),
+                max_results=max(16, min(int(payload.get("source_limit") or 60), 90)),
                 include_older_foundational=bool(payload.get("include_older_foundational", True)),
             )
             for source in search_result.get("sources") or []:
@@ -528,7 +530,7 @@ def _search_sources(payload: dict[str, Any]) -> tuple[list[dict[str, Any]], list
             continue
         seen.add(identity)
         deduped.append(source)
-    return deduped[:60], blocked, search_result
+    return deduped[:90], blocked, search_result
 
 
 def _finalise_chapter_text(text: str) -> str:
@@ -1134,11 +1136,14 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
                 "For user-selected papers, inspect the uploaded evidence excerpt before describing a finding, method, statistic or conclusion. Never infer details from the filename, title or abstract alone when the excerpt does not support them.",
                 "A selected paper marked citation_eligible=false may inform understanding but must not receive a generated author-year citation or reference entry. Insert [confirm citation metadata for uploaded paper: filename] when the paper is essential but its bibliographic details are not yet verified or user-confirmed.",
                 "Increase citation density according to the discipline-and-section citation matrix, measured as verified referenced works per 1,000 substantive words. Treat it as a guide rather than a quota, avoid citation padding and do not attach citations to unsupported claims.",
+                "Every substantive evidence-led paragraph should normally contain at least two and preferably three distinct verified citations when suitable sources genuinely support the paragraph. If only one suitable source exists, use one and report the evidence gap rather than forcing unrelated citations.",
+                "Do not apply the two-to-three-source paragraph rule mechanically to research objectives/questions, standalone hypotheses, project-specific procedures, the student's own results, or finding-led conclusions/recommendations where external evidence is not academically required.",
+                "A new detailed claim should use a structured source with claim_support_eligible=true, meaning accessible abstract or uploaded full-text evidence supports what is being said. Metadata alone may verify that a publication exists but must not be treated as proof of an unobserved finding.",
                 "Never create a citation from model memory. A new citation must map to an existing citation in the uploaded chapter or to a structured source record in the verified source bank.",
                 "If the verified evidence bank cannot meet the matrix target, leave the chapter below target and insert a precise [insert verified source for this claim] action instead of inventing a source.",
                 "If a source-grounded numerical item from provisional_statistical_evidence is useful, keep it in the exact red confirmation marker required there until the user confirms it. Never invent or estimate a statistic.",
-                "For Chapter One, support most substantive background and problem paragraphs with at least one directly relevant source; evidence-heavy paragraphs may synthesise two or more sources.",
-                "For Chapter Two, make nearly every substantive paragraph evidence-supported and normally compare two to four relevant sources in thematic synthesis rather than repeating one citation.",
+                "For Chapter One, support substantive background, problem, research-gap, hypothesis-rationale and evidence-led significance paragraphs with two to three distinct verified sources where suitable evidence exists.",
+                "For Chapter Two, make nearly every substantive paragraph evidence-supported with two to three distinct verified sources, using thematic synthesis rather than repeating one citation or listing studies mechanically.",
                 "Run a claim-evidence audit. Support every substantive factual, historical, policy, contextual, theoretical and empirical claim with a directly relevant and accurate source from the existing citations or verified source bank.",
                 "For Chapter One, follow target_citations_per_1000_words in the project profile. Distribute accurate citations across the background, problem, significance and other evidence-led sections, while keeping objectives, questions, purpose and purely organisational sentences citation-light.",
                 "Do not leave comments or user instructions inside the scholarly narrative. Put every unresolved action on a separate line beginning [ACTION REQUIRED: ...] immediately after the affected paragraph or list. Do not collect actions at the end of the chapter.",
@@ -1255,6 +1260,20 @@ def revise_chapter(payload: dict[str, Any]) -> dict[str, Any]:
     }
     revised_chapter, revision_citation_integrity = remove_unverified_generated_citations(
         revised_chapter, provenance_profile, original_text=chapter_text
+    )
+    chapter_number_for_audit = {
+        "introduction": 1, "literature_review": 2, "methodology": 3,
+        "results_discussion": 4, "conclusion": 5,
+    }.get(_chapter_key(chapter_type), 1)
+    revision_citation_integrity["density"] = citation_density_metrics(
+        revised_chapter, citation_target(
+            {"discipline": str(payload.get("discipline") or ""), "citation_discipline_matrix": "auto"},
+            chapter_number_for_audit,
+            chapter_type=chapter_type,
+        )
+    )
+    revision_citation_integrity["paragraph_coverage"] = paragraph_citation_audit(
+        revised_chapter, provenance_profile, chapter_number=chapter_number_for_audit, original_text=chapter_text
     )
     revised_chapter = _clean_chapter_references(revised_chapter)
     strengthening_report = _finalise_chapter_text(strengthening_report)

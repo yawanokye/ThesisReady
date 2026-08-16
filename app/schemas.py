@@ -122,6 +122,29 @@ class SourceSearchRequest(BaseModel):
     attach_not_relevant_sources: bool = False
 
 
+class ClaimSourceSearchRequest(BaseModel):
+    workflow: str = "draft"
+    chapter_number: int
+    claim_id: str
+    query: str = ""
+    max_results: int = 12
+
+
+class ClaimSourceApprovalRequest(BaseModel):
+    workflow: str = "draft"
+    chapter_number: int
+    claim_id: str
+    candidate_id: str
+    confirm_claim_support: bool = False
+    confirm_source_text_reviewed: bool = False
+
+
+class ClaimCitationApplyRequest(BaseModel):
+    workflow: str = "draft"
+    chapter_number: int
+    citation_style: str = "APA 7th"
+
+
 # ----------------------------------------------------------------------
 # Integrated Chapter Strengthener
 # ----------------------------------------------------------------------

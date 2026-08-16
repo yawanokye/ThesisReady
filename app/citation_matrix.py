@@ -36,6 +36,34 @@ CITATION_DENSITY_MATRIX: dict[str, dict[str, tuple[int, int]]] = {
     },
 }
 
+
+
+PARAGRAPH_MIN_VERIFIED_SOURCES = 2
+PARAGRAPH_PREFERRED_VERIFIED_SOURCES = 3
+
+# The paragraph rule applies only where external evidence is academically appropriate.
+# Research-logic lists, the student's own results, project-specific procedures and
+# finding-led conclusions should not be padded with citations simply to meet a count.
+_CITATION_LIGHT_HEADING_PATTERNS: dict[int, tuple[str, ...]] = {
+    1: (
+        "purpose of the study", "research objective", "research question",
+        "scope of the study", "delimitation", "limitation", "definition of terms",
+        "organization of the study", "organisation of the study",
+    ),
+    3: (
+        "data collection procedure", "data collection procedures", "ethical consideration",
+        "data processing", "chapter summary",
+    ),
+    4: (
+        "response rate", "respondent profile", "sample profile", "descriptive statistics",
+        "results", "hypothesis testing", "objective results", "chapter summary",
+    ),
+    5: (
+        "summary of findings", "conclusion", "recommendation", "future research",
+        "chapter summary",
+    ),
+}
+
 DISCIPLINE_LABELS = {
     "stem": "STEM (Hard Sciences)",
     "social_sciences": "Social Sciences (Qualitative / Quantitative)",
@@ -410,6 +438,141 @@ def citation_density_metrics(text: str, target: dict[str, Any] | None = None, *,
             "status": status,
         })
     return result
+
+
+def _heading_is_citation_light(heading: str, chapter_number: int) -> bool:
+    value = _clean(heading).lower()
+    if not value:
+        return False
+    patterns = _CITATION_LIGHT_HEADING_PATTERNS.get(int(chapter_number or 0), ())
+    if int(chapter_number or 0) == 4 and "discussion" in value:
+        return False
+    return any(pattern in value for pattern in patterns)
+
+
+def _paragraph_blocks(text: str) -> list[tuple[str, str]]:
+    """Return (current heading, paragraph) pairs from Markdown-like chapter text."""
+    body = _body_only(text)
+    heading = ""
+    paragraphs: list[tuple[str, str]] = []
+    buffer: list[str] = []
+
+    def flush() -> None:
+        nonlocal buffer
+        if buffer:
+            paragraph = " ".join(line.strip() for line in buffer if line.strip()).strip()
+            if paragraph:
+                paragraphs.append((heading, paragraph))
+            buffer = []
+
+    for raw in body.splitlines():
+        line = raw.strip()
+        heading_match = re.match(r"^#{1,6}\s+(.+)$", line)
+        if heading_match:
+            flush()
+            heading = heading_match.group(1).strip()
+            continue
+        if not line:
+            flush()
+            continue
+        if line.startswith("|") or line.startswith("```") or line.startswith("$$"):
+            flush()
+            continue
+        buffer.append(line)
+    flush()
+    return paragraphs
+
+
+def _paragraph_requires_external_evidence(paragraph: str, heading: str, chapter_number: int) -> bool:
+    value = _clean(paragraph)
+    if not value:
+        return False
+    if _heading_is_citation_light(heading, chapter_number):
+        return False
+    words = re.findall(r"\b[\w’'-]+\b", value)
+    if len(words) < 55:
+        return False
+    if re.match(r"^(?:H\d+[a-z]?|RQ\d+|Objective\s+\d+)\s*:\s*", value, flags=re.I):
+        return False
+    if value.startswith("[ACTION REQUIRED") or value.startswith("[CONFIRM") or value.startswith("[PROVIDE"):
+        return False
+    if re.match(r"^\d+[.)]\s+", value) and len(words) < 90:
+        return False
+    # Chapter Four result reporting should stay citation-light unless the heading is explicitly discussion-oriented.
+    if int(chapter_number or 0) == 4 and "discussion" not in _clean(heading).lower():
+        return False
+    return True
+
+
+def paragraph_citation_audit(
+    text: str,
+    profile: dict[str, Any],
+    *,
+    chapter_number: int = 0,
+    original_text: str = "",
+    minimum_sources: int = PARAGRAPH_MIN_VERIFIED_SOURCES,
+    preferred_sources: int = PARAGRAPH_PREFERRED_VERIFIED_SOURCES,
+) -> dict[str, Any]:
+    """Audit verified source coverage at paragraph level.
+
+    The metric counts distinct allowed author-year source fingerprints in each
+    substantive evidence-led paragraph. It never treats an unverified generated
+    citation as satisfying the 2-3 source rule.
+    """
+    allowed, structured = allowed_citation_fingerprints(profile, original_text=original_text)
+    eligible = 0
+    meeting_minimum = 0
+    meeting_preferred = 0
+    under_supported: list[dict[str, Any]] = []
+    total_verified_links = 0
+
+    for index, (heading, paragraph) in enumerate(_paragraph_blocks(text), start=1):
+        if not _paragraph_requires_external_evidence(paragraph, heading, chapter_number):
+            continue
+        eligible += 1
+        used = citation_fingerprints(paragraph)
+        verified = used & allowed
+        structured_verified = verified & structured
+        count = len(verified)
+        total_verified_links += count
+        if count >= int(minimum_sources):
+            meeting_minimum += 1
+        if count >= int(preferred_sources):
+            meeting_preferred += 1
+        if count < int(minimum_sources):
+            under_supported.append({
+                "paragraph_index": index,
+                "heading": heading,
+                "verified_sources": count,
+                "verified_structured_sources": len(structured_verified),
+                "minimum_required_when_evidence_is_available": int(minimum_sources),
+                "excerpt": value[:260] if (value := _clean(paragraph)) else "",
+            })
+
+    coverage = round(meeting_minimum * 100 / eligible, 1) if eligible else 100.0
+    preferred_coverage = round(meeting_preferred * 100 / eligible, 1) if eligible else 100.0
+    return {
+        "policy": (
+            f"Each substantive evidence-led paragraph should normally contain at least {int(minimum_sources)} "
+            f"and preferably {int(preferred_sources)} distinct verified sources. If fewer suitable verified sources exist, "
+            "ProjectReady must remain below target rather than invent or force a citation."
+        ),
+        "minimum_verified_sources_per_evidence_paragraph": int(minimum_sources),
+        "preferred_verified_sources_per_evidence_paragraph": int(preferred_sources),
+        "eligible_evidence_paragraphs": eligible,
+        "paragraphs_meeting_minimum": meeting_minimum,
+        "paragraphs_meeting_preferred": meeting_preferred,
+        "minimum_coverage_percent": coverage,
+        "preferred_coverage_percent": preferred_coverage,
+        "verified_source_links_across_evidence_paragraphs": total_verified_links,
+        "under_supported_paragraph_count": len(under_supported),
+        "under_supported_paragraphs": under_supported[:40],
+        "passed": len(under_supported) == 0,
+        "important_exception": (
+            "The rule does not require citation padding in research objectives/questions, project-specific procedures, "
+            "the student's own results, or finding-led conclusions/recommendations."
+        ),
+    }
 
 
 def citation_provenance_audit(text: str, profile: dict[str, Any], *, original_text: str = "") -> dict[str, Any]:

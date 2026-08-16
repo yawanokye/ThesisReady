@@ -308,6 +308,8 @@ def paper_to_source_record(paper: dict[str, Any]) -> dict[str, Any] | None:
         "metadata_verified": bool(paper.get("metadata_verified")),
         "user_metadata_confirmed": bool(paper.get("user_metadata_confirmed")),
         "citation_eligible": True,
+        "claim_support_eligible": True,
+        "verification_basis": "User-uploaded full text with verified or user-confirmed bibliographic metadata",
         "evidence_excerpt": str(paper.get("evidence_excerpt") or "")[:MAX_SELECTED_PAPER_EVIDENCE_CHARS],
         "abstract": str(paper.get("evidence_excerpt") or "")[:1400],
         "relevance_tier": str(paper.get("relevance_tier") or "unclassified"),

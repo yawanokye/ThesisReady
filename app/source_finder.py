@@ -642,6 +642,23 @@ def _dedupe_and_rank(records: list[dict[str, Any]], query: str, recent_start_yea
         item["title"] = title
         item["doi"] = doi
         item["abstract"] = _clean_text(item.get("abstract") or "")[:MAX_ABSTRACT_CHARS]
+        authors = item.get("authors") or []
+        if isinstance(authors, str):
+            authors = [authors]
+        year = str(item.get("year") or "").strip()
+        locator = _normalise_doi(item.get("doi")) or _clean_text(item.get("url") or "")
+        metadata_verified = bool(title and authors and re.fullmatch(r"(?:19|20)\d{2}", year) and locator)
+        item["metadata_verified"] = metadata_verified
+        item["citation_eligible"] = metadata_verified
+        # New detailed claims require accessible evidence, not just a plausible metadata record.
+        item["claim_support_eligible"] = bool(metadata_verified and item["abstract"])
+        item["verification_basis"] = (
+            f"Verified scholarly metadata from {item.get('database') or 'provider'} with accessible abstract"
+            if item["claim_support_eligible"]
+            else f"Verified scholarly metadata from {item.get('database') or 'provider'}; claim-level evidence unavailable"
+            if metadata_verified
+            else "Incomplete scholarly metadata; not citation eligible"
+        )
         deduped.append(item)
 
     relevance_profile = _build_relevance_profile(query, deduped)
