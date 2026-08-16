@@ -1,0 +1,192 @@
+--- a/app/access_control.py
++++ b/app/access_control.py
+@@ -389,6 +389,76 @@
+     return {"ok": True, "id": token_id, "status": "revoked", "updated_by": updated_by}
+ 
+ 
++def update_complimentary_token(
++    token_id: str,
++    *,
++    add_pages: int = 0,
++    product_area: str = "",
++    extend_days: int = 0,
++    updated_by: str = "developer",
++) -> Dict[str, Any]:
++    """Top up or widen an existing complimentary token without changing its raw code.
++
++    This is restricted to the developer portal. It is intended for cases where a
++    student has already received a token and needs more page credits or needs the
++    same token to continue from Thesis Workspace into Chapter Strengthener.
++    """
++    init_access_control_tables()
++    token_id = str(token_id or "").strip()
++    if not token_id:
++        raise ValueError("Complimentary token was not found.")
++    pages_to_add = max(0, min(int(add_pages or 0), 1000))
++    days_to_add = max(0, min(int(extend_days or 0), 365))
++    requested_area = str(product_area or "").strip()
++    area = _normalise_product_area(requested_area) if requested_area else ""
++    if pages_to_add <= 0 and days_to_add <= 0 and not area:
++        raise ValueError("Choose page credits, a module scope, or an expiry extension to update.")
++
++    with get_conn() as conn:
++        row = conn.execute("SELECT * FROM projectready_complimentary_tokens WHERE id=?", (token_id,)).fetchone()
++        if not row:
++            raise ValueError("Complimentary token was not found.")
++        data = dict(row)
++        if str(data.get("status") or "") == "revoked":
++            raise ValueError("A revoked complimentary token cannot be changed. Create a new token instead.")
++
++        current_limit = int(data.get("page_limit") or 0)
++        new_limit = min(1000, current_limit + pages_to_add)
++        current_expiry = _parse_time(data.get("expires_at"))
++        new_expiry = current_expiry
++        if days_to_add:
++            base = current_expiry if current_expiry and current_expiry > _utc_now() else _utc_now()
++            new_expiry = base + timedelta(days=days_to_add)
++        new_area = area or _normalise_product_area(str(data.get("product_area") or "all"))
++
++        conn.execute(
++            """
++            UPDATE projectready_complimentary_tokens
++            SET product_area=?, page_limit=?, expires_at=?, updated_at=?
++            WHERE id=?
++            """,
++            (new_area, new_limit, _iso(new_expiry) if new_expiry else data.get("expires_at"), _iso(), token_id),
++        )
++        conn.commit()
++        updated = conn.execute(
++            "SELECT id, label, assigned_email, product_area, page_limit, pages_used, status, expires_at, created_by, created_at, updated_at FROM projectready_complimentary_tokens WHERE id=?",
++            (token_id,),
++        ).fetchone()
++
++    item = dict(updated)
++    item["masked_id"] = _masked_token_id(token_id)
++    item["pages_remaining"] = max(0, int(item.get("page_limit") or 0) - int(item.get("pages_used") or 0))
++    expiry = _parse_time(item.get("expires_at"))
++    item["expired"] = not expiry or expiry <= _utc_now()
++    item["effective_status"] = "expired" if item["expired"] and item.get("status") == "active" else item.get("status")
++    return {
++        "ok": True,
++        "token": item,
++        "updated_by": str(updated_by or "developer"),
++        "message": "Complimentary token updated. The student can keep using the same token code.",
++    }
++
++
+ def complimentary_token_from_request(request: Any) -> tuple[str, str]:
+     headers = getattr(request, "headers", {})
+     token = str(headers.get("x-projectready-complimentary-token") or "").strip().upper()
+--- a/app/internal_portal.py
++++ b/app/internal_portal.py
+@@ -21,6 +21,7 @@
+     list_complimentary_tokens,
+     revoke_complimentary_token,
+     set_access_policy,
++    update_complimentary_token,
+ )
+ from app.jobs.store import cancel_job, get_job, init_job_tables, list_jobs, retry_job
+ from app.payments.internal_access import internal_access_configured, issue_internal_access, validate_internal_access
+@@ -88,6 +89,12 @@
+     validity_days: int = Field(default=30, ge=1, le=365)
+ 
+ 
++class ComplimentaryTokenUpdateRequest(BaseModel):
++    add_pages: int = Field(default=0, ge=0, le=1000)
++    product_area: str = Field(default="", max_length=80)
++    extend_days: int = Field(default=0, ge=0, le=365)
++
++
+ def _now() -> datetime:
+     return datetime.now(timezone.utc)
+ 
+@@ -397,6 +404,24 @@
+         )
+     except ValueError as exc:
+         raise HTTPException(status_code=400, detail=str(exc)) from exc
++
++
++@router.post(PORTAL_PATH + "/api/complimentary-tokens/{token_id}/update")
++@router.post("/api/internal/complimentary-tokens/{token_id}/update")
++def internal_update_complimentary_token(token_id: str, payload: ComplimentaryTokenUpdateRequest, request: Request) -> dict[str, Any]:
++    session = internal_session_or_none(request)
++    if not session:
++        raise HTTPException(status_code=404, detail="Resource not found.")
++    try:
++        return update_complimentary_token(
++            token_id,
++            add_pages=payload.add_pages,
++            product_area=payload.product_area,
++            extend_days=payload.extend_days,
++            updated_by=str(session.get("email") or "internal_developer"),
++        )
++    except ValueError as exc:
++        raise HTTPException(status_code=400, detail=str(exc)) from exc
+ 
+ 
+ @router.post(PORTAL_PATH + "/api/complimentary-tokens/{token_id}/revoke")
+--- a/app/internal_assets/portal.html
++++ b/app/internal_assets/portal.html
+@@ -68,7 +68,7 @@
+ 
+       <section class="operations-section">
+         <div class="jobs-heading"><div><p class="eyebrow">Complimentary access</p><h2>Create page-limited token</h2></div><button id="refreshTokensBtn" class="secondary" type="button">Refresh tokens</button></div>
+-        <p class="section-help">Create a bearer token for a student or demonstration. Generation and strengthening reserve the selected maximum page target against the token balance. The raw token is shown once only.</p>
++        <p class="section-help">Create a bearer token for a student or demonstration. Generation and strengthening reserve the selected maximum page target against the token balance. Existing tokens can be topped up or extended to both Thesis Workspace and Chapter Strengthener without changing the code already given to the student. The raw token is shown once only.</p>
+         <form id="complimentaryTokenForm" class="token-form">
+           <label>Recipient / purpose
+             <input id="complimentaryLabel" maxlength="200" placeholder="e.g. MPhil pilot student" required />
+@@ -111,6 +111,6 @@
+       <p id="jobsStatus" class="status"></p>
+     </section>
+   </main>
+-  <script src="{{PORTAL_PATH}}/portal.js?v=20260815-access-control-v1"></script>
++  <script src="{{PORTAL_PATH}}/portal.js?v=20260816-token-continuity-v2"></script>
+ </body>
+ </html>
+--- a/app/internal_assets/portal.js
++++ b/app/internal_assets/portal.js
+@@ -110,12 +110,40 @@
+   }
+ 
+   function tokenActionButton(token) {
+-    if (["revoked", "expired"].includes(token.effective_status)) return document.createTextNode("—");
+-    return actionButton("Revoke", async () => {
++    if (token.effective_status === "revoked") return document.createTextNode("—");
++    const actions = document.createElement("div");
++    actions.className = "job-actions";
++    actions.appendChild(actionButton("Add pages", async () => {
++      const raw = window.prompt(`Add page credits to ${token.masked_id}`, "10");
++      if (raw === null) return;
++      const addPages = Number(raw || 0);
++      if (!Number.isInteger(addPages) || addPages <= 0) return window.alert("Enter a whole number greater than zero.");
++      const data = await api(endpoint(`complimentary-tokens/${token.id}/update`), {method:"POST", body:JSON.stringify({add_pages:addPages})});
++      $("complimentaryStatus").textContent = data.message || "Page credits added.";
++      await loadComplimentaryTokens();
++    }));
++    if (String(token.product_area || "all") !== "all") {
++      actions.appendChild(actionButton("Use in both", async () => {
++        const data = await api(endpoint(`complimentary-tokens/${token.id}/update`), {method:"POST", body:JSON.stringify({product_area:"all"})});
++        $("complimentaryStatus").textContent = data.message || "Token now works in Thesis Workspace and Chapter Strengthener.";
++        await loadComplimentaryTokens();
++      }));
++    }
++    actions.appendChild(actionButton("Extend", async () => {
++      const raw = window.prompt(`Extend ${token.masked_id} by how many days?`, "30");
++      if (raw === null) return;
++      const days = Number(raw || 0);
++      if (!Number.isInteger(days) || days <= 0) return window.alert("Enter a whole number greater than zero.");
++      const data = await api(endpoint(`complimentary-tokens/${token.id}/update`), {method:"POST", body:JSON.stringify({extend_days:days})});
++      $("complimentaryStatus").textContent = data.message || "Token expiry extended.";
++      await loadComplimentaryTokens();
++    }));
++    actions.appendChild(actionButton("Revoke", async () => {
+       if (!window.confirm(`Revoke ${token.masked_id}?`)) return;
+       await api(endpoint(`complimentary-tokens/${token.id}/revoke`), {method:"POST", body:"{}"});
+       await loadComplimentaryTokens();
+-    });
++    }));
++    return actions;
+   }
+ 
+   async function loadComplimentaryTokens() {
