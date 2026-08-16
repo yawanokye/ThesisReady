@@ -49,6 +49,9 @@ def test_exchange_pass_through_gate_rejects_country_only_matches(monkeypatch):
     monkeypatch.setattr(finder, "_search_openalex", lambda query, per_provider: records)
     monkeypatch.setattr(finder, "_search_crossref", lambda query, per_provider: [])
     monkeypatch.setattr(finder, "_search_semantic_scholar", lambda query, per_provider: [])
+    monkeypatch.setattr(finder, "_search_datacite", lambda query, per_provider: [])
+    monkeypatch.setattr(finder, "_search_europe_pmc", lambda query, per_provider: [])
+    monkeypatch.setattr(finder, "_search_pubmed", lambda query, per_provider: [])
 
     eric_called = {"value": False}
 
@@ -72,7 +75,7 @@ def test_exchange_pass_through_gate_rejects_country_only_matches(monkeypatch):
     assert result["count"] == 2
     assert result["requested_count"] == 60
     assert result["rejected_irrelevant_count"] == 3
-    assert eric_called["value"] is False
+    assert eric_called["value"] is True
 
 
 def test_long_multi_construct_query_keeps_construct_specific_sources(monkeypatch):
@@ -103,6 +106,9 @@ def test_long_multi_construct_query_keeps_construct_specific_sources(monkeypatch
     monkeypatch.setattr(finder, "_search_crossref", lambda query, per_provider: [])
     monkeypatch.setattr(finder, "_search_semantic_scholar", lambda query, per_provider: [])
     monkeypatch.setattr(finder, "_search_eric", lambda query, per_provider: [])
+    monkeypatch.setattr(finder, "_search_datacite", lambda query, per_provider: [])
+    monkeypatch.setattr(finder, "_search_europe_pmc", lambda query, per_provider: [])
+    monkeypatch.setattr(finder, "_search_pubmed", lambda query, per_provider: [])
 
     result = finder.search_literature_sources(
         profile={
@@ -127,3 +133,26 @@ def test_explicit_terms_are_not_diluted_by_broader_project_title():
         user_query="exchange rate pass-through to consumer prices",
     )
     assert query == "exchange rate pass-through to consumer prices"
+
+
+def test_comprehensive_search_uses_all_supported_programmatic_databases(monkeypatch):
+    called = []
+    providers = [
+        ("_search_openalex", "OpenAlex"),
+        ("_search_crossref", "Crossref"),
+        ("_search_semantic_scholar", "Semantic Scholar"),
+        ("_search_eric", "ERIC"),
+        ("_search_datacite", "DataCite"),
+        ("_search_europe_pmc", "Europe PMC"),
+        ("_search_pubmed", "PubMed"),
+    ]
+    for attr, label in providers:
+        def fake(query, per_provider, label=label):
+            called.append(label)
+            return []
+        monkeypatch.setattr(finder, attr, fake)
+    result = finder.search_literature_sources(profile={"title": "teacher leadership"}, max_results=10)
+    assert set(called) == {label for _, label in providers}
+    assert set(result["databases"]) == {label for _, label in providers}
+    assert result["external_searches"][0]["provider"] == "Google Scholar"
+    assert result["external_searches"][0]["automated"] is False
