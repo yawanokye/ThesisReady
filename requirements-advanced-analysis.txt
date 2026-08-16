@@ -1,0 +1,2 @@
+# Compatibility alias for deployments that previously used this name.
+-r requirements.txt

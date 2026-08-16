@@ -22,3 +22,17 @@ psycopg2-binary>=2.9.9
 
 pypdf==5.6.0
 openpyxl==3.1.5
+
+# Deterministic Data & Analysis Workspace
+pandas>=2.2.3,<3.0
+numpy>=2.0,<3.0
+scipy>=1.14,<2.0
+statsmodels>=0.14.4,<0.15
+semopy>=2.3.11,<3.0
+
+# Expanded deterministic statistics, econometrics, network and signal-analysis runtime
+scikit-learn>=1.6,<2.0
+networkx>=3.4,<4.0
+arch>=7.2,<9.0
+PyWavelets>=1.8,<2.0
+EMD-signal>=1.6,<2.0

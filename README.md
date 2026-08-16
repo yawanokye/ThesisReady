@@ -191,13 +191,13 @@ ProjectReady AI now supports email-and-PIN Project ID recovery without a paid em
 
 The Chapter Strengthener also supports chapters created outside ProjectReady AI. It automatically creates a recoverable revision-only project and uses a lower-cost revision-only purchase containing one strengthening revision, one compliance check and one DOCX export.
 
-See `PROJECT_RECOVERY_AND_REVISION_ONLY_UPDATE.md` for configuration and routes.
+See `docs/updates/u30.md` for configuration and routes.
 
 ## Flagship Student Upgrade, 15 August 2026
 
 ProjectReady now includes a Student Research Cockpit, deterministic Research Logic alignment monitoring, chapter version history and one-click compilation of saved chapters into an editable Project Working File DOCX. Full chapter draft development remains a primary workflow and has not been removed.
 
-See `FLAGSHIP_STUDENT_UPGRADE_2026-08-15.md` for the release details and validation results.
+See `docs/updates/u17.md` for the release details and validation results.
 
 ## Guided workspace and developer access control, 15 August 2026
 
@@ -205,7 +205,7 @@ Thesis Workspace and Chapter Strengthener now use a simpler left-guided research
 
 The restricted internal developer portal can switch the research workspaces between Normal Commercial, Temporary Open Access and Payment Required modes. It can also issue revocable, expiring complimentary tokens with a server-enforced page-credit limit and optional assigned email/module scope.
 
-See `GUIDED_WORKSPACE_ACCESS_CONTROL_UPDATE_2026-08-15.md` for behaviour, security and validation details.
+See `docs/updates/u19.md` for behaviour, security and validation details.
 
 ## August 2026, verified citation matrix and linked-chapter continuation
 
@@ -213,19 +213,22 @@ ProjectReady now applies a discipline-and-section citation-density matrix based 
 
 When a complete standard chapter is developed, the workspace can continue directly to the next chapter while automatically carrying forward the saved chapter, title, objectives, research questions, hypotheses, variables, context and research approach. Students may correct or add information before continuing. Source-grounded numerical evidence may be proposed only from accessible source text, remains visibly provisional in red, includes its DOI/URL, and requires student confirmation.
 
-See `CITATION_MATRIX_LINKED_CHAPTER_WORKFLOW_UPDATE_2026-08-15.md` for details.
+See `docs/updates/u13.md` for details.
 
 ## Student-selected paper library, August 2026
 
-ProjectReady can now use up to 50 student-selected papers in addition to automatically discovered literature. The library is available in both Thesis Workspace and Chapter Strengthener. Uploaded papers are prioritised only when relevant. A paper may support evidence synthesis immediately from its extracted text, but ProjectReady creates a new citation from it only after citation metadata is verified or explicitly confirmed by the student. See `SELECTED_PAPERS_LIBRARY_UPDATE_2026-08-15.md`.
+ProjectReady can now use up to 50 student-selected papers in addition to automatically discovered literature. The library is available in both Thesis Workspace and Chapter Strengthener. Uploaded papers are prioritised only when relevant. A paper may support evidence synthesis immediately from its extracted text, but ProjectReady creates a new citation from it only after citation metadata is verified or explicitly confirmed by the student. See `docs/updates/u44.md`.
 
 ## Pre-output Claim Support Review (16 August 2026)
 
-Chapter Draft Development and Chapter Strengthener now share a pre-output evidence gate. Evidence-bearing uncited claims are highlighted before final export, users can search and approve verified sources for each claim, and evidence-led paragraphs target at least two distinct verified sources with three preferred where suitable evidence exists. The discipline/section citation-density matrix remains active. Citation density never overrides verification: unverified or fabricated citations do not count and are not permitted into the final output. See `PRE_OUTPUT_CLAIM_SUPPORT_REVIEW_UPDATE_2026-08-16.md`.
+Chapter Draft Development and Chapter Strengthener now share a pre-output evidence gate. Evidence-bearing uncited claims are highlighted before final export, users can search and approve verified sources for each claim, and evidence-led paragraphs target at least two distinct verified sources with three preferred where suitable evidence exists. The discipline/section citation-density matrix remains active. Citation density never overrides verification: unverified or fabricated citations do not count and are not permitted into the final output. See `docs/updates/u29.md`.
 
 ## 2026-08-16 claim-support interaction update
-The current build adds responsive source-search/approval states, Ignore controls, automatic placeholder cleanup, final approval citation counts, multi-database scholarly aggregation, project-evidence-bank reuse and a manual Google Scholar search link. See `CLAIM_SUPPORT_REVIEW_INTERACTION_AND_MULTIDATABASE_SEARCH_UPDATE_2026-08-16.md`.
+The current build adds responsive source-search/approval states, Ignore controls, automatic placeholder cleanup, final approval citation counts, multi-database scholarly aggregation, project-evidence-bank reuse and a manual Google Scholar search link. See `docs/updates/u14.md`.
 
 ## August 2026 — Research Journey complete-guide architecture
 
-ProjectReady now uses **Research Journey** as its flagship module. Chapter development remains fully available through **Quick Chapter Development**, while the former Chapter Strengthener is presented as **Review & Strengthen**. A persistent **My Research Record**, researcher-confirmed decision checkpoints, adaptive quantitative/qualitative/mixed-methods journey stages, tracked supervisor corrections, a project-aware **Research Coach**, final research audit, viva preparation and **My Research Projects** recovery/progress page have been added. See `RESEARCH_JOURNEY_COMPLETE_GUIDE_UPGRADE_2026-08-16.md`.
+ProjectReady now uses **Research Journey** as its flagship module. Chapter development remains fully available through **Quick Chapter Development**, while the former Chapter Strengthener is presented as **Review & Strengthen**. A persistent **My Research Record**, researcher-confirmed decision checkpoints, adaptive quantitative/qualitative/mixed-methods journey stages, tracked supervisor corrections, a project-aware **Research Coach**, final research audit, viva preparation and **My Research Projects** recovery/progress page have been added. See `docs/updates/u42.md`.
+
+## August 2026 — Full Data & Analysis Workspace
+Research Journey Stage 8 now provides raw-data analysis for CSV/Excel datasets, deterministic descriptive statistics and diagnostics, regression-family models, mediation/moderation, time-series analysis, panel regression, multilevel models and SEM with a professional SVG path diagram. The conceptual framework is optional and can assist variable/path mapping. Qualitative coding support remains traceable to uploaded transcript excerpts, and mixed-methods integration uses only researcher-confirmed findings/themes. See `docs/updates/u15.md`.

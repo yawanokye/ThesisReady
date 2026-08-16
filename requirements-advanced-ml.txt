@@ -1,0 +1,19 @@
+# Optional heavy/specialist forecasting runtimes.
+# Install this file only on workers with sufficient memory/CPU/GPU and after
+# institutional data-governance review for any external/API-based model.
+-r requirements.txt
+
+torch>=2.6
+transformers>=4.49
+xgboost>=3.0
+lightgbm>=4.0
+catboost>=1.2
+prophet>=1.1
+neuralprophet>=0.9
+neuralforecast>=3.0
+gluonts>=0.16
+# Provider/model packages below are capability-checked by ProjectReady.
+# Their exact model weights/credentials remain deployment responsibilities.
+timesfm
+chronos-forecasting
+nixtla>=0.7
