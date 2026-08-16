@@ -389,6 +389,76 @@ def revoke_complimentary_token(token_id: str, *, updated_by: str = "developer") 
     return {"ok": True, "id": token_id, "status": "revoked", "updated_by": updated_by}
 
 
+def update_complimentary_token(
+    token_id: str,
+    *,
+    add_pages: int = 0,
+    product_area: str = "",
+    extend_days: int = 0,
+    updated_by: str = "developer",
+) -> Dict[str, Any]:
+    """Top up or widen an existing complimentary token without changing its raw code.
+
+    This is restricted to the developer portal. It is intended for cases where a
+    student has already received a token and needs more page credits or needs the
+    same token to continue from Thesis Workspace into Chapter Strengthener.
+    """
+    init_access_control_tables()
+    token_id = str(token_id or "").strip()
+    if not token_id:
+        raise ValueError("Complimentary token was not found.")
+    pages_to_add = max(0, min(int(add_pages or 0), 1000))
+    days_to_add = max(0, min(int(extend_days or 0), 365))
+    requested_area = str(product_area or "").strip()
+    area = _normalise_product_area(requested_area) if requested_area else ""
+    if pages_to_add <= 0 and days_to_add <= 0 and not area:
+        raise ValueError("Choose page credits, a module scope, or an expiry extension to update.")
+
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM projectready_complimentary_tokens WHERE id=?", (token_id,)).fetchone()
+        if not row:
+            raise ValueError("Complimentary token was not found.")
+        data = dict(row)
+        if str(data.get("status") or "") == "revoked":
+            raise ValueError("A revoked complimentary token cannot be changed. Create a new token instead.")
+
+        current_limit = int(data.get("page_limit") or 0)
+        new_limit = min(1000, current_limit + pages_to_add)
+        current_expiry = _parse_time(data.get("expires_at"))
+        new_expiry = current_expiry
+        if days_to_add:
+            base = current_expiry if current_expiry and current_expiry > _utc_now() else _utc_now()
+            new_expiry = base + timedelta(days=days_to_add)
+        new_area = area or _normalise_product_area(str(data.get("product_area") or "all"))
+
+        conn.execute(
+            """
+            UPDATE projectready_complimentary_tokens
+            SET product_area=?, page_limit=?, expires_at=?, updated_at=?
+            WHERE id=?
+            """,
+            (new_area, new_limit, _iso(new_expiry) if new_expiry else data.get("expires_at"), _iso(), token_id),
+        )
+        conn.commit()
+        updated = conn.execute(
+            "SELECT id, label, assigned_email, product_area, page_limit, pages_used, status, expires_at, created_by, created_at, updated_at FROM projectready_complimentary_tokens WHERE id=?",
+            (token_id,),
+        ).fetchone()
+
+    item = dict(updated)
+    item["masked_id"] = _masked_token_id(token_id)
+    item["pages_remaining"] = max(0, int(item.get("page_limit") or 0) - int(item.get("pages_used") or 0))
+    expiry = _parse_time(item.get("expires_at"))
+    item["expired"] = not expiry or expiry <= _utc_now()
+    item["effective_status"] = "expired" if item["expired"] and item.get("status") == "active" else item.get("status")
+    return {
+        "ok": True,
+        "token": item,
+        "updated_by": str(updated_by or "developer"),
+        "message": "Complimentary token updated. The student can keep using the same token code.",
+    }
+
+
 def complimentary_token_from_request(request: Any) -> tuple[str, str]:
     headers = getattr(request, "headers", {})
     token = str(headers.get("x-projectready-complimentary-token") or "").strip().upper()

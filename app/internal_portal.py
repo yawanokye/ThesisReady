@@ -21,6 +21,7 @@ from app.access_control import (
     list_complimentary_tokens,
     revoke_complimentary_token,
     set_access_policy,
+    update_complimentary_token,
 )
 from app.jobs.store import cancel_job, get_job, init_job_tables, list_jobs, retry_job
 from app.payments.internal_access import internal_access_configured, issue_internal_access, validate_internal_access
@@ -86,6 +87,12 @@ class ComplimentaryTokenCreateRequest(BaseModel):
     product_area: str = Field(default="all", max_length=80)
     page_limit: int = Field(ge=1, le=1000)
     validity_days: int = Field(default=30, ge=1, le=365)
+
+
+class ComplimentaryTokenUpdateRequest(BaseModel):
+    add_pages: int = Field(default=0, ge=0, le=1000)
+    product_area: str = Field(default="", max_length=80)
+    extend_days: int = Field(default=0, ge=0, le=365)
 
 
 def _now() -> datetime:
@@ -394,6 +401,24 @@ def internal_create_complimentary_token(payload: ComplimentaryTokenCreateRequest
             product_area=payload.product_area,
             validity_days=payload.validity_days,
             created_by=str(session.get("email") or "internal_developer"),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post(PORTAL_PATH + "/api/complimentary-tokens/{token_id}/update")
+@router.post("/api/internal/complimentary-tokens/{token_id}/update")
+def internal_update_complimentary_token(token_id: str, payload: ComplimentaryTokenUpdateRequest, request: Request) -> dict[str, Any]:
+    session = internal_session_or_none(request)
+    if not session:
+        raise HTTPException(status_code=404, detail="Resource not found.")
+    try:
+        return update_complimentary_token(
+            token_id,
+            add_pages=payload.add_pages,
+            product_area=payload.product_area,
+            extend_days=payload.extend_days,
+            updated_by=str(session.get("email") or "internal_developer"),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
