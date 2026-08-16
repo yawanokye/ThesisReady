@@ -9,6 +9,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from app.database import get_conn, row_to_dict, save_draft_version
 from app.schemas import (
     ClaimCitationApplyRequest,
+    ClaimSupportIgnoreRequest,
     ClaimSourceApprovalRequest,
     ClaimSourceSearchRequest,
     SelectedPaperMetadataUpdate,
@@ -20,6 +21,7 @@ from app.claim_support_review import (
     build_claim_support_review,
     merge_source_into_bank,
     public_candidate,
+    remove_review_item_placeholder,
 )
 from app.citation_matrix import remove_unverified_generated_citations
 from app.selected_papers import (
@@ -355,12 +357,115 @@ def _review_store(profile: dict[str, Any]) -> dict[str, Any]:
     return store
 
 
+def _ignored_review_store(profile: dict[str, Any]) -> dict[str, list[str]]:
+    store = profile.get("claim_support_ignored") or {}
+    if not isinstance(store, dict):
+        store = {}
+    profile["claim_support_ignored"] = store
+    return store
+
+
+def _review_ignore_key(item: dict[str, Any]) -> str:
+    if str(item.get("type") or "") == "paragraph_density":
+        heading = re.sub(r"\s+", " ", str(item.get("heading") or "")).strip().lower()
+        return f"paragraph:{heading}:{int(item.get('paragraph_index') or 0)}"
+    return str(item.get("id") or "")
+
+
+def _apply_ignored_review_state(review: dict[str, Any], ignored_keys: list[str]) -> dict[str, Any]:
+    ignored = {str(x) for x in (ignored_keys or []) if str(x)}
+    if not ignored:
+        review["ignored_item_count"] = 0
+        return review
+    removed = 0
+    claims = []
+    for item in review.get("claims") or []:
+        if isinstance(item, dict) and _review_ignore_key(item) in ignored:
+            removed += 1
+            continue
+        claims.append(item)
+    gaps = []
+    for item in review.get("paragraph_density_gaps") or []:
+        if isinstance(item, dict) and _review_ignore_key(item) in ignored:
+            removed += 1
+            continue
+        gaps.append(item)
+    review["claims"] = claims
+    review["paragraph_density_gaps"] = gaps
+    review["unsupported_claim_count"] = len(claims)
+    review["under_supported_paragraph_count"] = len(gaps)
+    review["ignored_item_count"] = len(ignored)
+    review["ignored_items_matching_current_text"] = removed
+    review["claim_review_required"] = bool(claims)
+    review["citation_density_review_required"] = bool(gaps)
+    review["status"] = "review_required" if claims or gaps else "ready"
+    review["final_output_ready"] = not bool(claims or gaps)
+    return review
+
+
+def _store_review_text(project_id: str, project: dict[str, Any], profile: dict[str, Any], *, workflow: str, chapter_number: int, text: str) -> None:
+    chapter = str(int(chapter_number or 0))
+    if str(workflow or "").lower().startswith("strength"):
+        strengthener = profile.get("chapter_strengthener") or {}
+        record = strengthener.get(chapter) if isinstance(strengthener, dict) else None
+        if isinstance(record, dict):
+            record["revised_chapter_text"] = text
+            strengthener[chapter] = record
+            profile["chapter_strengthener"] = strengthener
+        _save_profile(project_id, profile)
+        return
+    drafts = project.get("drafts") or {}
+    drafts[chapter] = text
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE projects SET drafts_json = ?, profile_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (json.dumps(drafts), json.dumps(profile), project_id),
+        )
+        conn.commit()
+
+
 def _find_review_item(review: dict[str, Any], item_id: str) -> dict[str, Any] | None:
     for field in ("claims", "paragraph_density_gaps"):
         for item in review.get(field) or []:
             if isinstance(item, dict) and str(item.get("id") or "") == str(item_id or ""):
                 return item
     return None
+
+
+def _claim_search_tokens(value: str) -> set[str]:
+    stop = {"the","and","for","with","that","this","from","into","among","their","have","has","been","were","was","are","can","may","study","research","evidence","results","findings"}
+    return {token for token in re.findall(r"[a-z0-9]{3,}", str(value or "").lower()) if token not in stop}
+
+
+def _project_evidence_candidates(profile: dict[str, Any], query: str, limit: int = 10) -> list[dict[str, Any]]:
+    query_tokens = _claim_search_tokens(query)
+    if not query_tokens:
+        return []
+    candidates: list[tuple[float, dict[str, Any]]] = []
+    for source in profile.get("source_bank") or []:
+        if not isinstance(source, dict):
+            continue
+        public = public_candidate(source)
+        if not public.get("citation_eligible"):
+            continue
+        title_tokens = _claim_search_tokens(str(source.get("title") or ""))
+        evidence_tokens = _claim_search_tokens(str(source.get("evidence_excerpt") or source.get("abstract") or ""))
+        title_hits = len(query_tokens & title_tokens)
+        evidence_hits = len(query_tokens & evidence_tokens)
+        score = title_hits * 3 + evidence_hits
+        if score < 2:
+            continue
+        copied = dict(source)
+        databases = list(copied.get("databases_found") or [])
+        if "Project evidence bank" not in databases:
+            databases.append("Project evidence bank")
+        copied["databases_found"] = databases
+        copied["database"] = copied.get("database") or "Project evidence bank"
+        copied["relevance_reason"] = copied.get("relevance_reason") or f"Matched {title_hits} title term(s) and {evidence_hits} accessible-evidence term(s) from this claim."
+        copied["relevance_tier"] = copied.get("relevance_tier") or ("highly_relevant" if title_hits >= 2 or evidence_hits >= 4 else "partly_relevant")
+        candidates.append((float(score), copied))
+    candidates.sort(key=lambda pair: pair[0], reverse=True)
+    return [item for _, item in candidates[:limit]]
 
 
 def _candidate_record(item: dict[str, Any], candidate_id: str) -> dict[str, Any] | None:
@@ -410,6 +515,8 @@ def get_claim_support_review(project_id: str, workflow: str = "draft", chapter_n
         ),
         old,
     )
+    ignored_keys = (_ignored_review_store(profile).get(key) or [])
+    review = _apply_ignored_review_state(review, ignored_keys)
     store[key] = review
     _save_profile(project_id, profile)
     return {"project_id": project_id, "review": review}
@@ -449,7 +556,9 @@ def find_claim_support_sources(project_id: str, payload: ClaimSourceSearchReques
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Claim source search failed: {str(exc)[:220]}") from exc
 
-    records = [source for source in result.get("sources") or [] if isinstance(source, dict)]
+    external_records = [source for source in result.get("sources") or [] if isinstance(source, dict)]
+    project_records = _project_evidence_candidates(profile, query, limit=10)
+    records = _merge_sources(project_records, external_records, limit=24)
     item["candidate_records"] = records
     item["candidates"] = [public_candidate(source) for source in records]
     item["last_search_query"] = query
@@ -461,8 +570,11 @@ def find_claim_support_sources(project_id: str, payload: ClaimSourceSearchReques
         "query": query,
         "candidates": item["candidates"],
         "provider_errors": result.get("provider_errors") or [],
-        "databases": result.get("databases") or [],
-        "usage_note": "Review the source evidence and approve only sources that actually support the highlighted claim. Search results are not inserted automatically.",
+        "provider_timings_ms": result.get("provider_timings_ms") or {},
+        "databases": (["Project evidence bank"] if project_records else []) + list(result.get("databases") or []),
+        "project_evidence_candidates": len(project_records),
+        "external_searches": result.get("external_searches") or [],
+        "usage_note": "Review the source evidence and approve only sources that actually support the highlighted claim. Search results are not inserted automatically. Google Scholar is offered as a manual external search because ProjectReady does not scrape it.",
     }
 
 
@@ -514,15 +626,69 @@ def approve_claim_support_source(project_id: str, payload: ClaimSourceApprovalRe
         approvals.append(stored)
     item["approved_sources"] = approvals[:3]
     item["status"] = "source_approved"
+    # Approval resolves the stale source-needed marker immediately. The actual
+    # verified citation is inserted only during the final apply step.
+    current_text, _original = _claim_review_text(project, payload.workflow, payload.chapter_number)
+    cleaned_text, placeholder_removed = remove_review_item_placeholder(current_text, item)
+    item["placeholder_removed"] = bool(placeholder_removed)
     store[key] = review
-    _save_profile(project_id, profile)
+    if cleaned_text != current_text:
+        _store_review_text(project_id, project, profile, workflow=payload.workflow, chapter_number=payload.chapter_number, text=cleaned_text)
+    else:
+        _save_profile(project_id, profile)
     return {
         "project_id": project_id,
         "claim_id": payload.claim_id,
         "approved_source": public_candidate(stored),
         "approved_count": len(item["approved_sources"]),
         "source_bank_count": len(profile.get("source_bank") or []),
-        "message": "Verified source approved for this claim. Approve additional relevant sources if needed, then apply approved citations.",
+        "placeholder_removed": bool(placeholder_removed),
+        "text": cleaned_text,
+        "message": "Verified source approved. Any matching source-needed placeholder has been removed. Approve additional relevant sources if needed, then finalise the approved citations.",
+    }
+
+
+@router.post("/{project_id}/claim-support/ignore")
+def ignore_claim_support_item(project_id: str, payload: ClaimSupportIgnoreRequest) -> dict[str, Any]:
+    project = _get_project_or_404(project_id)
+    profile = project.get("profile") or {}
+    key = _claim_review_key(payload.workflow, payload.chapter_number)
+    store = _review_store(profile)
+    review = store.get(key)
+    if not isinstance(review, dict):
+        raise HTTPException(status_code=404, detail="Run the claim-support review first.")
+    item = _find_review_item(review, payload.claim_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="This claim or paragraph evidence gap is no longer present.")
+
+    current_text, original = _claim_review_text(project, payload.workflow, payload.chapter_number)
+    cleaned_text, placeholder_removed = remove_review_item_placeholder(current_text, item)
+    ignore_key = _review_ignore_key(item)
+    ignored_store = _ignored_review_store(profile)
+    ignored = list(ignored_store.get(key) or [])
+    if ignore_key and ignore_key not in ignored:
+        ignored.append(ignore_key)
+    ignored_store[key] = ignored[-300:]
+    item["status"] = "ignored"
+    item["placeholder_removed"] = bool(placeholder_removed)
+
+    refreshed = _merge_review_state(
+        build_claim_support_review(
+            cleaned_text, profile, chapter_number=payload.chapter_number, workflow=payload.workflow, original_text=original
+        ),
+        review,
+    )
+    refreshed = _apply_ignored_review_state(refreshed, ignored_store.get(key) or [])
+    store[key] = refreshed
+    _store_review_text(project_id, project, profile, workflow=payload.workflow, chapter_number=payload.chapter_number, text=cleaned_text)
+    return {
+        "project_id": project_id,
+        "claim_id": payload.claim_id,
+        "ignored": True,
+        "placeholder_removed": bool(placeholder_removed),
+        "text": cleaned_text,
+        "review": refreshed,
+        "message": "Item ignored by the user. Any matching source-needed placeholder was removed and the item will not be re-listed unless the text changes materially.",
     }
 
 
@@ -555,11 +721,23 @@ def apply_claim_support_citations(project_id: str, payload: ClaimCitationApplyRe
         original_text=original,
     )
     refreshed = _merge_review_state(refreshed, review)
+    ignored_keys = (_ignored_review_store(profile).get(key) or [])
+    refreshed = _apply_ignored_review_state(refreshed, ignored_keys)
     refreshed["application_summary"] = apply_summary
     refreshed["citation_integrity"] = integrity
     refreshed["final_output_ready"] = not bool(
         refreshed.get("unsupported_claim_count") or refreshed.get("under_supported_paragraph_count")
     )
+    refreshed["final_approval_summary"] = {
+        "verified_citation_references_added": int(apply_summary.get("verified_citation_references_added") or 0),
+        "citation_groups_added": int(apply_summary.get("citation_groups_added") or 0),
+        "unique_verified_sources_added": int(apply_summary.get("unique_verified_sources_added") or 0),
+        "ignored_items": int(refreshed.get("ignored_item_count") or 0),
+        "remaining_claims_without_citations": int(refreshed.get("unsupported_claim_count") or 0),
+        "remaining_paragraph_density_gaps": int(refreshed.get("under_supported_paragraph_count") or 0),
+        "paragraph_minimum_coverage_percent": float((refreshed.get("paragraph_citation_audit") or {}).get("minimum_coverage_percent") or 0),
+        "final_output_ready": bool(refreshed.get("final_output_ready")),
+    }
     store[key] = refreshed
 
     chapter = str(int(payload.chapter_number or 0))
