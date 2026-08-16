@@ -605,6 +605,20 @@
         <p id="backgroundJobMessage" class="hint">Your request is waiting for a background worker.</p>
         <button id="cancelBackgroundJobBtn" type="button" class="secondary-action">Cancel queued request</button>
       </div>
+      <section id="claimSupportReviewPanel" class="claim-support-review-panel" hidden aria-live="polite">
+        <div class="claim-support-head">
+          <div><p class="eyebrow">Pre-output evidence gate</p><h3>Claim Support Review</h3></div>
+          <span id="claimSupportReviewBadge" class="claim-support-badge">Review required</span>
+        </div>
+        <p class="hint">ProjectReady highlights evidence-bearing claims that still have no citation and paragraphs below the 2-3 verified-source target. Search for sources claim by claim, inspect the evidence, then approve only sources that genuinely support the statement. Search results are never inserted automatically.</p>
+        <div id="claimSupportSummary" class="claim-support-summary"></div>
+        <div id="claimSupportReviewList" class="claim-support-list"></div>
+        <div class="actions compact-actions">
+          <button id="applyApprovedClaimSourcesBtn" type="button" class="primary-action">Apply approved citations</button>
+          <button id="refreshClaimSupportReviewBtn" type="button" class="secondary-action">Re-run claim audit</button>
+        </div>
+        <p id="claimSupportStatus" class="status"></p>
+      </section>
       <div class="working-draft-notice"><strong>Working-draft status:</strong> This output must be independently reviewed, source-checked, revised and approved where required before academic submission.</div>
       <textarea id="draftOutput" rows="18" placeholder="Your editable AI-assisted working draft will appear here"></textarea>
       <div class="preview-heading">Formatted working-draft preview</div>
@@ -665,7 +679,7 @@
     </div>
   </div>
   <script src="/static/projectready_payments.js?v=20260815-complimentary-v2"></script>
-  <script src="/static/app.js?v=20260815-selected-papers-v1"></script>
+  <script src="/static/app.js?v=20260816-claim-support-v1"></script>
   <script src="/static/guide_banner.js?v=20260719-user-guide-v1"></script>
 </body>
 </html>

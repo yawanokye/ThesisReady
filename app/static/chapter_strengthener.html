@@ -341,6 +341,21 @@
         </div>
       </form>
 
+      <section id="strengthenerClaimSupportPanel" class="card claim-support-review-panel" hidden aria-live="polite">
+        <div class="claim-support-head">
+          <div><p class="eyebrow">Pre-output evidence gate</p><h2>Claim Support Review</h2></div>
+          <span id="strengthenerClaimSupportBadge" class="claim-support-badge">Review required</span>
+        </div>
+        <p class="help">Before the strengthened chapter is export-ready, review all evidence-bearing claims with no citation and any paragraph below the 2-3 verified-source target. Find sources, inspect the evidence excerpt or original paper, and approve only sources that truly support the claim.</p>
+        <div id="strengthenerClaimSupportSummary" class="claim-support-summary"></div>
+        <div id="strengthenerClaimSupportList" class="claim-support-list"></div>
+        <div class="actions">
+          <button id="strengthenerApplyApprovedSourcesBtn" type="button">Apply approved citations</button>
+          <button id="strengthenerRefreshClaimReviewBtn" type="button" class="secondary">Re-run claim audit</button>
+        </div>
+        <p id="strengthenerClaimSupportStatus" class="status"></p>
+      </section>
+
       <section class="card output-stack revision-output-panel" id="strengthenerReviewStep">
         <div>
           <div class="result-head">
@@ -349,6 +364,8 @@
           </div>
           <div id="revisionMeta" class="attached-summary">Revision details will appear here.</div>
           <textarea id="revisedChapter" class="output-box revision-article-box" readonly></textarea>
+          <div class="preview-heading">Claim-support highlighted preview</div>
+          <pre id="strengthenerHighlightedPreview" class="draft-preview"></pre>
         </div>
 
         <div class="revision-report-panel">
@@ -368,7 +385,7 @@
 
   <footer class="footer">ProjectReady AI, self-service academic research support with user authorship, verification and supervisor review.</footer>
   <script src="/static/projectready_payments.js?v=20260815-complimentary-v2"></script>
-  <script src="/static/chapter_strengthener.js?v=20260815-selected-papers-v1"></script>
+  <script src="/static/chapter_strengthener.js?v=20260816-claim-support-v1"></script>
   <script src="/static/guide_banner.js?v=20260719-user-guide-v1"></script>
 </body>
 </html>

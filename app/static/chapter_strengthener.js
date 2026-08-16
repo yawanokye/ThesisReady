@@ -217,6 +217,7 @@ let strengthenerTemplate = null;
 let customNewSections = [];
 let activeStrengthenerJob = null;
 let strengthenerJobInFlight = false;
+let currentStrengthenerClaimReview = null;
 
 function message(text, kind = '') {
   statusBox.textContent = text || '';
@@ -761,6 +762,13 @@ function fillFromProject(project) {
     byId('projectConnectionStatus').textContent = `Connected to ${project.title || 'ProjectReady AI project'} (${project.id}). Project details and attached source records have been loaded.`;
   }
   byId('useSavedDraftBtn').disabled = false;
+  const savedReview = (profile.claim_support_reviews || {})[`strengthener:${chapterNumber()}`] || null;
+  const savedStrengthener = (profile.chapter_strengthener || {})[String(chapterNumber())] || null;
+  if (savedStrengthener?.revised_chapter_text) {
+    revisedChapter.value = savedStrengthener.revised_chapter_text;
+    currentStrengthenerClaimReview = savedReview || savedStrengthener.claim_support_review || null;
+    renderStrengthenerClaimSupportReview(currentStrengthenerClaimReview);
+  }
   updateTargetNote();
   updateAccessSummary();
 }
@@ -977,6 +985,8 @@ async function pollStrengthenerJob(data) {
 function applyStrengthenerResult(data) {
   lastResult = data;
   revisedChapter.value = data.revised_chapter_text || '';
+  currentStrengthenerClaimReview = data.claim_support_review || null;
+  renderStrengthenerClaimSupportReview(currentStrengthenerClaimReview);
   strengtheningReport.value = data.strengthening_report || '';
   supervisorMatrix.value = data.supervisor_response_matrix || '';
   supervisorMatrixPanel.hidden = !supervisorMatrix.value.trim();
@@ -999,6 +1009,143 @@ function applyStrengthenerResult(data) {
     : `Working revision completed.${saveMessage} Review the working revision, report, sources, facts and all action items before export or academic use.`);
   updateAccessSummary();
   updateStrengthenerFlow();
+}
+
+
+function strengthenerClaimItems(review = currentStrengthenerClaimReview) {
+  if (!review) return [];
+  return [...(review.claims || []), ...(review.paragraph_density_gaps || [])];
+}
+
+function findStrengthenerClaimItem(itemId) {
+  return strengthenerClaimItems().find(item => String(item.id || '') === String(itemId || ''));
+}
+
+function strengthenerCandidateAuthorText(candidate) {
+  const authors = Array.isArray(candidate?.authors) ? candidate.authors : [candidate?.authors].filter(Boolean);
+  return authors.slice(0,4).join(', ') || 'Author metadata unavailable';
+}
+
+function renderStrengthenerCandidates(item) {
+  const candidates = Array.isArray(item.candidates) ? item.candidates : [];
+  if (!candidates.length) return '';
+  const approvedIds = new Set((item.approved_sources || []).map(source => source.candidate_id || source.doi || source.title));
+  return `<div class="claim-support-candidates">${candidates.map(candidate => {
+    const id = escapeHtmlLocal(candidate.candidate_id || '');
+    const identity = candidate.candidate_id || candidate.doi || candidate.title;
+    const approved = approvedIds.has(identity);
+    const locator = candidate.doi ? `https://doi.org/${String(candidate.doi).replace('https://doi.org/','').replace('http://doi.org/','')}` : candidate.url;
+    const link = locator ? `<a href="${escapeHtmlLocal(locator)}" target="_blank" rel="noopener">Open source</a>` : '';
+    const evidence = candidate.evidence_excerpt ? `<p class="claim-source-evidence"><strong>Accessible evidence:</strong> ${escapeHtmlLocal(candidate.evidence_excerpt)}</p>` : `<p class="claim-source-evidence"><strong>Evidence text unavailable in the search record.</strong> Open the source and confirm it manually before approval.</p>`;
+    const manual = candidate.requires_manual_source_text_confirmation ? `<label class="check claim-support-small"><input type="checkbox" data-strength-source-reviewed="${id}"> I opened the source text and confirmed it supports this claim.</label>` : '';
+    return `<article class="claim-source-candidate ${approved ? 'claim-source-approved' : ''}">
+      <strong>${escapeHtmlLocal(candidate.title || 'Untitled source')}</strong>
+      <p class="claim-source-meta">${escapeHtmlLocal(strengthenerCandidateAuthorText(candidate))} (${escapeHtmlLocal(candidate.year || 'n.d.')}) · ${escapeHtmlLocal(candidate.journal || candidate.database || '')} ${link}</p>
+      ${evidence}${manual}
+      <button type="button" class="secondary" data-strength-approve-source="${escapeHtmlLocal(item.id)}" data-candidate-id="${id}" ${approved ? 'disabled' : ''}>${approved ? 'Approved' : 'Approve as support'}</button>
+    </article>`;
+  }).join('')}</div>`;
+}
+
+function renderStrengthenerHighlightedPreview() {
+  const preview = byId('strengthenerHighlightedPreview');
+  if (!preview) return;
+  let safe = escapeHtmlLocal(revisedChapter?.value || '');
+  for (const item of (currentStrengthenerClaimReview?.claims || [])) {
+    if (item.status === 'resolved') continue;
+    const target = escapeHtmlLocal(item.claim_text || '');
+    if (target && safe.includes(target)) safe = safe.replace(target, `<span class="unsupported-claim-highlight" title="Claim needs verified source support">${target}</span>`);
+  }
+  preview.innerHTML = safe.replace(/(\[[^\]\n]{3,}\])/g, '<span class="placeholder-text">$1</span>');
+}
+
+function renderStrengthenerClaimSupportReview(review = currentStrengthenerClaimReview) {
+  currentStrengthenerClaimReview = review || null;
+  const panel = byId('strengthenerClaimSupportPanel');
+  const list = byId('strengthenerClaimSupportList');
+  const summary = byId('strengthenerClaimSupportSummary');
+  const badge = byId('strengthenerClaimSupportBadge');
+  if (!panel || !list || !summary || !badge) return;
+  if (!review) { panel.hidden = true; renderStrengthenerHighlightedPreview(); enableOutputs(Boolean(revisedChapter.value.trim())); return; }
+  panel.hidden = false;
+  const ready = Boolean(review.final_output_ready);
+  badge.textContent = ready ? 'Evidence gate passed' : 'Review required';
+  badge.classList.toggle('ready', ready);
+  summary.innerHTML = `<div><strong>${Number(review.unsupported_claim_count || 0)}</strong><br>claims without citations</div><div><strong>${Number(review.under_supported_paragraph_count || 0)}</strong><br>paragraphs below 2 verified sources</div><div><strong>${Number(review.paragraph_citation_audit?.minimum_coverage_percent ?? 0)}%</strong><br>paragraph minimum coverage</div>`;
+  const items = strengthenerClaimItems(review);
+  list.innerHTML = items.length ? items.map(item => {
+    const isClaim = item.type === 'claim';
+    const text = isClaim ? item.claim_text : item.excerpt;
+    const approved = Array.isArray(item.approved_sources) ? item.approved_sources.length : 0;
+    return `<article class="claim-support-card"><h4>${isClaim ? 'Claim needs source support' : `Paragraph needs ${item.minimum_verified_sources || 2}-${item.preferred_verified_sources || 3} distinct verified sources`}</h4>
+      <p class="claim-support-small">${escapeHtmlLocal(item.heading || 'Chapter body')} · paragraph ${Number(item.paragraph_index || 0)}${isClaim ? `, sentence ${Number(item.sentence_index || 0)}` : ''} · ${approved} source(s) approved</p>
+      <div class="claim-support-claim">${escapeHtmlLocal(text || '')}</div>
+      <div class="actions"><button type="button" class="secondary" data-strength-find-sources="${escapeHtmlLocal(item.id)}">Find verified sources</button></div>
+      ${renderStrengthenerCandidates(item)}</article>`;
+  }).join('') : `<div class="claim-support-card"><strong>Claim-support review passed.</strong><p>No unsupported evidence-bearing claims or paragraph-density gaps remain.</p></div>`;
+  list.querySelectorAll('[data-strength-find-sources]').forEach(button => button.addEventListener('click', () => findStrengthenerClaimSources(button.dataset.strengthFindSources).catch(error => { byId('strengthenerClaimSupportStatus').textContent = error.message || 'Source search failed.'; })));
+  list.querySelectorAll('[data-strength-approve-source]').forEach(button => button.addEventListener('click', () => approveStrengthenerClaimSource(button.dataset.strengthApproveSource, button.dataset.candidateId).catch(error => { byId('strengthenerClaimSupportStatus').textContent = error.message || 'Source approval failed.'; })));
+  renderStrengthenerHighlightedPreview();
+  enableOutputs(Boolean(revisedChapter.value.trim()));
+}
+
+async function findStrengthenerClaimSources(itemId) {
+  if (!projectId()) throw new Error('Connect or recover a project first.');
+  const item = findStrengthenerClaimItem(itemId);
+  if (!item) throw new Error('This claim is no longer present in the current review.');
+  byId('strengthenerClaimSupportStatus').textContent = 'Searching verified scholarly sources for this claim…';
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectId())}/claim-support/find-sources`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({workflow:'strengthener', chapter_number:chapterNumber(), claim_id:itemId, query:item.search_query || item.claim_text || item.excerpt || '', max_results:12})
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.detail || 'Claim source search failed.');
+  item.candidates = data.candidates || [];
+  renderStrengthenerClaimSupportReview(currentStrengthenerClaimReview);
+  byId('strengthenerClaimSupportStatus').textContent = `${item.candidates.length} candidate source(s) found. Review the evidence before approval.`;
+}
+
+async function approveStrengthenerClaimSource(itemId, candidateId) {
+  const item = findStrengthenerClaimItem(itemId);
+  const candidate = (item?.candidates || []).find(source => String(source.candidate_id || '') === String(candidateId || ''));
+  if (!item || !candidate) throw new Error('Source candidate is no longer available.');
+  const selector = `[data-strength-source-reviewed="${CSS.escape(String(candidateId))}"]`;
+  const checked = candidate.requires_manual_source_text_confirmation ? Boolean(document.querySelector(selector)?.checked) : false;
+  if (candidate.requires_manual_source_text_confirmation && !checked) throw new Error('Open the source and confirm that you checked its text before approval.');
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectId())}/claim-support/approve`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({workflow:'strengthener', chapter_number:chapterNumber(), claim_id:itemId, candidate_id:candidateId, confirm_claim_support:true, confirm_source_text_reviewed:checked})
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.detail || 'Source approval failed.');
+  item.approved_sources = [...(item.approved_sources || []), {...candidate, candidate_id:candidate.candidate_id}].slice(0,3);
+  renderStrengthenerClaimSupportReview(currentStrengthenerClaimReview);
+  byId('strengthenerClaimSupportStatus').textContent = data.message || 'Source approved.';
+}
+
+async function applyStrengthenerApprovedSources() {
+  if (!projectId()) throw new Error('Connect or recover a project first.');
+  byId('strengthenerClaimSupportStatus').textContent = 'Applying only approved, verified citations and re-running the claim audit…';
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectId())}/claim-support/apply-approved`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({workflow:'strengthener', chapter_number:chapterNumber(), citation_style:byId('citationStyle')?.value || 'APA 7th'})
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.detail || 'Approved citations could not be applied.');
+  revisedChapter.value = data.text || revisedChapter.value;
+  if (lastResult) lastResult.revised_chapter_text = revisedChapter.value;
+  currentStrengthenerClaimReview = data.review || null;
+  renderStrengthenerClaimSupportReview(currentStrengthenerClaimReview);
+  byId('strengthenerClaimSupportStatus').textContent = currentStrengthenerClaimReview?.final_output_ready ? 'All current claim-support and paragraph-density gaps are resolved. Export is unlocked.' : 'Approved citations were applied. Continue reviewing the remaining evidence gaps.';
+}
+
+async function refreshStrengthenerClaimReview() {
+  if (!projectId()) return;
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectId())}/claim-support-review?workflow=strengthener&chapter_number=${chapterNumber()}`, {cache:'no-store'});
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.detail || 'Claim-support review could not be refreshed.');
+  currentStrengthenerClaimReview = data.review || null;
+  renderStrengthenerClaimSupportReview(currentStrengthenerClaimReview);
 }
 
 async function resumeStrengthenerJobIfAvailable() {
@@ -1043,6 +1190,9 @@ async function cancelActiveStrengthenerJob() {
   strengthenerJobInFlight = false;
 }
 
+byId('strengthenerApplyApprovedSourcesBtn')?.addEventListener('click', () => applyStrengthenerApprovedSources().catch(error => { byId('strengthenerClaimSupportStatus').textContent = error.message || 'Approved citations could not be applied.'; }));
+byId('strengthenerRefreshClaimReviewBtn')?.addEventListener('click', () => refreshStrengthenerClaimReview().catch(error => { byId('strengthenerClaimSupportStatus').textContent = error.message || 'Claim-support review could not be refreshed.'; }));
+
 byId('cancelStrengthenerJobBtn')?.addEventListener('click', async () => {
   try {
     await cancelActiveStrengthenerJob();
@@ -1052,9 +1202,13 @@ byId('cancelStrengthenerJobBtn')?.addEventListener('click', async () => {
 });
 
 function enableOutputs(enabled) {
-  copyChapterBtn.disabled = !enabled;
+  const evidenceReady = !currentStrengthenerClaimReview || Boolean(currentStrengthenerClaimReview.final_output_ready);
+  copyChapterBtn.disabled = !enabled || !evidenceReady;
   copyReportBtn.disabled = !enabled;
-  downloadRevisionBtn.disabled = !enabled;
+  downloadRevisionBtn.disabled = !enabled || !evidenceReady;
+  copyChapterBtn.classList.toggle('claim-review-locked', enabled && !evidenceReady);
+  downloadRevisionBtn.classList.toggle('claim-review-locked', enabled && !evidenceReady);
+  downloadRevisionBtn.title = enabled && !evidenceReady ? 'Complete the Claim Support Review before exporting the strengthened chapter.' : '';
 }
 
 form.addEventListener('submit', async (event) => {
