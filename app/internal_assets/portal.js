@@ -110,12 +110,40 @@
   }
 
   function tokenActionButton(token) {
-    if (["revoked", "expired"].includes(token.effective_status)) return document.createTextNode("—");
-    return actionButton("Revoke", async () => {
+    if (token.effective_status === "revoked") return document.createTextNode("—");
+    const actions = document.createElement("div");
+    actions.className = "job-actions";
+    actions.appendChild(actionButton("Add pages", async () => {
+      const raw = window.prompt(`Add page credits to ${token.masked_id}`, "10");
+      if (raw === null) return;
+      const addPages = Number(raw || 0);
+      if (!Number.isInteger(addPages) || addPages <= 0) return window.alert("Enter a whole number greater than zero.");
+      const data = await api(endpoint(`complimentary-tokens/${token.id}/update`), {method:"POST", body:JSON.stringify({add_pages:addPages})});
+      $("complimentaryStatus").textContent = data.message || "Page credits added.";
+      await loadComplimentaryTokens();
+    }));
+    if (String(token.product_area || "all") !== "all") {
+      actions.appendChild(actionButton("Use in both", async () => {
+        const data = await api(endpoint(`complimentary-tokens/${token.id}/update`), {method:"POST", body:JSON.stringify({product_area:"all"})});
+        $("complimentaryStatus").textContent = data.message || "Token now works in Thesis Workspace and Chapter Strengthener.";
+        await loadComplimentaryTokens();
+      }));
+    }
+    actions.appendChild(actionButton("Extend", async () => {
+      const raw = window.prompt(`Extend ${token.masked_id} by how many days?`, "30");
+      if (raw === null) return;
+      const days = Number(raw || 0);
+      if (!Number.isInteger(days) || days <= 0) return window.alert("Enter a whole number greater than zero.");
+      const data = await api(endpoint(`complimentary-tokens/${token.id}/update`), {method:"POST", body:JSON.stringify({extend_days:days})});
+      $("complimentaryStatus").textContent = data.message || "Token expiry extended.";
+      await loadComplimentaryTokens();
+    }));
+    actions.appendChild(actionButton("Revoke", async () => {
       if (!window.confirm(`Revoke ${token.masked_id}?`)) return;
       await api(endpoint(`complimentary-tokens/${token.id}/revoke`), {method:"POST", body:"{}"});
       await loadComplimentaryTokens();
-    });
+    }));
+    return actions;
   }
 
   async function loadComplimentaryTokens() {
