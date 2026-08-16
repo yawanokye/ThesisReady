@@ -1378,7 +1378,28 @@ byId('extractSelectedPapersBtn')?.addEventListener('click', () => attachStrength
 document.addEventListener('input', (event) => { if (event.target?.closest?.('.strengthener-guided-frame')) updateStrengthenerFlow(); });
 document.addEventListener('change', (event) => { if (event.target?.closest?.('.strengthener-guided-frame')) { updateStrengthenerFlow(); refreshStrengthenerAccessStatus().catch(() => {}); } });
 
-initialiseStrengthener().catch((error) => message(error.message || 'The Chapter Strengthener could not be initialised.', 'error'));
+function setReviewStrengthenMode(mode) {
+  const presets = {
+    strengthen: {label:'Comprehensive chapter strengthening selected.', goals:'Strengthen the chapter comprehensively while preserving the approved research decisions and evidence.', on:['strengthenStructure','strengthenProblemGap','strengthenConceptualisation','increaseCitationDensity','assessMethodFit','assessResults','deepenDiscussion','strengthenConclusions','improveLanguage']},
+    citations: {label:'Citation-gap resolution selected. Verified source support and claim review are prioritised.', goals:'Prioritise unsupported claims, verified citation density, evidence synthesis and accurate reference support. Do not add a citation unless it genuinely supports the claim.', on:['increaseCitationDensity','deepenDiscussion'], off:['strengthenStructure','assessMethodFit','assessResults','strengthenConclusions']},
+    supervisor: {label:'Supervisor-correction mode selected. Paste or upload supervisor comments before strengthening.', goals:'Address supervisor comments item by item, preserve approved research decisions, and produce a clear response-to-supervisor matrix.', on:['strengthenStructure','strengthenProblemGap','strengthenConceptualisation','assessMethodFit','assessResults','deepenDiscussion','strengthenConclusions','improveLanguage','includeResponseMatrix'], open:'strengthenerOptionalSupport'},
+    alignment: {label:'Research-alignment review selected. Problem, objectives, questions, method, results and conclusions are prioritised.', goals:'Check cross-chapter research logic and traceability from problem and objectives through method, results, conclusions and recommendations.', on:['strengthenProblemGap','assessMethodFit','assessResults','strengthenConclusions'], off:['improveLanguage']},
+    results: {label:'Results and interpretation review selected. Only real supplied results may be assessed.', goals:'Check result coverage, statistical or qualitative interpretation, consistency with tables/output, objective alignment, discussion and conclusion support. Never invent or repair missing results by fabrication.', on:['assessResults','deepenDiscussion','strengthenConclusions'], off:['strengthenConceptualisation'], open:'strengthenerOptionalSupport'},
+    method: {label:'Methodology review selected. Design fit and reporting completeness are prioritised.', goals:'Review research design, sampling, measurement or qualitative procedures, validity/reliability or trustworthiness, ethics and analysis-plan alignment.', on:['assessMethodFit','strengthenStructure','strengthenProblemGap'], off:['assessResults','strengthenConclusions']},
+  };
+  const preset = presets[mode] || presets.strengthen;
+  document.querySelectorAll('[data-review-mode]').forEach(btn => btn.classList.toggle('active', btn.dataset.reviewMode === mode));
+  const allIds = ['strengthenStructure','strengthenProblemGap','strengthenConceptualisation','increaseCitationDensity','assessMethodFit','assessResults','deepenDiscussion','strengthenConclusions','improveLanguage','includeResponseMatrix'];
+  allIds.forEach(id => { if (byId(id)) byId(id).checked = preset.off?.includes(id) ? false : Boolean(preset.on?.includes(id) || (mode === 'strengthen' && byId(id).checked)); });
+  if (byId('revisionGoals')) byId('revisionGoals').value = preset.goals;
+  if (preset.open && byId(preset.open)) byId(preset.open).open = true;
+  if (byId('reviewModeStatus')) byId('reviewModeStatus').textContent = preset.label;
+}
+
+document.querySelectorAll('[data-review-mode]').forEach(button => button.addEventListener('click', () => setReviewStrengthenMode(button.dataset.reviewMode)));
+setReviewStrengthenMode(new URLSearchParams(window.location.search).get('mode') || 'strengthen');
+
+initialiseStrengthener().catch((error) => message(error.message || 'Review & Strengthen could not be initialised.', 'error'));
 
 async function copyText(value, successMessage) {
   if (!value.trim()) return;

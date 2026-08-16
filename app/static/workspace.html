@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ProjectReady AI | Guided Thesis and Dissertation Development Workspace</title>
+  <title>ProjectReady AI | Guided Research Journey</title>
   <link rel="stylesheet" href="/static/styles.css?v=20260629-integrity-v3" />
   <link rel="stylesheet" href="/static/workspace-ui-clarity.css?v=20260718-workspace-clear-visible-v2" />
   <link rel="stylesheet" href="/static/projectready-suite.css?v=20260710-nav-tabs-v1" />
@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="/static/user_guide_shared.css?v=20260719-user-guide-v1" />
   <link rel="stylesheet" href="/static/guided-workspace.css?v=20260815-selected-papers-v1" />
 </head>
-<body class="workspace-clarity-theme suite-page thesis-suite" data-guide-module="thesis-workspace">
+<body class="workspace-clarity-theme suite-page thesis-suite" data-guide-module="thesis-workspace" data-product-module="research-journey">
   <header class="workspace-topbar">
     <a class="workspace-brand" href="/" aria-label="ProjectReady AI home">
       <span class="brand-mark-small">PR</span>
@@ -23,30 +23,35 @@
       <a href="/#features">Core features</a>
       <a href="/#formats">Flexible formats</a>
       <a href="/topic-ideas">Topic Ideas</a>
-      <a href="/workspace" aria-current="page">Thesis Workspace</a>
-      <a href="/chapter-strengthener">Chapter Strengthener</a>
+      <a href="/research-journey" aria-current="page">Research Journey</a>
+      <a href="/quick-chapter">Quick Chapter Development</a>
+      <a href="/review-strengthen">Review &amp; Strengthen</a>
+      <a href="/research-coach">Research Coach</a>
+      <a href="/my-projects">My Research Projects</a>
       <a href="/user-guide">User Guide</a>
     </nav>
   </header>
+  <div hidden aria-hidden="true"><a href="/workspace">Legacy workspace route</a><a href="/chapter-strengthener">Legacy strengthener route</a></div>
 
   <header class="hero">
     <div>
-      <p class="eyebrow">ProjectReady AI Workspace</p>
-      <h1>Develop your chapter in one guided workspace</h1>
-      <p class="lead">Complete the chapter-generation form in the main panel. The research journey on the left shows where you are, what is complete and what remains.</p><div class="suite-capability-strip"><span class="suite-pill">User-controlled development</span><span class="suite-pill green">Source finder</span><span class="suite-pill amber">Retracted source exclusion</span><span class="suite-pill purple">Editable working-draft export</span></div>
+      <p class="eyebrow">ProjectReady AI Research Journey</p>
+      <h1>Plan, develop, verify and strengthen your research in one guided journey</h1>
+      <p class="lead">Use one persistent Research Record from research setup through literature, design, chapter development, analysis, supervisor corrections, final audit, compilation and viva preparation. Quick chapter development remains available whenever you already know exactly what you need.</p><div class="suite-capability-strip"><span class="suite-pill">User-controlled development</span><span class="suite-pill green">Source finder</span><span class="suite-pill amber">Retracted source exclusion</span><span class="suite-pill purple">Editable working-draft export</span></div>
     </div>
   </header>
 
   <section class="guide-help-card" aria-label="Thesis Workspace user guidance">
-    <div><h2>New to Thesis Workspace?</h2><p>Review the six-stage workflow and the mandatory, recommended and optional project fields before creating a chapter job.</p></div>
+    <div><h2>New to the Research Journey?</h2><p>Start with your research logic, then ProjectReady shows what is complete, what is missing and what you should do next. Major research choices remain researcher-approved decisions.</p></div>
     <div class="guide-help-actions"><a href="/user-guide#thesis-workspace">Read Workspace guide</a><a href="/user-guide#video">Watch walkthrough</a><a href="/static/guides/projectready-ai-annotated-user-guide.pdf" target="_blank" rel="noopener">Open PDF</a></div>
   </section>
 
-  <section class="suite-module-grid" aria-label="ProjectReady AI modules">
-    <a class="suite-module-card green" href="/topic-ideas"><span class="suite-module-tag">Before drafting</span><strong>Topic Ideas</strong><span>Explore 2 ideas free, then unlock up to 12 titles, trends, gaps, objectives and data directions when you need more alternatives.</span></a>
-    <a class="suite-module-card active" href="/workspace"><span class="suite-module-tag">Current module</span><strong>Thesis/Dissertation Workspace</strong><span>Develop working drafts from your own materials, strengthen writing, upload results and review compliance.</span></a>
-    <a class="suite-module-card purple" href="/chapter-strengthener"><span class="suite-module-tag">Existing chapter</span><strong>Comprehensive Chapter Strengthener</strong><span>Deepen an uploaded chapter, address supervisor comments and export tracked revision colours.</span></a>
-    <a class="suite-module-card amber" href="#sourceSearchQuery"><span class="suite-module-tag">Quality guard</span><strong>Sources & Evidence</strong><span>Attach literature, avoid retracted papers and strengthen citations.</span></a>
+  <section class="suite-module-grid journey-module-grid" aria-label="ProjectReady AI main modules">
+    <a class="suite-module-card active" href="/research-journey"><span class="suite-module-tag">Flagship</span><strong>Research Journey</strong><span>End-to-end guidance from research setup to final audit, compilation and viva preparation.</span></a>
+    <a class="suite-module-card green" href="/quick-chapter"><span class="suite-module-tag">Direct route</span><strong>Quick Chapter Development</strong><span>Develop a full chapter or selected sections when your research logic and inputs are already clear.</span></a>
+    <a class="suite-module-card purple" href="/review-strengthen"><span class="suite-module-tag">Existing work</span><strong>Review &amp; Strengthen</strong><span>Strengthen chapters, resolve citation gaps, apply supervisor corrections and check interpretation.</span></a>
+    <a class="suite-module-card amber" href="/research-coach"><span class="suite-module-tag">Learn &amp; decide</span><strong>Research Coach</strong><span>Explain concepts, guide decisions, compare alternatives and prepare for the viva.</span></a>
+    <a class="suite-module-card" href="/my-projects"><span class="suite-module-tag">Projects</span><strong>My Research Projects</strong><span>Recover saved projects, review progress and continue from the next required step.</span></a>
   </section>
 
 
@@ -63,7 +68,7 @@
     <aside class="research-flow-sidebar" id="workspaceFlowSidebar" aria-label="Research journey">
       <div class="flow-sidebar-head">
         <p class="eyebrow">Your research journey</p>
-        <h2>Chapter development</h2>
+        <h2>Current chapter task</h2>
         <p id="workspaceFlowSummary" class="flow-summary">Complete the project profile to begin.</p>
       </div>
       <nav class="flow-step-list" id="workspaceFlowSteps">
@@ -87,14 +92,14 @@
           <p id="workspaceComplimentaryStatus" class="flow-mini-text"></p>
         </details>
       </div>
-      <div class="flow-sidebar-links"><a href="/chapter-strengthener">Strengthen existing chapter</a><a href="/user-guide#thesis-workspace">Workspace guide</a></div>
+      <div class="flow-sidebar-links"><a href="/review-strengthen">Review &amp; strengthen</a><a href="/research-coach">Ask Research Coach</a><a href="/my-projects">My projects</a></div>
     </aside>
     <div class="guided-workspace-main">
   <section id="researchCockpit" class="research-cockpit" hidden aria-live="polite">
     <div class="cockpit-head">
       <div>
         <p class="eyebrow">Student Research Cockpit</p>
-        <h2 id="cockpitProjectTitle">Research project progress</h2>
+        <h2 id="cockpitProjectTitle">Research Journey Dashboard</h2>
         <p id="cockpitReadinessLabel" class="hint">Project workflow readiness, not a grade.</p>
       </div>
       <button id="refreshCockpitBtn" type="button" class="secondary-action">Refresh research logic</button>
@@ -114,6 +119,55 @@
       <button id="cockpitNextActionBtn" type="button" class="primary-action">Continue my research</button>
     </div>
     <div id="cockpitChapterTrack" class="cockpit-chapter-track" aria-label="Chapter progress"></div>
+    <section class="journey-overview" id="researchJourneyStagesPanel">
+      <div class="row-between"><div><span class="cockpit-next-label">Adaptive research path</span><strong id="journeyApproachLabel">Research journey</strong></div><a class="secondary-action journey-link-button" href="/research-coach">Ask Research Coach</a></div>
+      <div id="journeyStageGrid" class="journey-stage-grid"></div>
+    </section>
+    <details class="cockpit-details research-record-details" id="researchRecordPanel">
+      <summary>My Research Record <span class="record-summary-note">single source of truth across chapters</span></summary>
+      <p class="hint">Confirm the authoritative research facts here. Chapter development, strengthening and later-stage checks use this record to prevent contradictions across chapters.</p>
+      <div class="research-record-grid">
+        <label>Theoretical framework<textarea id="recordTheoreticalFramework" rows="2" placeholder="Confirmed theory or theoretical framework"></textarea></label>
+        <label>Conceptual framework summary<textarea id="recordConceptualFramework" rows="2" placeholder="Constructs, directions, mediator/moderator roles or qualitative conceptual relationships"></textarea></label>
+        <label>Research design<input id="recordResearchDesign" placeholder="e.g. cross-sectional survey, case study"></label>
+        <label>Philosophy / interpretive position<input id="recordPhilosophy" placeholder="Where applicable"></label>
+        <label>Population<textarea id="recordPopulation" rows="2"></textarea></label>
+        <label>Sample size or approved sample basis<input id="recordSampleSize"></label>
+        <label>Sampling / participant-selection strategy<textarea id="recordSamplingStrategy" rows="2"></textarea></label>
+        <label>Participants / cases<textarea id="recordParticipants" rows="2"></textarea></label>
+        <label>Instrument / measurement plan<textarea id="recordInstruments" rows="2"></textarea></label>
+        <label>Validity &amp; reliability<textarea id="recordValidityReliability" rows="2"></textarea></label>
+        <label>Qualitative trustworthiness<textarea id="recordTrustworthiness" rows="2"></textarea></label>
+        <label>Ethics / approval information<textarea id="recordEthics" rows="2"></textarea></label>
+        <label>Analysis plan<textarea id="recordAnalysisPlan" rows="3" placeholder="Map analysis to objectives/questions/hypotheses"></textarea></label>
+        <label>Coding / qualitative analytic approach<textarea id="recordCodingApproach" rows="2"></textarea></label>
+        <label>Mixed-methods design<input id="recordMixedMethodsDesign"></label>
+        <label>Mixed-methods integration strategy<textarea id="recordIntegrationStrategy" rows="2"></textarea></label>
+      </div>
+      <div class="record-actions"><button id="saveResearchRecordBtn" type="button" class="primary-action">Save Research Record</button><span id="researchRecordStatus" class="hint"></span></div>
+    </details>
+    <details class="cockpit-details" id="researchDecisionPanel">
+      <summary>Research Decision checkpoints <span id="decisionPendingCount" class="issue-count">0</span></summary>
+      <p class="hint">ProjectReady may explain and recommend. The researcher confirms major design, theory, sampling, analysis and framework decisions.</p>
+      <div id="researchDecisionList" class="research-decision-list"></div>
+    </details>
+    <details class="cockpit-details" id="supervisorCorrectionPanel">
+      <summary>Supervisor Corrections <span id="supervisorCorrectionCount" class="issue-count">0</span></summary>
+      <p class="hint">Record supervisor comments as trackable actions. Mark each as addressing, resolved, or ignored with a reason. The original comment remains in the project record.</p>
+      <div class="supervisor-correction-entry">
+        <label>Chapter<select id="supervisorCorrectionChapter"><option value="">Whole project / not specified</option><option value="1">Chapter 1</option><option value="2">Chapter 2</option><option value="3">Chapter 3</option><option value="4">Chapter 4</option><option value="5">Chapter 5</option></select></label>
+        <label>Location<input id="supervisorCorrectionLocation" placeholder="e.g. Problem statement, Table 4.3"></label>
+        <label class="correction-comment-label">Supervisor comment<textarea id="supervisorCorrectionComment" rows="3" placeholder="Enter one correction or comment"></textarea></label>
+        <button id="addSupervisorCorrectionBtn" type="button" class="primary-action">Add correction</button>
+      </div>
+      <p id="supervisorCorrectionStatus" class="hint"></p>
+      <div id="supervisorCorrectionList" class="supervisor-correction-list"></div>
+    </details>
+    <details class="cockpit-details" id="finalResearchAuditPanel">
+      <summary>Final Research Audit</summary>
+      <div id="finalResearchAuditList" class="final-audit-list"></div>
+      <p class="hint">This workflow audit does not replace supervisor, examiner or institutional approval.</p>
+    </details>
     <details class="cockpit-details">
       <summary>Research alignment matrix</summary>
       <div class="table-wrap">
@@ -136,8 +190,8 @@
   </section>
 
   <section class="standalone-form-intro">
-      <p class="eyebrow">Standalone chapter generation form</p>
-      <h2>Complete this form, then develop your chapter</h2>
+      <span hidden>Standalone chapter generation form</span><p class="eyebrow" id="chapterDevelopmentFormLabel">Quick Chapter Development</p>
+      <h2 id="chapterDevelopmentFormTitle">Develop a chapter within your Research Journey</h2>
       <p>Only the main research information is shown by default. Optional evidence, style, recovery and alignment tools stay collapsed until you need them.</p>
     </section>
   <main class="layout generation-form-layout">

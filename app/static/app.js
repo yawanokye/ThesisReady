@@ -2217,6 +2217,165 @@ function logicStatusLabel(value) {
   return value === "aligned" ? "Aligned" : value === "partial" ? "Partial" : "Needs action";
 }
 
+function renderJourneyStages(journey) {
+  if (!journey) return;
+  if ($("journeyApproachLabel")) $("journeyApproachLabel").textContent = journey.approach_label || "Research journey";
+  const grid = $("journeyStageGrid");
+  if (grid) {
+    grid.innerHTML = (journey.stages || []).map(stage => `
+      <a class="journey-stage ${escapeHtml(stage.status || "needs_input")}" href="${escapeHtml(stage.href || "#")}">
+        <span class="journey-stage-number">${Number(stage.number || 0)}</span>
+        <span class="journey-stage-copy"><strong>${escapeHtml(stage.label || "Research stage")}</strong><small>${escapeHtml(stage.description || "")}</small>${(stage.missing || []).length ? `<em>${escapeHtml((stage.missing || []).join(" · "))}</em>` : `<em>Ready</em>`}</span>
+      </a>`).join("");
+  }
+}
+
+const RESEARCH_RECORD_FIELDS = {
+  theoretical_framework: "recordTheoreticalFramework",
+  conceptual_framework_summary: "recordConceptualFramework",
+  research_design: "recordResearchDesign",
+  philosophy: "recordPhilosophy",
+  population: "recordPopulation",
+  sample_size: "recordSampleSize",
+  sampling_strategy: "recordSamplingStrategy",
+  participants: "recordParticipants",
+  instruments: "recordInstruments",
+  validity_reliability: "recordValidityReliability",
+  trustworthiness: "recordTrustworthiness",
+  ethics: "recordEthics",
+  analysis_plan: "recordAnalysisPlan",
+  coding_approach: "recordCodingApproach",
+  mixed_methods_design: "recordMixedMethodsDesign",
+  integration_strategy: "recordIntegrationStrategy",
+};
+
+function renderResearchRecord(record) {
+  const theory = record?.theory_framework || {};
+  const method = record?.method || {};
+  const values = {
+    theoretical_framework: theory.theoretical_framework || "",
+    conceptual_framework_summary: theory.conceptual_framework_summary || "",
+    ...method,
+  };
+  Object.entries(RESEARCH_RECORD_FIELDS).forEach(([key, id]) => {
+    const field = $(id);
+    if (field && document.activeElement !== field) field.value = values[key] || "";
+  });
+}
+
+async function saveResearchRecord() {
+  if (!currentProjectId) throw new Error("Create or recover a research project first.");
+  const payload = {};
+  Object.entries(RESEARCH_RECORD_FIELDS).forEach(([key, id]) => { payload[key] = $(id)?.value?.trim?.() || ""; });
+  if ($("researchRecordStatus")) $("researchRecordStatus").textContent = "Saving the authoritative research record…";
+  const data = await api(`/api/projects/${encodeURIComponent(currentProjectId)}/research-record`, {method:"PUT", body:JSON.stringify(payload)});
+  renderResearchRecord(data.research_record || {});
+  renderJourneyStages(data.journey || {});
+  if ($("researchRecordStatus")) $("researchRecordStatus").textContent = "Research Record saved. Future chapter and review tasks will use these confirmed details.";
+  await refreshResearchCockpit();
+}
+
+function renderDecisionCheckpoints(items) {
+  const list = $("researchDecisionList");
+  if (!list) return;
+  const decisions = Array.isArray(items) ? items : [];
+  const pending = decisions.filter(item => !["approved", "confirmed"].includes(String(item.status || ""))).length;
+  if ($("decisionPendingCount")) $("decisionPendingCount").textContent = String(pending);
+  list.innerHTML = decisions.map(item => `
+    <article class="research-decision-card ${escapeHtml(item.status || "pending")}" data-decision-key="${escapeHtml(item.key || "")}">
+      <div class="row-between"><div><strong>${escapeHtml(item.label || "Research decision")}</strong><p>${escapeHtml(item.prompt || "")}</p></div><span class="decision-status">${escapeHtml(item.status || "pending")}</span></div>
+      <label>Researcher selection<input data-decision-selection value="${escapeHtml(item.selection || "")}" placeholder="Enter the approved choice or decision"></label>
+      <label>Rationale<textarea data-decision-rationale rows="2" placeholder="Why does this choice fit the study?">${escapeHtml(item.rationale || "")}</textarea></label>
+      <div class="decision-actions"><button type="button" class="primary-action" data-save-decision>Confirm decision</button><a href="/research-coach?mode=decide&project_id=${encodeURIComponent(currentProjectId || "")}">Help me decide</a></div>
+    </article>`).join("");
+}
+
+async function saveResearchDecision(card) {
+  if (!currentProjectId || !card) throw new Error("Create or recover a research project first.");
+  const key = card.dataset.decisionKey;
+  const selection = card.querySelector('[data-decision-selection]')?.value?.trim() || "";
+  const rationale = card.querySelector('[data-decision-rationale]')?.value?.trim() || "";
+  if (!selection) throw new Error("Enter the researcher-approved selection before confirming this decision.");
+  const button = card.querySelector('[data-save-decision]');
+  if (button) { button.disabled = true; button.textContent = "Saving…"; }
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(currentProjectId)}/decisions/${encodeURIComponent(key)}`, {method:"POST", body:JSON.stringify({selection, rationale, status:"confirmed"})});
+    renderDecisionCheckpoints(data.journey?.decision_checkpoints || []);
+    renderJourneyStages(data.journey || {});
+    await refreshResearchCockpit();
+  } finally {
+    if (button?.isConnected) { button.disabled = false; button.textContent = "Confirm decision"; }
+  }
+}
+
+function renderSupervisorCorrections(items) {
+  const list = $("supervisorCorrectionList");
+  if (!list) return;
+  const corrections = Array.isArray(items) ? items : [];
+  const open = corrections.filter(item => !["resolved", "ignored"].includes(String(item.status || "open"))).length;
+  if ($("supervisorCorrectionCount")) $("supervisorCorrectionCount").textContent = String(open);
+  list.innerHTML = corrections.length ? corrections.slice().reverse().map(item => `
+    <article class="supervisor-correction-card ${escapeHtml(item.status || "open")}" data-correction-id="${escapeHtml(item.id || "")}">
+      <div class="row-between"><div><strong>${item.chapter_number ? `Chapter ${Number(item.chapter_number)}` : "Project-wide comment"}${item.location ? ` · ${escapeHtml(item.location)}` : ""}</strong><p>${escapeHtml(item.comment || "")}</p></div><span class="decision-status">${escapeHtml(item.status || "open")}</span></div>
+      ${item.resolution ? `<div class="correction-resolution"><strong>Resolution:</strong> ${escapeHtml(item.resolution)}</div>` : ""}
+      <div class="correction-actions">
+        <button type="button" data-correction-status="addressing">Addressing</button>
+        <button type="button" data-correction-status="resolved" class="primary-action">Resolved</button>
+        <button type="button" data-correction-status="ignored">Ignore with reason</button>
+        <a href="/review-strengthen?project_id=${encodeURIComponent(currentProjectId || "")}&mode=supervisor">Open in Review &amp; Strengthen</a>
+      </div>
+    </article>`).join("") : `<p class="hint">No supervisor corrections are currently recorded. Add them here or paste/upload comments in Review &amp; Strengthen.</p>`;
+}
+
+async function addSupervisorCorrection() {
+  if (!currentProjectId) throw new Error("Create or recover a research project first.");
+  const comment = $("supervisorCorrectionComment")?.value?.trim() || "";
+  if (!comment) throw new Error("Enter the supervisor comment before adding it.");
+  const chapterRaw = $("supervisorCorrectionChapter")?.value || "";
+  const payload = {comment, chapter_number: chapterRaw ? Number(chapterRaw) : null, location: $("supervisorCorrectionLocation")?.value?.trim() || ""};
+  if ($("supervisorCorrectionStatus")) $("supervisorCorrectionStatus").textContent = "Adding correction…";
+  const data = await api(`/api/projects/${encodeURIComponent(currentProjectId)}/supervisor-corrections`, {method:"POST", body:JSON.stringify(payload)});
+  if ($("supervisorCorrectionComment")) $("supervisorCorrectionComment").value = "";
+  renderSupervisorCorrections(data.journey?.supervisor_corrections || []);
+  renderJourneyStages(data.journey || {});
+  if ($("supervisorCorrectionStatus")) $("supervisorCorrectionStatus").textContent = "Supervisor correction added to the Research Journey.";
+}
+
+async function updateSupervisorCorrection(card, status) {
+  if (!currentProjectId || !card) return;
+  let resolution = "";
+  if (status === "resolved") resolution = window.prompt("Briefly record how this correction was addressed:", "") || "";
+  if (status === "ignored") {
+    resolution = window.prompt("Record why this correction is being ignored or is not applicable:", "") || "";
+    if (!resolution.trim()) throw new Error("An ignore reason is required so the audit trail remains clear.");
+  }
+  if (status === "addressing") resolution = window.prompt("Optional note on how you are addressing this correction:", "") || "";
+  const data = await api(`/api/projects/${encodeURIComponent(currentProjectId)}/supervisor-corrections/${encodeURIComponent(card.dataset.correctionId)}`, {method:"POST", body:JSON.stringify({status, resolution})});
+  renderSupervisorCorrections(data.journey?.supervisor_corrections || []);
+  renderJourneyStages(data.journey || {});
+  await refreshResearchCockpit();
+}
+
+function renderFinalResearchAudit(audit) {
+  const box = $("finalResearchAuditList");
+  if (!box) return;
+  const checks = audit?.checks || [];
+  box.innerHTML = checks.length ? checks.map(item => `<div class="final-audit-item ${escapeHtml(item.status || "needs_action")}"><span>${item.status === "pass" ? "✓" : "!"}</span><div><strong>${escapeHtml(item.label || "Audit check")}</strong><p>${escapeHtml(item.message || "")}</p></div></div>`).join("") : `<p class="hint">Create or recover a project to activate the final research audit.</p>`;
+}
+
+function applyWorkspaceEntryMode() {
+  const quick = window.location.pathname === "/quick-chapter";
+  document.body.classList.toggle("quick-chapter-mode", quick);
+  if (quick) {
+    if ($("chapterDevelopmentFormLabel")) $("chapterDevelopmentFormLabel").textContent = "Quick Chapter Development";
+    if ($("chapterDevelopmentFormTitle")) $("chapterDevelopmentFormTitle").textContent = "Develop a full chapter or selected sections";
+    const heroTitle = document.querySelector("body > .hero h1");
+    const heroLead = document.querySelector("body > .hero .lead");
+    if (heroTitle) heroTitle.textContent = "Develop the chapter you need without leaving the wider Research Journey";
+    if (heroLead) heroLead.textContent = "Use this direct route when your research logic and inputs are already clear. Full chapter development remains available, with the same verified evidence, citation-density, continuity and export safeguards.";
+  }
+}
+
 function renderResearchCockpit(data) {
   const panel = $("researchCockpit");
   if (!panel) return;
@@ -2235,11 +2394,17 @@ function renderResearchCockpit(data) {
   if ($("cockpitSourceCount")) $("cockpitSourceCount").textContent = String(data.source_count || 0);
   if ($("cockpitComplianceScore")) $("cockpitComplianceScore").textContent = data.compliance_score === null || data.compliance_score === undefined ? "—" : `${Math.round(Number(data.compliance_score))}%`;
 
-  const next = data.next_action || {};
+  const next = data.what_next || data.next_action || {};
   if ($("cockpitNextActionLabel")) $("cockpitNextActionLabel").textContent = next.label || "Continue my research";
   if ($("cockpitNextActionMessage")) $("cockpitNextActionMessage").textContent = next.message || "";
-  if ($("cockpitNextActionBtn")) $("cockpitNextActionBtn").dataset.actionType = next.type || "chapter";
-  if ($("cockpitNextActionBtn")) $("cockpitNextActionBtn").dataset.chapterNumber = String(next.chapter_number || 1);
+  if ($("cockpitNextActionBtn")) $("cockpitNextActionBtn").dataset.actionType = next.type || data.next_action?.type || "journey";
+  if ($("cockpitNextActionBtn")) $("cockpitNextActionBtn").dataset.chapterNumber = String(next.chapter_number || data.next_action?.chapter_number || 1);
+  if ($("cockpitNextActionBtn")) $("cockpitNextActionBtn").dataset.href = next.href || "";
+  renderJourneyStages(data.journey || {});
+  renderResearchRecord(data.research_record || data.journey?.research_record || {});
+  renderDecisionCheckpoints(data.decision_checkpoints || data.journey?.decision_checkpoints || []);
+  renderSupervisorCorrections(data.journey?.supervisor_corrections || []);
+  renderFinalResearchAudit(data.final_audit || {});
 
   const track = $("cockpitChapterTrack");
   if (track) {
@@ -2311,6 +2476,18 @@ function focusChapterForDevelopment(chapterNumber) {
 
 function continueFromCockpit() {
   const button = $("cockpitNextActionBtn");
+  const href = button?.dataset.href || currentResearchCockpit?.what_next?.href || "";
+  if (href) {
+    try {
+      const url = new URL(href, window.location.origin);
+      if (url.pathname === window.location.pathname || (url.pathname === "/workspace" && ["/workspace", "/research-journey", "/quick-chapter"].includes(window.location.pathname))) {
+        const target = url.hash ? document.querySelector(url.hash) : null;
+        if (target) { target.scrollIntoView({behavior:"smooth", block:"center"}); target.querySelector?.("input,textarea,select,button")?.focus?.(); return; }
+      }
+      window.location.href = href;
+      return;
+    } catch (_) {}
+  }
   const type = button?.dataset.actionType || currentResearchCockpit?.next_action?.type || "chapter";
   const chapter = Number(button?.dataset.chapterNumber || currentResearchCockpit?.next_action?.chapter_number || 1);
   if (type === "sources") {
@@ -2442,6 +2619,10 @@ $("createProjectBtn").addEventListener("click", () => createProject().catch(err 
 if ($("saveProjectProfileBtn")) $("saveProjectProfileBtn").addEventListener("click", () => saveCurrentProjectProfile().catch(err => handleWorkspaceError(err, "projectStatus")));
 if ($("refreshCockpitBtn")) $("refreshCockpitBtn").addEventListener("click", () => refreshResearchCockpit().catch(err => handleWorkspaceError(err, "projectStatus")));
 if ($("cockpitNextActionBtn")) $("cockpitNextActionBtn").addEventListener("click", continueFromCockpit);
+if ($("saveResearchRecordBtn")) $("saveResearchRecordBtn").addEventListener("click", () => saveResearchRecord().catch(err => { if ($("researchRecordStatus")) $("researchRecordStatus").textContent = err.message || "Research Record could not be saved."; }));
+if ($("researchDecisionList")) $("researchDecisionList").addEventListener("click", event => { const button = event.target.closest?.("[data-save-decision]"); if (!button) return; const card = button.closest("[data-decision-key]"); saveResearchDecision(card).catch(err => handleWorkspaceError(err, "projectStatus")); });
+if ($("addSupervisorCorrectionBtn")) $("addSupervisorCorrectionBtn").addEventListener("click", () => addSupervisorCorrection().catch(err => { if ($("supervisorCorrectionStatus")) $("supervisorCorrectionStatus").textContent = err.message || "Correction could not be added."; }));
+if ($("supervisorCorrectionList")) $("supervisorCorrectionList").addEventListener("click", event => { const button = event.target.closest?.("[data-correction-status]"); if (!button) return; const card = button.closest("[data-correction-id]"); updateSupervisorCorrection(card, button.dataset.correctionStatus).catch(err => { if ($("supervisorCorrectionStatus")) $("supervisorCorrectionStatus").textContent = err.message || "Correction status could not be updated."; }); });
 if ($("refreshVersionsBtn")) $("refreshVersionsBtn").addEventListener("click", () => refreshVersionHistory().catch(err => handleWorkspaceError(err, "draftStatus")));
 if ($("saveRecoveryBtn")) $("saveRecoveryBtn").addEventListener("click", () => saveCurrentProjectRecovery().catch(err => handleWorkspaceError(err, "projectStatus")));
 if ($("recoverProjectBtn")) $("recoverProjectBtn").addEventListener("click", () => recoverWorkspaceProjects().catch(err => handleWorkspaceError(err, "projectStatus")));
@@ -2498,6 +2679,7 @@ if ($("level")) {
   updateLevelHint();
 }
 
+applyWorkspaceEntryMode();
 updateChapterSpecificUi();
 
 async function initialiseWorkspace() {

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Chapter Strengthener | ProjectReady AI</title>
+  <title>Review & Strengthen | ProjectReady AI</title>
   <link rel="stylesheet" href="/static/chapter_strengthener.css?v=20260718-all-clear-trend-v1">
   <link rel="stylesheet" href="/static/projectready_payments.css?v=20260709-live-payments-v1">
   <link rel="stylesheet" href="/static/user_guide_shared.css?v=20260719-user-guide-v1">
@@ -18,18 +18,22 @@
       <a href="/#features">Core features</a>
       <a href="/#formats">Flexible formats</a>
       <a href="/topic-ideas">Topic Ideas</a>
-      <a href="/workspace">Thesis Workspace</a>
-      <a href="/chapter-strengthener" aria-current="page">Chapter Strengthener</a>
+      <a href="/research-journey">Research Journey</a>
+      <a href="/quick-chapter">Quick Chapter Development</a>
+      <a href="/review-strengthen" aria-current="page">Review &amp; Strengthen</a>
+      <a href="/research-coach">Research Coach</a>
+      <a href="/my-projects">My Research Projects</a>
       <a href="/user-guide">User Guide</a>
     </nav>
   </header>
+  <div hidden aria-hidden="true"><a href="/workspace">Legacy workspace route</a><a href="/chapter-strengthener">Legacy strengthener route</a></div>
 
   <main class="shell">
     <section class="hero">
       <div class="hero-copy">
-        <p class="eyebrow">Integrated thesis and dissertation revision</p>
-        <h1>Strengthen your chapter in one guided form.</h1>
-        <p class="lead">Complete the strengthening form in the main panel. The journey on the left shows what is complete, what remains and how the chapter will be revised without changing your approved study.</p>
+        <p class="eyebrow">Review, correction and scholarly strengthening</p>
+        <h1>Review &amp; Strengthen your existing research work.</h1>
+        <p class="lead">Use the same evidence-preserving workflow to strengthen chapters, resolve citation gaps, apply supervisor corrections, check research alignment, review methodology, or test results and interpretation without changing the approved study silently.</p>
       </div>
       <aside class="hero-note">
         <h2>Evidence-preserving revision</h2>
@@ -43,11 +47,24 @@
       <div class="guide-help-actions"><a href="/user-guide#chapter-strengthener">Read Strengthener guide</a><a href="/user-guide#video">Watch walkthrough</a><a href="/static/guides/projectready-ai-annotated-user-guide.pdf" target="_blank" rel="noopener">Open PDF</a></div>
     </section>
 
+    <section class="review-mode-panel card" aria-label="Review and Strengthen modes">
+      <div><p class="eyebrow">Choose what you need</p><h2>Review &amp; Strengthen mode</h2><p class="help">The mode sets the initial revision focus. You can still adjust individual checks before submitting.</p></div>
+      <div class="review-mode-grid">
+        <button type="button" class="review-mode-card active" data-review-mode="strengthen"><strong>Strengthen Chapter</strong><span>Structure, scholarship, synthesis, language and completeness.</span></button>
+        <button type="button" class="review-mode-card" data-review-mode="citations"><strong>Resolve Citation Gaps</strong><span>Prioritise verified source support, claim review and citation density.</span></button>
+        <button type="button" class="review-mode-card" data-review-mode="supervisor"><strong>Apply Supervisor Corrections</strong><span>Work through supervisor comments and produce a response matrix.</span></button>
+        <button type="button" class="review-mode-card" data-review-mode="alignment"><strong>Check Research Alignment</strong><span>Check problem, objectives, questions, methods, results and conclusions.</span></button>
+        <button type="button" class="review-mode-card" data-review-mode="results"><strong>Check Results &amp; Interpretation</strong><span>Check statistical or qualitative result coverage and interpretation.</span></button>
+        <button type="button" class="review-mode-card" data-review-mode="method"><strong>Review Methodology</strong><span>Assess design fit, sampling, measurement, ethics and analysis reporting.</span></button>
+      </div>
+      <p id="reviewModeStatus" class="help">Comprehensive chapter strengthening selected.</p>
+    </section>
+
     <div class="strengthener-guided-frame">
       <aside class="research-flow-sidebar" id="strengthenerFlowSidebar" aria-label="Chapter strengthening journey">
         <div class="flow-sidebar-head">
           <p class="eyebrow">Your strengthening journey</p>
-          <h2>Chapter Strengthener</h2>
+          <h2>Review &amp; Strengthen</h2>
           <p id="strengthenerFlowSummary" class="flow-summary">Connect or upload a chapter to begin.</p>
         </div>
         <nav class="flow-step-list" id="strengthenerFlowSteps">
@@ -70,7 +87,7 @@
             <p id="strengthenerComplimentaryStatus" class="flow-mini-text"></p>
           </details>
         </div>
-        <div class="flow-sidebar-links"><a href="/workspace">Develop a chapter</a><a href="/user-guide#chapter-strengthener">Strengthener guide</a></div>
+        <div class="flow-sidebar-links"><a href="/quick-chapter">Develop a chapter</a><a href="/research-coach">Research Coach</a><a href="/research-journey">Research Journey</a></div>
       </aside>
       <div class="strengthener-guided-main">
         <section class="standalone-form-intro">
