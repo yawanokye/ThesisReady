@@ -18,12 +18,16 @@ from app.project_recovery import recover_projects, recovery_enabled, set_project
 from app.result_uploads import extract_result_file
 from app.selected_papers import public_paper_record, public_source_bank
 from app.research_logic import build_research_logic
+from app.research_journey import build_journey, final_audit, research_record
 from app.payments.store import rotate_project_access_tokens
 from app.schemas import (
     ProjectCreate,
     ProjectRecoveryRequest,
     ProjectRecoverySetupRequest,
+    ResearchDecisionRequest,
     SectionSelection,
+    SupervisorCorrectionDecisionRequest,
+    SupervisorCorrectionRequest,
 )
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -339,6 +343,11 @@ def update_project_profile(project_id: str, payload: dict[str, Any]):
         "student_contribution", "academic_integrity_confirmed", "user_contribution_confirmed",
         "allow_provisional_drafting", "draft_consideration_warnings", "custom_page_targets",
         "current_custom_page_target", "citation_discipline_matrix", "chapter_transition_notes",
+        "theoretical_framework", "conceptual_framework_summary", "research_design", "philosophy",
+        "population", "sample_size", "sampling_strategy", "participants", "instruments",
+        "validity_reliability", "trustworthiness", "ethics", "analysis_plan", "coding_approach",
+        "mixed_methods_design", "integration_strategy", "research_decisions", "supervisor_corrections",
+        "result_notes", "final_audit_notes",
     }
     for key in allowed:
         if key not in payload:
@@ -376,6 +385,138 @@ def update_project_profile(project_id: str, payload: dict[str, Any]):
 def research_logic(project_id: str):
     project = _get_project_or_404(project_id)
     return build_research_logic(project)
+
+
+@router.get("/{project_id}/journey")
+def project_journey(project_id: str):
+    project = _get_project_or_404(project_id)
+    return build_journey(project)
+
+
+@router.get("/{project_id}/research-record")
+def project_research_record(project_id: str):
+    project = _get_project_or_404(project_id)
+    profile = project.get("profile") or {}
+    return {
+        "project_id": project_id,
+        "research_record": research_record(profile, str(project.get("title") or "")),
+        "journey": build_journey(project),
+    }
+
+
+@router.put("/{project_id}/research-record")
+def update_research_record(project_id: str, payload: dict[str, Any]):
+    project = _get_project_or_404(project_id)
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=422, detail="Research Record updates must be a JSON object.")
+    profile = project.get("profile") or {}
+    allowed = {
+        "title", "research_area", "study_context", "objectives", "research_questions", "hypotheses",
+        "variables", "theoretical_framework", "conceptual_framework_summary", "research_approach",
+        "research_design", "philosophy", "population", "sample_size", "sampling_strategy",
+        "participants", "instruments", "validity_reliability", "trustworthiness", "ethics",
+        "analysis_plan", "coding_approach", "mixed_methods_design", "integration_strategy",
+    }
+    for key, value in payload.items():
+        if key not in allowed:
+            continue
+        if key == "title":
+            title = str(value or "").strip()
+            if len(title) < 3:
+                raise HTTPException(status_code=422, detail="Project title must contain at least 3 characters.")
+            project["title"] = title
+            profile["title"] = title
+        else:
+            profile[key] = value
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE projects SET title = ?, profile_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (project.get("title") or profile.get("title") or "Untitled project", json.dumps(profile), project_id),
+        )
+        conn.commit()
+    project["profile"] = profile
+    return {"ok": True, "research_record": research_record(profile, str(project.get("title") or "")), "journey": build_journey(project)}
+
+
+@router.post("/{project_id}/decisions/{decision_key}")
+def save_research_decision(project_id: str, decision_key: str, payload: ResearchDecisionRequest):
+    project = _get_project_or_404(project_id)
+    key = re.sub(r"[^a-z0-9_-]+", "_", str(decision_key or "").strip().lower()).strip("_")
+    if not key:
+        raise HTTPException(status_code=422, detail="A decision key is required.")
+    status = str(payload.status or "confirmed").strip().lower()
+    if status not in {"pending", "confirmed", "approved", "rejected"}:
+        raise HTTPException(status_code=422, detail="Decision status must be pending, confirmed, approved or rejected.")
+    profile = project.get("profile") or {}
+    decisions = profile.get("research_decisions") if isinstance(profile.get("research_decisions"), dict) else {}
+    decisions[key] = {
+        "selection": str(payload.selection or "").strip(),
+        "rationale": str(payload.rationale or "").strip(),
+        "status": status,
+        "updated_at": int(time.time()),
+    }
+    profile["research_decisions"] = decisions
+    with get_conn() as conn:
+        conn.execute("UPDATE projects SET profile_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (json.dumps(profile), project_id))
+        conn.commit()
+    project["profile"] = profile
+    return {"ok": True, "decision_key": key, "decision": decisions[key], "journey": build_journey(project)}
+
+
+@router.post("/{project_id}/supervisor-corrections")
+def add_supervisor_correction(project_id: str, payload: SupervisorCorrectionRequest):
+    project = _get_project_or_404(project_id)
+    profile = project.get("profile") or {}
+    corrections = profile.get("supervisor_corrections") if isinstance(profile.get("supervisor_corrections"), list) else []
+    item = {
+        "id": str(uuid.uuid4()),
+        "comment": str(payload.comment or "").strip(),
+        "chapter_number": payload.chapter_number,
+        "location": str(payload.location or "").strip(),
+        "status": "open",
+        "resolution": "",
+        "created_at": int(time.time()),
+    }
+    corrections.append(item)
+    profile["supervisor_corrections"] = corrections[-250:]
+    with get_conn() as conn:
+        conn.execute("UPDATE projects SET profile_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (json.dumps(profile), project_id))
+        conn.commit()
+    project["profile"] = profile
+    return {"ok": True, "correction": item, "journey": build_journey(project)}
+
+
+@router.post("/{project_id}/supervisor-corrections/{correction_id}")
+def decide_supervisor_correction(project_id: str, correction_id: str, payload: SupervisorCorrectionDecisionRequest):
+    project = _get_project_or_404(project_id)
+    status = str(payload.status or "resolved").strip().lower()
+    if status not in {"open", "addressing", "resolved", "ignored"}:
+        raise HTTPException(status_code=422, detail="Correction status must be open, addressing, resolved or ignored.")
+    profile = project.get("profile") or {}
+    corrections = profile.get("supervisor_corrections") if isinstance(profile.get("supervisor_corrections"), list) else []
+    target = None
+    for item in corrections:
+        if isinstance(item, dict) and str(item.get("id") or "") == correction_id:
+            item["status"] = status
+            item["resolution"] = str(payload.resolution or "").strip()
+            item["updated_at"] = int(time.time())
+            target = item
+            break
+    if not target:
+        raise HTTPException(status_code=404, detail="Supervisor correction not found.")
+    profile["supervisor_corrections"] = corrections
+    with get_conn() as conn:
+        conn.execute("UPDATE projects SET profile_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (json.dumps(profile), project_id))
+        conn.commit()
+    project["profile"] = profile
+    return {"ok": True, "correction": target, "journey": build_journey(project)}
+
+
+@router.get("/{project_id}/final-audit")
+def project_final_audit(project_id: str):
+    project = _get_project_or_404(project_id)
+    logic = build_research_logic(project)
+    return final_audit(project, logic)
 
 
 @router.get("/{project_id}/versions/{chapter_number}")
