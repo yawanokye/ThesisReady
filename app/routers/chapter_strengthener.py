@@ -9,6 +9,7 @@ from typing import Any
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
+from app.claim_support_review import build_claim_support_review, stored_claim_review_status
 from app.chapter_file_extractor import extract_uploaded_text
 from app.selected_papers import (
     MAX_SELECTED_PAPERS,
@@ -466,6 +467,21 @@ def strengthen_project_chapter(
                     "No paid revision entitlement was completed. Please retry after checking OPENAI_API_KEY, model access, quota and timeout settings."
                 )
 
+            claim_profile = dict(project.get("profile") or {})
+            claim_sources = result.get("source_records_used") or []
+            if claim_sources:
+                claim_profile["source_bank"] = claim_sources
+                claim_profile["retrieved_sources"] = {"sources": claim_sources}
+            claim_support_review = build_claim_support_review(
+                result.get("revised_chapter_text", ""),
+                claim_profile,
+                chapter_number=chapter_number,
+                workflow="strengthener",
+                original_text=payload.chapter_text,
+            )
+            result["claim_support_review"] = claim_support_review
+            result["final_output_ready"] = bool(claim_support_review.get("final_output_ready"))
+
             if bool(merged_payload.get("save_to_project", True)):
                 profile = project.get("profile") or {}
                 if merged_payload.get("selected_papers"):
@@ -489,9 +505,15 @@ def strengthen_project_chapter(
                     "custom_new_sections": result.get("custom_new_sections", []),
                     "target_page_range": result.get("target_page_range", ""),
                     "scope_metadata": result.get("scope_metadata", {}),
+                    "claim_support_review": claim_support_review,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 }
                 profile["chapter_strengthener"] = strengthener_store
+                review_store = profile.get("claim_support_reviews") or {}
+                if not isinstance(review_store, dict):
+                    review_store = {}
+                review_store[f"strengthener:{int(chapter_number)}"] = claim_support_review
+                profile["claim_support_reviews"] = review_store
                 drafts = project.get("drafts") or {}
                 if result.get("strengthening_scope") != "selected_sections":
                     drafts[str(chapter_number)] = result.get("revised_chapter_text", "")
@@ -537,8 +559,40 @@ def export_project_strengthened_chapter(
     payload: ChapterRevisionExportRequest,
     request: Request,
 ) -> StreamingResponse:
-    _project_or_404(project_id)
+    project = _project_or_404(project_id)
     chapter_number = _chapter_number(payload.chapter_type)
+    profile = project.get("profile") or {}
+    claim_gate = stored_claim_review_status(profile, workflow="strengthener", chapter_number=chapter_number)
+    if claim_gate.get("review") is None:
+        # Older strengthened chapters may pre-date the review gate. Audit them on
+        # first export so unsupported claims are still surfaced before download.
+        review = build_claim_support_review(
+            payload.revised_chapter_text,
+            profile,
+            chapter_number=chapter_number,
+            workflow="strengthener",
+            original_text=payload.original_chapter_text,
+        )
+        reviews = profile.get("claim_support_reviews") or {}
+        if not isinstance(reviews, dict):
+            reviews = {}
+        reviews[f"strengthener:{chapter_number}"] = review
+        profile["claim_support_reviews"] = reviews
+        strengthening = profile.get("chapter_strengthener") or {}
+        if isinstance(strengthening, dict):
+            record = strengthening.get(str(chapter_number))
+            if isinstance(record, dict):
+                record["claim_support_review"] = review
+        with get_conn() as conn:
+            conn.execute(
+                "UPDATE projects SET profile_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (json.dumps(profile), project_id),
+            )
+            conn.commit()
+        project["profile"] = profile
+        claim_gate = stored_claim_review_status(profile, workflow="strengthener", chapter_number=chapter_number)
+    if not claim_gate["ready"]:
+        raise HTTPException(status_code=409, detail=claim_gate["reason"] + " Complete the pre-output Claim Support Review before exporting the strengthened chapter.")
     title = _chapter_title(payload.chapter_type, payload.chapter_title)
     try:
         with _paid_context(

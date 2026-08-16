@@ -167,10 +167,23 @@ def _enforce_test_checkout_access(test_access_key: str = "") -> None:
         return
     configured = str(os.getenv("PROJECTREADY_STRIPE_TEST_CHECKOUT_KEY", "") or "").strip()
     if not configured:
-        raise HTTPException(status_code=503, detail="Stripe test checkout is enabled but no private checkout key is configured.")
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Stripe test checkout is enabled but no private checkout key is configured. "
+                "For live customer payments, set PROJECTREADY_STRIPE_MODE=live or remove that variable."
+            ),
+        )
     supplied = str(test_access_key or "").strip()
     if not supplied or not hmac.compare_digest(supplied, configured):
-        raise HTTPException(status_code=403, detail="A valid private Stripe test checkout key is required.")
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "This deployment is configured for private Stripe test checkout. "
+                "Live customers cannot use that route. Set PROJECTREADY_STRIPE_MODE=live for production, "
+                "or supply the private test checkout key only during authorised testing."
+            ),
+        )
 
 
 def _safe_return_path(path: str, fallback: str = SUCCESS_PATH) -> str:
@@ -639,11 +652,12 @@ def activate_topic_ideas_trial(payload: TopicIdeasTrialRequest) -> Dict[str, Any
 @api_router.post("/api/topic-ideas/checkout")
 def start_topic_ideas_checkout(payload: TopicIdeasCheckoutRequest) -> Dict[str, Any]:
     email = _valid_email(payload.email)
-    _enforce_test_checkout_access(payload.test_access_key)
     plan_key = "topic_ideas_access"
     plan = get_plan(plan_key)
     display_price = get_price(plan_key)
     provider = choose_payment_provider("GH") if payload.market == "ghana" else "stripe"
+    if provider == "stripe":
+        _enforce_test_checkout_access(payload.test_access_key)
     provider_reference = make_provider_reference(provider)
     access_id = f"topic-ideas-{uuid.uuid4()}"
     return_path = _safe_return_path(payload.return_path, "/topic-ideas")
@@ -817,7 +831,6 @@ def topic_ideas_payment_status(payload: EntitlementStatusRequest) -> Dict[str, A
 @api_router.post("/api/payments/checkout")
 def start_checkout(payload: CheckoutRequest) -> Dict[str, Any]:
     email = _valid_email(payload.email)
-    _enforce_test_checkout_access(payload.test_access_key)
     project = _load_project(payload.project_id)
     profile = project.get("profile") or {}
     stored_level = str(profile.get("level") or payload.academic_level or "").strip()
@@ -844,6 +857,8 @@ def start_checkout(payload: CheckoutRequest) -> Dict[str, Any]:
 
     plan = get_plan(plan_key)
     provider = choose_payment_provider(country)
+    if provider == "stripe":
+        _enforce_test_checkout_access(payload.test_access_key)
     provider_reference = make_provider_reference(provider)
     display_price = get_price(plan_key)
 

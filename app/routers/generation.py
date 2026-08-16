@@ -11,6 +11,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
 from app.ai_service import _chapter_length_requirements, chapter_output_metrics, generate_chapter
+from app.claim_support_review import build_claim_support_review, stored_claim_review_status
 from app.chapter_continuation import build_chapter_linkage, chapter_selection_is_complete, store_chapter_linkage
 from app.compliance import check_chapter
 from app.database import get_conn, row_to_dict, save_draft_version
@@ -694,6 +695,29 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
             payload.selected_section_ids,
             draft,
         )
+        claim_support_review = build_claim_support_review(
+            draft,
+            project.get("profile", {}),
+            chapter_number=payload.chapter_number,
+            workflow="draft",
+            original_text=revision_text if revision_mode else "",
+        )
+        review_store = project["profile"].get("claim_support_reviews") or {}
+        if not isinstance(review_store, dict):
+            review_store = {}
+        review_store[f"draft:{int(payload.chapter_number)}"] = claim_support_review
+        project["profile"]["claim_support_reviews"] = review_store
+        metrics["claim_support_review"] = {
+            "unsupported_claim_count": claim_support_review.get("unsupported_claim_count", 0),
+            "under_supported_paragraph_count": claim_support_review.get("under_supported_paragraph_count", 0),
+            "final_output_ready": claim_support_review.get("final_output_ready", False),
+        }
+        with get_conn() as conn:
+            conn.execute(
+                "UPDATE projects SET profile_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (json.dumps(project.get("profile", {})), project_id),
+            )
+            conn.commit()
 
         return {
             "chapter_number": payload.chapter_number,
@@ -704,6 +728,8 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
             "access_mode": access_mode,
             "entitlement_action": action,
             "generation_metrics": metrics,
+            "claim_support_review": claim_support_review,
+            "final_output_ready": bool(claim_support_review.get("final_output_ready")),
             "draft_version": draft_version,
             "automatic_source_support": source_support_summary,
             "next_chapter": next_chapter if not revision_mode else {"available": False},
@@ -935,6 +961,33 @@ def export_chapter(project_id: str, chapter_number: int, request: Request):
     draft = project.get("drafts", {}).get(str(chapter_number), "")
     if not draft.strip():
         raise HTTPException(status_code=400, detail="No draft found for this chapter")
+    profile = project.get("profile") or {}
+    claim_gate = stored_claim_review_status(profile, workflow="draft", chapter_number=chapter_number)
+    if claim_gate.get("review") is None:
+        # Backward compatibility for chapters created before the pre-output evidence gate.
+        # Build the audit lazily at export time. Citation-light legacy drafts can
+        # continue normally, while evidence-bearing drafts are stopped until review.
+        review = build_claim_support_review(
+            draft,
+            profile,
+            chapter_number=chapter_number,
+            workflow="draft",
+        )
+        reviews = profile.get("claim_support_reviews") or {}
+        if not isinstance(reviews, dict):
+            reviews = {}
+        reviews[f"draft:{chapter_number}"] = review
+        profile["claim_support_reviews"] = reviews
+        with get_conn() as conn:
+            conn.execute(
+                "UPDATE projects SET profile_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (json.dumps(profile), project_id),
+            )
+            conn.commit()
+        project["profile"] = profile
+        claim_gate = stored_claim_review_status(profile, workflow="draft", chapter_number=chapter_number)
+    if not claim_gate["ready"]:
+        raise HTTPException(status_code=409, detail=claim_gate["reason"] + " Open Claim Support Review, find and approve verified sources, then apply the approved citations.")
     try:
         chapter = get_chapter(chapter_number)
         chapter_title = str(chapter.get("chapter_title") or f"Chapter {chapter_number}")
@@ -987,6 +1040,44 @@ def export_methods_supplement(project_id: str):
 @router.get("/{project_id}/export/project-working-file")
 def export_project_working_file(project_id: str):
     project = _get_project_or_404(project_id)
+    unresolved = []
+    profile = project.get("profile") or {}
+    reviews_changed = False
+    reviews = profile.get("claim_support_reviews") or {}
+    if not isinstance(reviews, dict):
+        reviews = {}
+    for chapter_key, draft_text in (project.get("drafts") or {}).items():
+        if not str(draft_text or "").strip():
+            continue
+        try:
+            chapter_number = int(chapter_key)
+        except Exception:
+            continue
+        gate = stored_claim_review_status(profile, workflow="draft", chapter_number=chapter_number)
+        if gate.get("review") is None:
+            review = build_claim_support_review(
+                str(draft_text or ""),
+                profile,
+                chapter_number=chapter_number,
+                workflow="draft",
+            )
+            reviews[f"draft:{chapter_number}"] = review
+            profile["claim_support_reviews"] = reviews
+            reviews_changed = True
+            gate = stored_claim_review_status(profile, workflow="draft", chapter_number=chapter_number)
+        if not gate["ready"]:
+            unresolved.append(chapter_number)
+    if reviews_changed:
+        with get_conn() as conn:
+            conn.execute(
+                "UPDATE projects SET profile_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (json.dumps(profile), project_id),
+            )
+            conn.commit()
+        project["profile"] = profile
+    if unresolved:
+        chapters = ", ".join(str(x) for x in sorted(set(unresolved)))
+        raise HTTPException(status_code=409, detail=f"Complete Claim Support Review for Chapter(s) {chapters} before compiling the project working file.")
     try:
         path = export_project_working_file_docx(project, EXPORT_DIR)
     except ValueError as exc:
