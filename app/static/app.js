@@ -1390,7 +1390,14 @@ function candidateAuthorText(candidate) {
 }
 
 function renderClaimSupportCandidates(item) {
-  const candidates = Array.isArray(item.candidates) ? item.candidates : [];
+  const raw = Array.isArray(item.candidates) ? item.candidates : [];
+  const seen = new Set();
+  const candidates = raw.filter(candidate => {
+    const key = String(candidate?.candidate_id || candidate?.doi || candidate?.title || '').toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
   if (!candidates.length) return '';
   const approvedIds = new Set((item.approved_sources || []).map(source => source.candidate_id || source.doi || source.title));
   return `<div class="claim-support-candidates">${candidates.map(candidate => {
@@ -1400,14 +1407,25 @@ function renderClaimSupportCandidates(item) {
     const locator = candidate.doi ? `https://doi.org/${String(candidate.doi).replace('https://doi.org/','').replace('http://doi.org/','')}` : candidate.url;
     const link = locator ? `<a href="${escapeHtml(locator)}" target="_blank" rel="noopener">Open source</a>` : '';
     const evidence = candidate.evidence_excerpt ? `<p class="claim-source-evidence"><strong>Accessible evidence:</strong> ${escapeHtml(candidate.evidence_excerpt)}</p>` : `<p class="claim-source-evidence"><strong>Evidence text unavailable in the search record.</strong> Open the source and confirm it manually before approval.</p>`;
-    const manual = candidate.requires_manual_source_text_confirmation ? `<label class="inline claim-support-small"><input type="checkbox" data-claim-source-reviewed="${id}"> I opened the source text and confirmed it supports this claim.</label>` : '';
+    const dbs = Array.isArray(candidate.databases_found) && candidate.databases_found.length ? candidate.databases_found.join(', ') : (candidate.database || 'scholarly index');
+    const verification = candidate.verification_basis ? `<p class="claim-source-meta"><strong>Verified through:</strong> ${escapeHtml(dbs)}. ${escapeHtml(candidate.verification_basis)}</p>` : '';
+    const manual = candidate.requires_manual_source_text_confirmation && candidate.citation_eligible ? `<label class="inline claim-support-small"><input type="checkbox" data-claim-source-reviewed="${id}"> I opened the source text and confirmed it supports this claim.</label>` : '';
+    const approving = Boolean(candidate._approving);
+    const button = !candidate.citation_eligible
+      ? `<button type="button" class="secondary-action" disabled title="Incomplete bibliographic metadata">Not citation eligible</button>`
+      : `<button type="button" class="secondary-action" data-approve-claim-source="${escapeHtml(item.id)}" data-candidate-id="${id}" ${approved || approving ? 'disabled' : ''}>${approved ? '✓ Approved' : approving ? 'Approving…' : 'Approve as support'}</button>`;
     return `<article class="claim-source-candidate ${approved ? 'claim-source-approved' : ''}" data-candidate-id="${id}">
       <strong>${escapeHtml(candidate.title || 'Untitled source')}</strong>
       <p class="claim-source-meta">${escapeHtml(candidateAuthorText(candidate))} (${escapeHtml(candidate.year || 'n.d.')}) · ${escapeHtml(candidate.journal || candidate.database || '')} ${link}</p>
-      ${evidence}${manual}
-      <button type="button" class="secondary-action" data-approve-claim-source="${escapeHtml(item.id)}" data-candidate-id="${id}" ${approved ? 'disabled' : ''}>${approved ? 'Approved' : 'Approve as support'}</button>
+      ${verification}${evidence}${manual}${button}
     </article>`;
   }).join('')}</div>`;
+}
+
+function claimSupportExternalLinks(item) {
+  const searches = Array.isArray(item.external_searches) ? item.external_searches : [];
+  if (!searches.length) return '';
+  return `<div class="claim-support-external">${searches.map(search => `<a href="${escapeHtml(search.url || '#')}" target="_blank" rel="noopener">Also search ${escapeHtml(search.provider || 'external database')}</a>`).join(' · ')}</div>`;
 }
 
 function renderClaimSupportReview(review = currentClaimSupportReview) {
@@ -1426,27 +1444,36 @@ function renderClaimSupportReview(review = currentClaimSupportReview) {
   const ready = Boolean(review.final_output_ready);
   badge.textContent = ready ? 'Evidence gate passed' : 'Review required';
   badge.classList.toggle('ready', ready);
-  summary.innerHTML = `<div><strong>${Number(review.unsupported_claim_count || 0)}</strong><br>claims without citations</div><div><strong>${Number(review.under_supported_paragraph_count || 0)}</strong><br>paragraphs below 2 verified sources</div><div><strong>${Number(review.paragraph_citation_audit?.minimum_coverage_percent ?? 0)}%</strong><br>paragraph minimum coverage</div>`;
+  const finalSummary = review.final_approval_summary || review.application_summary || null;
+  const finalBlock = finalSummary ? `<div class="claim-final-approval"><strong>Final approval</strong><br>${Number(finalSummary.verified_citation_references_added || 0)} verified citation reference(s) added · ${Number(finalSummary.unique_verified_sources_added || 0)} unique source(s) · ${Number(finalSummary.ignored_items ?? review.ignored_item_count ?? 0)} item(s) ignored</div>` : '';
+  summary.innerHTML = `<div><strong>${Number(review.unsupported_claim_count || 0)}</strong><br>claims still needing citation support</div><div><strong>${Number(review.under_supported_paragraph_count || 0)}</strong><br>paragraphs still below 2 verified sources</div><div><strong>${Number(review.paragraph_citation_audit?.minimum_coverage_percent ?? 0)}%</strong><br>paragraph minimum coverage</div><div><strong>${Number(review.ignored_item_count || 0)}</strong><br>items ignored by user</div>${finalBlock}`;
   const items = claimReviewItems(review);
   if (!items.length) {
-    list.innerHTML = `<div class="claim-support-card"><strong>Claim-support review passed.</strong><p>No evidence-bearing citation gaps remain under the current audit rules.</p></div>`;
+    list.innerHTML = `<div class="claim-support-card"><strong>Claim-support review passed.</strong><p>Only unresolved evidence gaps are listed here. No evidence-bearing citation gaps remain under the current audit rules.</p></div>`;
   } else {
     list.innerHTML = items.map(item => {
       const isClaim = item.type === 'claim';
       const text = isClaim ? item.claim_text : item.excerpt;
       const title = isClaim ? 'Claim needs source support' : `Paragraph needs ${item.minimum_verified_sources || 2}-${item.preferred_verified_sources || 3} distinct verified sources`;
       const approved = Array.isArray(item.approved_sources) ? item.approved_sources.length : 0;
+      const searching = Boolean(item._searching);
+      const searchedDatabases = Array.isArray(item.search_databases) && item.search_databases.length ? `<p class="claim-support-small">Searched: ${escapeHtml(item.search_databases.join(', '))}</p>` : '';
       return `<article class="claim-support-card" data-claim-support-item="${escapeHtml(item.id)}">
         <h4>${escapeHtml(title)}</h4>
         <p class="claim-support-small">${escapeHtml(item.heading || 'Chapter body')} · ${isClaim ? `paragraph ${item.paragraph_index}, sentence ${item.sentence_index}` : `paragraph ${item.paragraph_index}`} · ${approved} source(s) approved</p>
         <div class="claim-support-claim">${escapeHtml(text || '')}</div>
-        <div class="actions compact-actions"><button type="button" class="secondary-action" data-find-claim-sources="${escapeHtml(item.id)}">Find verified sources</button></div>
-        ${renderClaimSupportCandidates(item)}
+        <div class="actions compact-actions">
+          <button type="button" class="secondary-action" data-find-claim-sources="${escapeHtml(item.id)}" ${searching ? 'disabled' : ''}>${searching ? 'Searching…' : 'Find verified sources'}</button>
+          <button type="button" class="secondary-action claim-ignore-action" data-ignore-claim-support="${escapeHtml(item.id)}" ${searching ? 'disabled' : ''}>Ignore</button>
+        </div>
+        ${searching ? '<div class="claim-search-progress"><span class="claim-spinner" aria-hidden="true"></span> Searching OpenAlex, Crossref, Semantic Scholar, ERIC, DataCite, Europe PMC and PubMed…</div>' : ''}
+        ${searchedDatabases}${claimSupportExternalLinks(item)}${renderClaimSupportCandidates(item)}
       </article>`;
     }).join('');
   }
   list.querySelectorAll('[data-find-claim-sources]').forEach(button => button.addEventListener('click', () => findSourcesForClaimReviewItem(button.dataset.findClaimSources).catch(err => { if ($('claimSupportStatus')) $('claimSupportStatus').textContent = err.message || 'Source search failed.'; })));
   list.querySelectorAll('[data-approve-claim-source]').forEach(button => button.addEventListener('click', () => approveClaimReviewSource(button.dataset.approveClaimSource, button.dataset.candidateId).catch(err => { if ($('claimSupportStatus')) $('claimSupportStatus').textContent = err.message || 'Source approval failed.'; })));
+  list.querySelectorAll('[data-ignore-claim-support]').forEach(button => button.addEventListener('click', () => ignoreClaimReviewItem(button.dataset.ignoreClaimSupport).catch(err => { if ($('claimSupportStatus')) $('claimSupportStatus').textContent = err.message || 'Item could not be ignored.'; })));
   renderDraftPreview($("draftOutput")?.value || "");
   setClaimReviewExportGate();
 }
@@ -1455,33 +1482,75 @@ async function findSourcesForClaimReviewItem(itemId) {
   if (!currentProjectId) throw new Error('Create or recover the project first.');
   const item = findClaimReviewItem(itemId);
   if (!item) throw new Error('This claim is no longer in the current review.');
-  if ($('claimSupportStatus')) $('claimSupportStatus').textContent = 'Searching verified scholarly sources for this claim…';
-  const data = await api(`/api/projects/${encodeURIComponent(currentProjectId)}/claim-support/find-sources`, {
-    method: 'POST', body: JSON.stringify({workflow:'draft', chapter_number:Number(currentChapter), claim_id:itemId, query:item.search_query || item.claim_text || item.excerpt || '', max_results:12})
-  });
-  item.candidates = data.candidates || [];
+  item._searching = true;
   renderClaimSupportReview(currentClaimSupportReview);
-  if ($('claimSupportStatus')) $('claimSupportStatus').textContent = `${item.candidates.length} candidate source(s) found. Open and review each source before approval.`;
+  if ($('claimSupportStatus')) $('claimSupportStatus').textContent = 'Searching OpenAlex, Crossref, Semantic Scholar, ERIC, DataCite, Europe PMC and PubMed. Google Scholar will also be offered for manual checking…';
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(currentProjectId)}/claim-support/find-sources`, {
+      method: 'POST', body: JSON.stringify({workflow:'draft', chapter_number:Number(currentChapter), claim_id:itemId, query:item.search_query || item.claim_text || item.excerpt || '', max_results:16})
+    });
+    item.candidates = data.candidates || [];
+    item.search_databases = data.databases || [];
+    item.external_searches = data.external_searches || [];
+    item.provider_errors = data.provider_errors || [];
+    if ($('claimSupportStatus')) {
+      const failures = item.provider_errors.length ? ` ${item.provider_errors.length} database(s) were temporarily unavailable.` : '';
+      $('claimSupportStatus').textContent = `${item.candidates.length} verified candidate source(s) found after searching ${item.search_databases.length} databases.${failures} Review evidence before approval.`;
+    }
+  } finally {
+    item._searching = false;
+    renderClaimSupportReview(currentClaimSupportReview);
+  }
 }
 
 async function approveClaimReviewSource(itemId, candidateId) {
   const item = findClaimReviewItem(itemId);
   const candidate = (item?.candidates || []).find(source => String(source.candidate_id || '') === String(candidateId || ''));
   if (!item || !candidate) throw new Error('Source candidate is no longer available.');
+  if (!candidate.citation_eligible) throw new Error('This result does not have complete verified bibliographic metadata and cannot be cited.');
   const reviewedBox = document.querySelector(`[data-claim-source-reviewed="${CSS.escape(String(candidateId))}"]`);
   const manualConfirmed = candidate.requires_manual_source_text_confirmation ? Boolean(reviewedBox?.checked) : false;
   if (candidate.requires_manual_source_text_confirmation && !manualConfirmed) throw new Error('Open the source and tick the confirmation that you checked its text before approving it.');
-  const data = await api(`/api/projects/${encodeURIComponent(currentProjectId)}/claim-support/approve`, {
-    method:'POST', body:JSON.stringify({workflow:'draft', chapter_number:Number(currentChapter), claim_id:itemId, candidate_id:candidateId, confirm_claim_support:true, confirm_source_text_reviewed:manualConfirmed})
-  });
-  item.approved_sources = [...(item.approved_sources || []), {...candidate, candidate_id:candidate.candidate_id}].slice(0,3);
+  candidate._approving = true;
   renderClaimSupportReview(currentClaimSupportReview);
-  if ($('claimSupportStatus')) $('claimSupportStatus').textContent = data.message || 'Source approved.';
+  if ($('claimSupportStatus')) $('claimSupportStatus').textContent = 'Approving verified source and clearing the matching source-needed marker…';
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(currentProjectId)}/claim-support/approve`, {
+      method:'POST', body:JSON.stringify({workflow:'draft', chapter_number:Number(currentChapter), claim_id:itemId, candidate_id:candidateId, confirm_claim_support:true, confirm_source_text_reviewed:manualConfirmed})
+    });
+    item.approved_sources = [...(item.approved_sources || []), {...candidate, candidate_id:candidate.candidate_id}].slice(0,3);
+    if (data.text && $("draftOutput")) {
+      $("draftOutput").value = data.text;
+      savedProjectDrafts[String(currentChapter)] = data.text;
+    }
+    if ($('claimSupportStatus')) $('claimSupportStatus').textContent = data.message || 'Source approved.';
+  } finally {
+    candidate._approving = false;
+    renderClaimSupportReview(currentClaimSupportReview);
+  }
+}
+
+async function ignoreClaimReviewItem(itemId) {
+  if (!currentProjectId) throw new Error('Create or recover the project first.');
+  const item = findClaimReviewItem(itemId);
+  if (!item) throw new Error('This claim is no longer in the current review.');
+  if ($('claimSupportStatus')) $('claimSupportStatus').textContent = 'Ignoring this item and removing its source-needed marker…';
+  const data = await api(`/api/projects/${encodeURIComponent(currentProjectId)}/claim-support/ignore`, {
+    method:'POST', body:JSON.stringify({workflow:'draft', chapter_number:Number(currentChapter), claim_id:itemId})
+  });
+  if (data.text && $("draftOutput")) {
+    $("draftOutput").value = data.text;
+    savedProjectDrafts[String(currentChapter)] = data.text;
+  }
+  currentClaimSupportReview = data.review || currentClaimSupportReview;
+  renderClaimSupportReview(currentClaimSupportReview);
+  renderDraftPreview($("draftOutput")?.value || '');
+  if ($('claimSupportStatus')) $('claimSupportStatus').textContent = data.message || 'Item ignored.';
 }
 
 async function applyApprovedClaimSources() {
   if (!currentProjectId) throw new Error('Create or recover the project first.');
-  if ($('claimSupportStatus')) $('claimSupportStatus').textContent = 'Applying only approved, verified citations and re-running the claim audit…';
+  if ($('claimSupportStatus')) $('claimSupportStatus').textContent = 'Finalising only approved, verified citations and re-running citation density and claim-support checks…';
   const data = await api(`/api/projects/${encodeURIComponent(currentProjectId)}/claim-support/apply-approved`, {
     method:'POST', body:JSON.stringify({workflow:'draft', chapter_number:Number(currentChapter), citation_style:'APA 7th'})
   });
@@ -1490,14 +1559,21 @@ async function applyApprovedClaimSources() {
   currentClaimSupportReview = data.review || null;
   renderClaimSupportReview(currentClaimSupportReview);
   renderDraftPreview($("draftOutput").value);
-  if ($('claimSupportStatus')) $('claimSupportStatus').textContent = currentClaimSupportReview?.final_output_ready ? 'All current claim-support and paragraph-density gaps are resolved. Export is unlocked.' : 'Approved citations were applied. Some claims or paragraph evidence gaps still need review.';
+  const summary = currentClaimSupportReview?.final_approval_summary || {};
+  const prefix = `Final approval: ${Number(summary.verified_citation_references_added || 0)} verified citation reference(s) added from ${Number(summary.unique_verified_sources_added || 0)} unique source(s); ${Number(summary.ignored_items || 0)} item(s) ignored.`;
+  const remainder = currentClaimSupportReview?.final_output_ready
+    ? ' Citation density and claim-support checks now pass. Export is unlocked.'
+    : ` ${Number(summary.remaining_claims_without_citations || 0)} unsupported claim(s) and ${Number(summary.remaining_paragraph_density_gaps || 0)} paragraph density gap(s) remain.`;
+  if ($('claimSupportStatus')) $('claimSupportStatus').textContent = prefix + remainder;
 }
 
 async function refreshClaimSupportReview() {
   if (!currentProjectId) return;
+  if ($('claimSupportStatus')) $('claimSupportStatus').textContent = 'Re-running the verified citation-density and claim-support audit…';
   const data = await api(`/api/projects/${encodeURIComponent(currentProjectId)}/claim-support-review?workflow=draft&chapter_number=${Number(currentChapter)}`);
   currentClaimSupportReview = data.review || null;
   renderClaimSupportReview(currentClaimSupportReview);
+  if ($('claimSupportStatus')) $('claimSupportStatus').textContent = currentClaimSupportReview?.final_output_ready ? 'Audit passed. Only verified citations remain.' : 'Audit complete. Only unresolved citation-support items are listed below.';
 }
 
 

@@ -610,11 +610,11 @@
           <div><p class="eyebrow">Pre-output evidence gate</p><h3>Claim Support Review</h3></div>
           <span id="claimSupportReviewBadge" class="claim-support-badge">Review required</span>
         </div>
-        <p class="hint">ProjectReady highlights evidence-bearing claims that still have no citation and paragraphs below the 2-3 verified-source target. Search for sources claim by claim, inspect the evidence, then approve only sources that genuinely support the statement. Search results are never inserted automatically.</p>
+        <p class="hint">ProjectReady highlights evidence-bearing claims that still have no citation and paragraphs below the 2-3 verified-source target. ProjectReady first tries to meet the discipline-specific citation-density target during drafting. Only unresolved evidence gaps are listed here. Search OpenAlex, Crossref, Semantic Scholar, ERIC, DataCite, Europe PMC and PubMed, inspect the evidence, then approve only sources that genuinely support the statement. Google Scholar is available as a manual external search because it is not scraped. Search results are never inserted automatically.</p>
         <div id="claimSupportSummary" class="claim-support-summary"></div>
         <div id="claimSupportReviewList" class="claim-support-list"></div>
         <div class="actions compact-actions">
-          <button id="applyApprovedClaimSourcesBtn" type="button" class="primary-action">Apply approved citations</button>
+          <button id="applyApprovedClaimSourcesBtn" type="button" class="primary-action">Finalise approved citations</button>
           <button id="refreshClaimSupportReviewBtn" type="button" class="secondary-action">Re-run claim audit</button>
         </div>
         <p id="claimSupportStatus" class="status"></p>
@@ -679,7 +679,7 @@
     </div>
   </div>
   <script src="/static/projectready_payments.js?v=20260815-complimentary-v2"></script>
-  <script src="/static/app.js?v=20260816-claim-support-v1"></script>
+  <script src="/static/app.js?v=20260816-claim-support-v2"></script>
   <script src="/static/guide_banner.js?v=20260719-user-guide-v1"></script>
 </body>
 </html>
