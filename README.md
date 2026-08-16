@@ -222,3 +222,6 @@ ProjectReady can now use up to 50 student-selected papers in addition to automat
 ## Pre-output Claim Support Review (16 August 2026)
 
 Chapter Draft Development and Chapter Strengthener now share a pre-output evidence gate. Evidence-bearing uncited claims are highlighted before final export, users can search and approve verified sources for each claim, and evidence-led paragraphs target at least two distinct verified sources with three preferred where suitable evidence exists. The discipline/section citation-density matrix remains active. Citation density never overrides verification: unverified or fabricated citations do not count and are not permitted into the final output. See `PRE_OUTPUT_CLAIM_SUPPORT_REVIEW_UPDATE_2026-08-16.md`.
+
+## 2026-08-16 claim-support interaction update
+The current build adds responsive source-search/approval states, Ignore controls, automatic placeholder cleanup, final approval citation counts, multi-database scholarly aggregation, project-evidence-bank reuse and a manual Google Scholar search link. See `CLAIM_SUPPORT_REVIEW_INTERACTION_AND_MULTIDATABASE_SEARCH_UPDATE_2026-08-16.md`.
