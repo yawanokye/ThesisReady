@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from app.research_journey import build_journey, final_audit
+
 STOPWORDS = {
     "the", "and", "for", "with", "from", "into", "among", "within", "between", "through",
     "this", "that", "these", "those", "study", "research", "effect", "effects", "impact", "role",
@@ -276,7 +278,7 @@ def build_research_logic(project: dict[str, Any]) -> dict[str, Any]:
             "chapter_number": 5,
         }
 
-    return {
+    result = {
         "project_id": project.get("id"),
         "project_title": title,
         "academic_level": level,
@@ -299,3 +301,10 @@ def build_research_logic(project: dict[str, Any]) -> dict[str, Any]:
         "issues": issues[:12],
         "next_action": next_action,
     }
+    journey = build_journey(project)
+    result["journey"] = journey
+    result["research_record"] = journey.get("research_record") or {}
+    result["decision_checkpoints"] = journey.get("decision_checkpoints") or []
+    result["what_next"] = journey.get("what_next") or {}
+    result["final_audit"] = final_audit(project, result)
+    return result

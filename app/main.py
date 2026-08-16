@@ -14,7 +14,7 @@ from app.access_control import init_access_control_tables
 from app.internal_portal import init_internal_portal_tables, internal_session_or_none, router as internal_portal_router
 from app.jobs.store import init_job_tables
 from app.payments.store import init_payment_tables
-from app.routers import access, chapter_strengthener, generation, jobs, journal_article, payments, projects, sources, templates, topic_ideas
+from app.routers import access, chapter_strengthener, generation, jobs, journal_article, payments, projects, research_coach, sources, templates, topic_ideas
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -44,8 +44,8 @@ async def lifespan(_: FastAPI):
 expose_docs = _truthy("PROJECTREADY_EXPOSE_API_DOCS", "0")
 app = FastAPI(
     title="ProjectReady AI",
-    description="Guided academic research-development, chapter-strengthening and compliance workspace.",
-    version="0.2.0",
+    description="Guided end-to-end research development, evidence, chapter, review, analysis and viva preparation workspace.",
+    version="0.3.0",
     lifespan=lifespan,
     docs_url="/docs" if expose_docs else None,
     redoc_url="/redoc" if expose_docs else None,
@@ -83,6 +83,7 @@ app.add_middleware(
 app.include_router(access.router)
 app.include_router(templates.router)
 app.include_router(projects.router)
+app.include_router(research_coach.router)
 app.include_router(sources.router)
 app.include_router(topic_ideas.router)
 app.include_router(journal_article.router)
@@ -103,6 +104,40 @@ def home() -> FileResponse:
 def workspace() -> FileResponse:
     return FileResponse(
         STATIC_DIR / "workspace.html",
+        headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
+    )
+
+
+@app.get("/research-journey")
+def research_journey_page() -> FileResponse:
+    return workspace()
+
+
+@app.get("/quick-chapter")
+def quick_chapter_page() -> FileResponse:
+    return FileResponse(
+        STATIC_DIR / "workspace.html",
+        headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
+    )
+
+
+@app.get("/review-strengthen")
+def review_strengthen_page() -> FileResponse:
+    return chapter_strengthener_page()
+
+
+@app.get("/research-coach")
+def research_coach_page() -> FileResponse:
+    return FileResponse(
+        STATIC_DIR / "research_coach.html",
+        headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
+    )
+
+
+@app.get("/my-projects")
+def my_projects_page() -> FileResponse:
+    return FileResponse(
+        STATIC_DIR / "my_projects.html",
         headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
     )
 

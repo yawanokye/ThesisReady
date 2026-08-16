@@ -47,6 +47,24 @@ class ProjectCreate(BaseModel):
     user_contribution_confirmed: bool = False
     allow_provisional_drafting: bool = True
     draft_consideration_warnings: list[str] = Field(default_factory=list)
+    theoretical_framework: str = ""
+    conceptual_framework_summary: str = ""
+    research_design: str = ""
+    philosophy: str = ""
+    population: str = ""
+    sample_size: str = ""
+    sampling_strategy: str = ""
+    participants: str = ""
+    instruments: str = ""
+    validity_reliability: str = ""
+    trustworthiness: str = ""
+    ethics: str = ""
+    analysis_plan: str = ""
+    coding_approach: str = ""
+    mixed_methods_design: str = ""
+    integration_strategy: str = ""
+    research_decisions: dict[str, Any] = Field(default_factory=dict)
+    supervisor_corrections: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class SectionSelection(BaseModel):
@@ -149,6 +167,29 @@ class ClaimSupportIgnoreRequest(BaseModel):
     workflow: str = "draft"
     chapter_number: int
     claim_id: str
+
+
+class ResearchCoachRequest(BaseModel):
+    project_id: str = ""
+    mode: str = "explain"
+    question: str = Field(..., min_length=3, max_length=4000)
+
+
+class ResearchDecisionRequest(BaseModel):
+    selection: str = Field(..., min_length=1, max_length=4000)
+    rationale: str = Field(default="", max_length=6000)
+    status: str = "confirmed"
+
+
+class SupervisorCorrectionRequest(BaseModel):
+    comment: str = Field(..., min_length=2, max_length=8000)
+    chapter_number: int | None = None
+    location: str = ""
+
+
+class SupervisorCorrectionDecisionRequest(BaseModel):
+    status: str = "resolved"
+    resolution: str = Field(default="", max_length=8000)
 
 
 # ----------------------------------------------------------------------
