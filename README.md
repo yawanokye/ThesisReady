@@ -218,3 +218,7 @@ See `CITATION_MATRIX_LINKED_CHAPTER_WORKFLOW_UPDATE_2026-08-15.md` for details.
 ## Student-selected paper library, August 2026
 
 ProjectReady can now use up to 50 student-selected papers in addition to automatically discovered literature. The library is available in both Thesis Workspace and Chapter Strengthener. Uploaded papers are prioritised only when relevant. A paper may support evidence synthesis immediately from its extracted text, but ProjectReady creates a new citation from it only after citation metadata is verified or explicitly confirmed by the student. See `SELECTED_PAPERS_LIBRARY_UPDATE_2026-08-15.md`.
+
+## Pre-output Claim Support Review (16 August 2026)
+
+Chapter Draft Development and Chapter Strengthener now share a pre-output evidence gate. Evidence-bearing uncited claims are highlighted before final export, users can search and approve verified sources for each claim, and evidence-led paragraphs target at least two distinct verified sources with three preferred where suitable evidence exists. The discipline/section citation-density matrix remains active. Citation density never overrides verification: unverified or fabricated citations do not count and are not permitted into the final output. See `PRE_OUTPUT_CLAIM_SUPPORT_REVIEW_UPDATE_2026-08-16.md`.
