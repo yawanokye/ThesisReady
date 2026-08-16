@@ -6,9 +6,10 @@
   <title>Research Coach | ProjectReady AI</title>
   <link rel="stylesheet" href="/static/projectready-suite.css?v=20260816-research-journey-v1">
   <link rel="stylesheet" href="/static/research_coach.css?v=20260816-research-journey-v1">
+<link rel="stylesheet" href="/static/user_guide_shared.css?v=20260816-guide-v3">
 </head>
-<body class="coach-page suite-page">
-<header class="coach-topbar"><a class="coach-brand" href="/"><span class="brand-mark">PR</span><span>ProjectReady AI</span></a><nav><a href="/research-journey">Research Journey</a><a href="/quick-chapter">Quick Chapter Development</a><a href="/review-strengthen">Review &amp; Strengthen</a><a href="/research-coach" aria-current="page">Research Coach</a><a href="/my-projects">My Research Projects</a></nav></header>
+<body class="coach-page suite-page" data-guide-module="research-coach">
+<header class="coach-topbar"><a class="coach-brand" href="/"><span class="brand-mark">PR</span><span>ProjectReady AI</span></a><nav><a href="/research-journey">Research Journey</a><a href="/quick-chapter">Quick Chapter Development</a><a href="/review-strengthen">Review &amp; Strengthen</a><a href="/research-coach" aria-current="page">Research Coach</a><a href="/my-projects">My Research Projects</a><a href="/user-guide">User Guide</a></nav></header>
 <main class="coach-shell">
   <section class="coach-hero"><p class="eyebrow">Project-aware research guidance</p><h1>Research Coach</h1><p>Understand a concept, work through a research decision, compare defensible alternatives or rehearse for a viva. The coach uses your saved Research Record and does not silently make major research decisions for you.</p></section>
   <section class="coach-card connect-card"><div><h2>Connect your research project</h2><p id="coachProjectStatus">Checking the current project…</p></div><div class="connect-row"><label>Project ID<input id="coachProjectId" placeholder="Project ID"></label><button id="loadCoachProject" type="button">Load project</button><a class="button-link" href="/my-projects">Recover a project</a></div></section>
@@ -21,6 +22,6 @@
   <section class="coach-card question-card"><div class="row-between"><div><p class="eyebrow">Ask about your research</p><h2 id="coachModeTitle">Explain this to me</h2></div><span id="coachModeBadge" class="mode-badge">Explain</span></div><textarea id="coachQuestion" rows="6" placeholder="For example: Why would mediation be appropriate for my third objective?"></textarea><div class="coach-actions"><button id="askCoach" type="button" class="primary-action">Ask Research Coach</button><button id="clearCoach" type="button" class="secondary-action">Clear</button></div><p id="coachStatus" class="status-line"></p></section>
   <section class="coach-card answer-card" id="coachAnswerCard" hidden><div class="row-between"><h2>Guidance</h2><span id="coachSource" class="source-label"></span></div><div id="coachAnswer" class="coach-answer"></div><div id="decisionReminder" class="decision-reminder" hidden><strong>Researcher decision required</strong><p>Use the guidance to make and record the decision. ProjectReady should recommend and explain, but the researcher remains responsible for the approved research choice.</p><a href="/research-journey#researchDecisionPanel">Open Research Decision checkpoints</a></div></section>
 </main>
-<script src="/static/research_coach.js?v=20260816-research-journey-v1"></script>
+<script src="/static/guide_banner.js?v=20260816-guide-v3"></script><script src="/static/research_coach.js?v=20260816-research-journey-v1"></script>
 </body>
 </html>

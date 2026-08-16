@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ProjectReady AI | Data & Analysis Workspace</title>
+  <link rel="stylesheet" href="/static/projectready-suite.css?v=20260816-advanced-analysis-v3">
+  <link rel="stylesheet" href="/static/data_analysis.css?v=20260816-advanced-analysis-v3">
+<link rel="stylesheet" href="/static/user_guide_shared.css?v=20260816-guide-v3">
+</head>
+<body class="analysis-page suite-page" data-guide-module="data-analysis">
+<header class="analysis-header">
+  <a class="brand" href="/">PROJECTREADY AI</a>
+  <nav><a href="/research-journey">Research Journey</a><a href="/quick-chapter">Quick Chapter Development</a><a href="/review-strengthen">Review &amp; Strengthen</a><a href="/research-coach">Research Coach</a><a href="/my-projects">My Research Projects</a><a href="/user-guide">User Guide</a></nav>
+</header>
+<main>
+  <section class="analysis-hero">
+    <div><span class="eyebrow">STAGE 8 · DATA &amp; ANALYSIS</span><h1>Analyse real research data, verify the results and develop evidence-grounded findings</h1><p>ProjectReady calculates statistics from your uploaded dataset. AI must not invent coefficients, p-values, confidence intervals, sample sizes, diagnostics or findings.</p></div>
+    <div class="analysis-principle"><strong>Calculation first</strong><span>Raw data → deterministic computation → diagnostics → consistency checks → interpretation → Chapter Four.</span></div>
+  </section>
+
+  <section class="analysis-shell">
+    <aside class="analysis-sidebar">
+      <button data-analysis-step="1" class="active"><span>1</span>Data Setup</button>
+      <button data-analysis-step="2"><span>2</span>Quality &amp; Descriptives</button>
+      <button data-analysis-step="3"><span>3</span>Analysis Selection</button>
+      <button data-analysis-step="4"><span>4</span>Diagnostics</button>
+      <button data-analysis-step="5"><span>5</span>Model Estimation</button>
+      <button data-analysis-step="6"><span>6</span>Results Validation</button>
+      <div class="sidebar-note"><strong>Conceptual framework</strong><p>Optional. If provided, it can help identify predictor, outcome, mediator, moderator and SEM paths. It never overrides the approved objectives, design or actual data structure.</p></div>
+    </aside>
+
+    <div class="analysis-main">
+      <section class="analysis-card">
+        <div class="row-between"><div><span class="step-label">Project</span><h2>Open your Research Journey project</h2></div><a href="/research-journey">Back to Research Journey</a></div>
+        <div class="field-grid two"><label>Project ID<input id="analysisProjectId" placeholder="Paste or recover your ProjectReady project ID"></label><div class="field-action"><button id="loadAnalysisProjectBtn" class="primary">Load project</button><span id="analysisProjectStatus" class="status"></span></div></div>
+        <div id="analysisProjectSummary" class="project-summary" hidden></div>
+      </section>
+
+      <section class="analysis-card" id="analysisDataSetup">
+        <span class="step-label">1. Data Setup</span><h2>Upload raw CSV or Excel data</h2>
+        <p class="muted">Accepted: CSV, TSV, XLSX and XLSM. ProjectReady profiles variable types, missing values, duplicates and data structure before analysis.</p>
+        <div class="upload-row"><input id="analysisDatasetFile" type="file" accept=".csv,.tsv,.xlsx,.xlsm"><button id="uploadAnalysisDatasetBtn" class="primary">Upload dataset</button><span id="analysisUploadStatus" class="status"></span></div>
+        <label>Available datasets<select id="analysisDatasetSelect"><option value="">Select a dataset</option></select></label>
+        <div id="analysisDatasetProfile" class="data-profile"></div>
+      </section>
+
+      <section class="analysis-card">
+        <span class="step-label">Optional conceptual framework</span><h2>Use the framework to assist model mapping</h2>
+        <p class="muted">Paste the approved framework/path logic if available. Leave blank if the study has no conceptual framework.</p>
+        <label>Framework summary<textarea id="analysisFrameworkSummary" rows="4" placeholder="Example: Teacher trust, autonomy and collegiality predict teacher leadership; self-efficacy mediates the teacher leadership → instructional practice relationship; gender moderates teacher leadership → self-efficacy."></textarea></label>
+        <label>Paths, one per line<textarea id="analysisFrameworkPaths" rows="4" placeholder="Trust -> Leadership\nLeadership -> SelfEfficacy\nSelfEfficacy -> InstructionalPractice"></textarea></label>
+        <button id="saveAnalysisFrameworkBtn">Save optional framework</button><span id="analysisFrameworkStatus" class="status"></span>
+      </section>
+
+      <section class="analysis-card" id="analysisQualitySection">
+        <span class="step-label">2. Data Quality &amp; Descriptives</span><h2>Inspect the dataset before modelling</h2>
+        <div class="button-row"><button data-quick-analysis="data_quality">Run data-quality checks</button><button data-quick-analysis="descriptives">Generate descriptive statistics</button></div>
+        <div id="analysisQualityOutput" class="analysis-output"></div>
+      </section>
+
+      <section class="analysis-card" id="analysisSelectionSection">
+        <span class="step-label">3–5. Analysis Selection, Diagnostics &amp; Estimation</span><h2>Select the model that matches the approved objective and data structure</h2>
+        <div id="analysisRecommendations" class="recommendations"></div>
+        <p class="muted method-coverage-note">Time-series: ARIMA / SARIMAX / VAR, plus AR, MA, ARMA, DOLS, ARDL/NARDL, cointegration, VECM, SVAR, TVP-VAR, decomposition and volatility models.</p>
+        <p class="muted method-coverage-note">Panel-data regression · Structural equation modelling (SEM) · professional SEM path analysis diagram.</p>
+        <div class="field-grid two">
+          <label>Objective<select id="analysisObjective"><option value="">Select objective</option></select></label>
+          <label>Hypothesis<input id="analysisHypothesis" placeholder="Optional hypothesis linked to this analysis"></label>
+        </div>
+        <label>Analysis type<select id="analysisType">
+          <optgroup label="Mean comparisons"><option value="t_test">t-tests</option><option value="anova">ANOVA</option><option value="ancova">ANCOVA</option><option value="manova">MANOVA / multivariate analysis</option></optgroup>
+          <optgroup label="Regression & conditional process"><option value="clrm">Classical Linear Regression Model / OLS</option><option value="hierarchical">Hierarchical regression</option><option value="quantile_regression">Quantile regression</option><option value="logistic">Binary logistic regression</option><option value="ordinal">Ordinal logistic regression</option><option value="multinomial">Multinomial logistic regression</option><option value="poisson">Poisson regression</option><option value="negative_binomial">Negative binomial regression</option><option value="mediation">Mediation</option><option value="moderation">Moderation</option><option value="moderated_mediation">Moderated mediation</option><option value="multilevel">Multilevel model</option></optgroup>
+          <optgroup label="Panel & structural models"><option value="panel">Panel-data regression</option><option value="sem">Structural equation modelling / path analysis</option><option value="reliability">Scale reliability</option></optgroup>
+          <optgroup label="Time series & econometrics"><option value="time_series">AR / MA / ARMA / ARIMA / SARIMAX / VAR</option><option value="dols">Dynamic OLS (DOLS)</option><option value="ardl">ARDL + Bounds Test</option><option value="nardl">Nonlinear ARDL (NARDL)</option><option value="decomposition">Classical / STL / X-13-X-12 decomposition</option><option value="cointegration">Engle-Granger / Johansen cointegration</option><option value="vecm">Vector Error Correction Model (VECM)</option><option value="svar">Structural VAR (SVAR)</option><option value="tvp_var">Time-Varying Parameter VAR</option></optgroup>
+          <optgroup label="Volatility & financial risk"><option value="volatility">ARCH / GARCH / GJR-GARCH / EGARCH</option><option value="dcc_garch">DCC-GARCH</option></optgroup>
+          <optgroup label="Network, signal & machine learning"><option value="network">Network analysis</option><option value="wavelet">DWT / MODWT workflow</option><option value="emd">EMD / EEMD / CEEMDAN</option><option value="ml_forecasting">Tree / MLP time-series forecasting</option><option value="deep_forecasting">Deep forecasting adapters</option><option value="foundation_forecasting">TimesFM / Chronos / TimeGPT adapters</option><option value="hybrid_forecasting">Prophet / NeuralProphet adapters</option></optgroup>
+        </select></label>
+        <div id="analysisMethodGuide" class="special-box"><p class="muted">Choose an analysis to see its variants, assumptions and required diagnostics.</p></div>
+        <div id="analysisStandardFields" class="field-grid two">
+          <label>Dependent / outcome variable<select id="analysisDependent"></select></label>
+          <label>Predictors / covariates<select id="analysisPredictors" multiple size="7"></select></label>
+        </div>
+        <div id="analysisSpecialFields"></div>
+        <label class="inline-check"><input id="analysisRobust" type="checkbox"> Use HC3 robust standard errors where supported</label><label class="inline-check"><input id="analysisDecisionConfirmed" type="checkbox"> I confirm that this analysis matches the approved research objective, design and variable roles. ProjectReady may recommend methods, but the researcher remains responsible for the analytical decision.</label>
+        <div class="button-row"><button id="runSelectedAnalysisBtn" class="primary">Run verified analysis</button><span id="analysisRunStatus" class="status"></span></div>
+      </section>
+
+      <section class="analysis-card" id="analysisResultSection">
+        <span class="step-label">6. Results Validation &amp; Chapter Four</span><h2>Verified calculation output</h2>
+        <div id="analysisResultOutput" class="analysis-output"><p class="muted">Run an analysis to populate verified results, diagnostics and consistency checks.</p></div>
+        <div id="analysisDiagramPanel" class="diagram-panel" hidden><div class="row-between"><h3 id="analysisDiagramTitle">Professional analysis diagram</h3><button id="downloadAnalysisDiagramBtn">Download SVG</button></div><div id="analysisDiagram"></div><p class="muted">Diagrams are generated from the fitted model/network. ProjectReady does not invent paths, nodes, coefficients or significance values.</p></div>
+      </section>
+
+      <section class="analysis-card">
+        <span class="step-label">Qualitative analysis</span><h2>Traceable coding support</h2>
+        <p class="muted">Upload a transcript and provide a researcher-defined codebook. ProjectReady finds candidate excerpts while keeping every suggestion linked to the actual transcript. It does not invent quotations or themes.</p>
+        <input id="qualTranscriptFile" type="file" accept=".txt,.md,.docx,.pdf">
+        <label>Codebook, one code per line<textarea id="qualCodebook" rows="5" placeholder="Workplace resources: equipment, materials, information, tools\nMotivation: motivated, commitment, enthusiasm"></textarea></label>
+        <button id="runQualCodingBtn">Find traceable coding candidates</button><div id="qualCodingOutput" class="analysis-output"></div>
+      </section>
+
+      <section class="analysis-card">
+        <span class="step-label">Mixed methods</span><h2>Integration matrix</h2><p class="muted">Organise confirmed quantitative findings and researcher-confirmed qualitative themes as convergence, complementarity, divergence or expansion. ProjectReady does not invent either strand.</p>
+        <label>Quantitative findings<textarea id="mixedQuantFindings" rows="4" placeholder="Objective 1 | Significant positive relationship between X and Y"></textarea></label>
+        <label>Qualitative themes<textarea id="mixedQualThemes" rows="4" placeholder="Objective 1 | Theme: staff described better performance when work tools were available"></textarea></label>
+        <button id="buildIntegrationMatrixBtn">Build integration matrix</button><div id="mixedIntegrationOutput" class="analysis-output"></div>
+      </section>
+    </div>
+  </section>
+</main>
+<script src="/static/guide_banner.js?v=20260816-guide-v3"></script><script src="/static/data_analysis.js?v=20260816-advanced-analysis-v3"></script>
+</body>
+</html>
