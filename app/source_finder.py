@@ -5,6 +5,9 @@ import os
 import re
 import time
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from time import perf_counter
+from xml.etree import ElementTree as ET
 from html import unescape
 from datetime import datetime, timezone
 from typing import Any
@@ -138,29 +141,54 @@ def search_literature_sources(
     current_year = datetime.now().year
     recent_start_year = current_year - 5
 
+    # Search every scholarly service for which ProjectReady has a supported,
+    # programmatic route. Relevance filtering happens after aggregation, so a
+    # subject-specific database can safely return zero useful records without
+    # polluting the evidence bank. Providers run concurrently to keep the claim
+    # review responsive even when one public API is slow.
     provider_specs: list[tuple[str, Any]] = [
         ("OpenAlex", _search_openalex),
         ("Crossref", _search_crossref),
         ("Semantic Scholar", _search_semantic_scholar),
+        ("ERIC", _search_eric),
+        ("DataCite", _search_datacite),
+        ("Europe PMC", _search_europe_pmc),
+        ("PubMed", _search_pubmed),
     ]
     skipped_providers: list[dict[str, str]] = []
-    if _query_is_education_related(final_query):
-        provider_specs.append(("ERIC", _search_eric))
-    else:
-        skipped_providers.append({
-            "provider": "ERIC",
-            "reason": "Skipped because the query is not education-related.",
-        })
-
     records: list[dict[str, Any]] = []
     provider_errors: list[dict[str, str]] = []
-    searched_databases: list[str] = []
-    for provider_name, provider in provider_specs:
-        searched_databases.append(provider_name)
-        try:
-            records.extend(provider(final_query, per_provider=max(8, max_results)))
-        except Exception as exc:
-            provider_errors.append({"provider": provider_name, "error": str(exc)[:220]})
+    searched_databases: list[str] = [name for name, _ in provider_specs]
+    provider_timings_ms: dict[str, int] = {}
+    per_provider = max(8, min(max_results, 20))
+
+    def _run_provider(name: str, provider: Any) -> tuple[str, list[dict[str, Any]], int]:
+        started = perf_counter()
+        result = provider(final_query, per_provider=per_provider)
+        elapsed = int((perf_counter() - started) * 1000)
+        return name, result, elapsed
+
+    workers = max(1, min(len(provider_specs), int(os.getenv("PROJECTREADY_SOURCE_SEARCH_WORKERS", "7") or 7)))
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        future_map = {executor.submit(_run_provider, name, provider): name for name, provider in provider_specs}
+        for future in as_completed(future_map):
+            provider_name = future_map[future]
+            try:
+                name, provider_records, elapsed = future.result()
+                provider_timings_ms[name] = elapsed
+                records.extend(provider_records or [])
+            except Exception as exc:
+                provider_errors.append({"provider": provider_name, "error": str(exc)[:220]})
+
+    external_searches = [{
+        "provider": "Google Scholar",
+        "url": "https://scholar.google.com/scholar?" + urlencode({"q": final_query}),
+        "automated": False,
+        "reason": (
+            "Google Scholar does not provide a supported public search API for this workflow. "
+            "ProjectReady therefore opens the Scholar search for manual review rather than scraping it."
+        ),
+    }]
 
     safe_records: list[dict[str, Any]] = []
     excluded_retracted: list[dict[str, Any]] = []
@@ -233,6 +261,8 @@ def search_literature_sources(
         "count": len(selected),
         "requested_count": max_results,
         "provider_errors": provider_errors,
+        "provider_timings_ms": provider_timings_ms,
+        "external_searches": external_searches,
         "excluded_retracted_count": len(excluded_retracted),
         "excluded_retracted_titles": [
             str(r.get("title") or "[untitled]")[:180]
@@ -258,6 +288,8 @@ def search_literature_sources(
             "exact-token and compound-concept relevance gate applied",
             "country-only and generic-word matches rejected",
             "requested result count treated as a maximum rather than a quota",
+            "records aggregated across OpenAlex, Crossref, Semantic Scholar, ERIC, DataCite, Europe PMC and PubMed",
+            "Google Scholar offered as a manual external search rather than scraped",
         ],
         "sources": selected,
         "usage_note": (
@@ -427,6 +459,192 @@ def _search_eric(query: str, per_provider: int = 10) -> list[dict[str, Any]]:
     return records
 
 
+
+
+
+def _search_datacite(query: str, per_provider: int = 10) -> list[dict[str, Any]]:
+    params = {"query": query, "page[size]": min(per_provider, 25)}
+    data = _get_json("https://api.datacite.org/dois?" + urlencode(params))
+    records: list[dict[str, Any]] = []
+    for item in data.get("data") or []:
+        attrs = item.get("attributes") or {}
+        titles = attrs.get("titles") or []
+        title = _clean_text((titles[0] or {}).get("title") if titles else "")
+        if not title:
+            continue
+        authors: list[str] = []
+        for creator in attrs.get("creators") or []:
+            name = creator.get("name") or " ".join(
+                part for part in [creator.get("givenName"), creator.get("familyName")] if part
+            )
+            if name:
+                authors.append(_clean_text(name))
+        descriptions = attrs.get("descriptions") or []
+        abstract = ""
+        for description in descriptions:
+            if str(description.get("descriptionType") or "").lower() == "abstract":
+                abstract = _clean_text(description.get("description") or "")
+                break
+        doi = _normalise_doi(item.get("id") or attrs.get("doi"))
+        year = attrs.get("publicationYear")
+        publisher = _clean_text(attrs.get("publisher") or "")
+        locator = attrs.get("url") or (f"https://doi.org/{doi}" if doi else "")
+        resource_type = (attrs.get("types") or {}).get("resourceTypeGeneral") or (attrs.get("types") or {}).get("resourceType") or "work"
+        records.append({
+            "title": title,
+            "authors": authors[:6],
+            "year": year,
+            "source": publisher,
+            "doi": doi,
+            "url": locator,
+            "abstract": abstract[:MAX_ABSTRACT_CHARS],
+            "type": resource_type,
+            "database": "DataCite",
+            "citation_count": None,
+            "is_open_access": None,
+            "is_retracted": _looks_retracted({"title": title, "abstract": abstract, "type": resource_type}),
+            "retraction_status": "title/abstract/type indicates retraction or withdrawal" if _looks_retracted({"title": title, "abstract": abstract, "type": resource_type}) else "",
+            "apa_hint": _apa_hint(authors, year, title, publisher, doi),
+        })
+    return records
+
+
+def _search_europe_pmc(query: str, per_provider: int = 10) -> list[dict[str, Any]]:
+    params = {
+        "query": query,
+        "format": "json",
+        "pageSize": min(per_provider, 25),
+        "resultType": "core",
+    }
+    url = "https://www.ebi.ac.uk/europepmc/webservices/rest/search?" + urlencode(params)
+    data = _get_json(url)
+    records: list[dict[str, Any]] = []
+    for item in (data.get("resultList") or {}).get("result") or []:
+        title = _clean_text(item.get("title"))
+        if not title:
+            continue
+        authors: list[str] = []
+        for author in ((item.get("authorList") or {}).get("author") or []):
+            name = author.get("fullName") or " ".join(part for part in [author.get("firstName"), author.get("lastName")] if part)
+            if name:
+                authors.append(_clean_text(name))
+        if not authors and item.get("authorString"):
+            authors = [_clean_text(part) for part in str(item.get("authorString")).split(",") if _clean_text(part)][:6]
+        doi = _normalise_doi(item.get("doi"))
+        pmid = _clean_text(item.get("pmid"))
+        pmcid = _clean_text(item.get("pmcid"))
+        locator = f"https://europepmc.org/article/MED/{pmid}" if pmid else (f"https://europepmc.org/article/PMC/{pmcid}" if pmcid else (f"https://doi.org/{doi}" if doi else ""))
+        abstract = _clean_text(item.get("abstractText") or "")
+        source = _clean_text(item.get("journalTitle") or item.get("journalInfo", {}).get("journal", {}).get("title") or "")
+        year = item.get("pubYear") or item.get("firstPublicationDate")
+        pub_types = item.get("pubTypeList", {}).get("pubType") or []
+        if isinstance(pub_types, str):
+            pub_types = [pub_types]
+        work_type = ", ".join(str(x) for x in pub_types[:4]) or "article"
+        records.append({
+            "title": title,
+            "authors": authors[:6],
+            "year": year,
+            "source": source,
+            "doi": doi,
+            "url": locator,
+            "abstract": abstract[:MAX_ABSTRACT_CHARS],
+            "type": work_type,
+            "database": "Europe PMC",
+            "citation_count": item.get("citedByCount"),
+            "is_open_access": str(item.get("isOpenAccess") or "").upper() == "Y",
+            "is_retracted": _looks_retracted({"title": title, "abstract": abstract, "type": work_type}),
+            "retraction_status": "title/abstract/type indicates retraction or withdrawal" if _looks_retracted({"title": title, "abstract": abstract, "type": work_type}) else "",
+            "apa_hint": _apa_hint(authors, year, title, source, doi),
+        })
+    return records
+
+
+def _xml_text(node: Any) -> str:
+    if node is None:
+        return ""
+    return _clean_text("".join(node.itertext()))
+
+
+def _search_pubmed(query: str, per_provider: int = 10) -> list[dict[str, Any]]:
+    search_params = {
+        "db": "pubmed",
+        "term": query,
+        "retmax": min(per_provider, 20),
+        "retmode": "json",
+        "sort": "relevance",
+    }
+    api_key = os.getenv("NCBI_API_KEY", "").strip()
+    if api_key:
+        search_params["api_key"] = api_key
+    search = _get_json("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?" + urlencode(search_params))
+    ids = [str(x) for x in ((search.get("esearchresult") or {}).get("idlist") or []) if str(x).strip()]
+    if not ids:
+        return []
+    fetch_params = {"db": "pubmed", "id": ",".join(ids), "retmode": "xml"}
+    if api_key:
+        fetch_params["api_key"] = api_key
+    request = Request(
+        "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?" + urlencode(fetch_params),
+        headers={"User-Agent": "ProjectReadyAI/0.1 (scholarly metadata search)", "Accept": "application/xml"},
+    )
+    with urlopen(request, timeout=DEFAULT_TIMEOUT_SECONDS) as response:  # nosec B310 - NCBI public API
+        raw = response.read()
+    time.sleep(0.12)
+    root = ET.fromstring(raw)
+    records: list[dict[str, Any]] = []
+    for article in root.findall(".//PubmedArticle"):
+        medline = article.find("MedlineCitation")
+        art = article.find(".//Article")
+        if art is None:
+            continue
+        title = _xml_text(art.find("ArticleTitle"))
+        if not title:
+            continue
+        authors: list[str] = []
+        for author in art.findall(".//AuthorList/Author"):
+            collective = _xml_text(author.find("CollectiveName"))
+            if collective:
+                authors.append(collective)
+                continue
+            family = _xml_text(author.find("LastName"))
+            given = _xml_text(author.find("ForeName")) or _xml_text(author.find("Initials"))
+            full = _clean_text(" ".join(part for part in [given, family] if part))
+            if full:
+                authors.append(full)
+        abstract = " ".join(_xml_text(node) for node in art.findall(".//Abstract/AbstractText") if _xml_text(node))
+        source = _xml_text(art.find(".//Journal/Title"))
+        year = _xml_text(art.find(".//ArticleDate/Year")) or _xml_text(art.find(".//JournalIssue/PubDate/Year"))
+        if not year:
+            medline_date = _xml_text(art.find(".//JournalIssue/PubDate/MedlineDate"))
+            match = re.search(r"(?:19|20)\d{2}", medline_date)
+            year = match.group(0) if match else ""
+        doi = ""
+        for node in article.findall(".//PubmedData/ArticleIdList/ArticleId"):
+            if str(node.attrib.get("IdType") or "").lower() == "doi":
+                doi = _normalise_doi(_xml_text(node))
+                break
+        pmid = _xml_text(medline.find("PMID") if medline is not None else None)
+        pub_types = [_xml_text(x) for x in art.findall(".//PublicationTypeList/PublicationType") if _xml_text(x)]
+        work_type = ", ".join(pub_types[:4]) or "article"
+        locator = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/" if pmid else (f"https://doi.org/{doi}" if doi else "")
+        records.append({
+            "title": title,
+            "authors": authors[:6],
+            "year": year,
+            "source": source,
+            "doi": doi,
+            "url": locator,
+            "abstract": _clean_text(abstract)[:MAX_ABSTRACT_CHARS],
+            "type": work_type,
+            "database": "PubMed",
+            "citation_count": None,
+            "is_open_access": None,
+            "is_retracted": _looks_retracted({"title": title, "abstract": abstract, "type": work_type}),
+            "retraction_status": "title/abstract/type indicates retraction or withdrawal" if _looks_retracted({"title": title, "abstract": abstract, "type": work_type}) else "",
+            "apa_hint": _apa_hint(authors, year, title, source, doi),
+        })
+    return records
 
 
 def _looks_retracted(record: dict[str, Any]) -> bool:
@@ -627,35 +845,58 @@ def _classify_relevance(record: dict[str, Any], relevance_profile: dict[str, Any
 
 
 def _dedupe_and_rank(records: list[dict[str, Any]], query: str, recent_start_year: int) -> list[dict[str, Any]]:
-    seen: set[str] = set()
-    deduped: list[dict[str, Any]] = []
+    merged_by_key: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
     for record in records:
         title = _clean_text(record.get("title"))
         doi = _normalise_doi(record.get("doi"))
-        key = doi or re.sub(r"[^a-z0-9]+", "", title.lower())[:100]
-        if not title or key in seen:
+        key = doi.lower() or re.sub(r"[^a-z0-9]+", "", title.lower())[:100]
+        if not title or not key or _is_retracted_record(record):
             continue
-        if _is_retracted_record(record):
-            continue
-        seen.add(key)
         item = dict(record)
         item["title"] = title
         item["doi"] = doi
         item["abstract"] = _clean_text(item.get("abstract") or "")[:MAX_ABSTRACT_CHARS]
+        db = _clean_text(item.get("database"))
+        item["databases_found"] = [db] if db else []
+        if key not in merged_by_key:
+            merged_by_key[key] = item
+            order.append(key)
+            continue
+        existing = merged_by_key[key]
+        for field in ("authors", "year", "source", "doi", "url", "type", "citation_count", "is_open_access", "apa_hint"):
+            if existing.get(field) in (None, "", [], {}) and item.get(field) not in (None, "", [], {}):
+                existing[field] = item.get(field)
+        if len(_clean_text(item.get("abstract"))) > len(_clean_text(existing.get("abstract"))):
+            existing["abstract"] = _clean_text(item.get("abstract"))[:MAX_ABSTRACT_CHARS]
+        existing_dbs = list(existing.get("databases_found") or [])
+        if db and db not in existing_dbs:
+            existing_dbs.append(db)
+        existing["databases_found"] = existing_dbs
+        if not existing.get("database") and db:
+            existing["database"] = db
+
+    deduped: list[dict[str, Any]] = []
+    for key in order:
+        item = merged_by_key[key]
         authors = item.get("authors") or []
         if isinstance(authors, str):
             authors = [authors]
-        year = str(item.get("year") or "").strip()
+        year = str(_safe_int(item.get("year")) or item.get("year") or "").strip()
+        if re.search(r"(?:19|20)\d{2}", year):
+            year_match = re.search(r"(?:19|20)\d{2}", year)
+            year = year_match.group(0) if year_match else year
+            item["year"] = year
         locator = _normalise_doi(item.get("doi")) or _clean_text(item.get("url") or "")
-        metadata_verified = bool(title and authors and re.fullmatch(r"(?:19|20)\d{2}", year) and locator)
+        metadata_verified = bool(item.get("title") and authors and re.fullmatch(r"(?:19|20)\d{2}", year) and locator)
         item["metadata_verified"] = metadata_verified
         item["citation_eligible"] = metadata_verified
-        # New detailed claims require accessible evidence, not just a plausible metadata record.
-        item["claim_support_eligible"] = bool(metadata_verified and item["abstract"])
+        item["claim_support_eligible"] = bool(metadata_verified and item.get("abstract"))
+        databases_text = ", ".join(item.get("databases_found") or [item.get("database") or "provider"])
         item["verification_basis"] = (
-            f"Verified scholarly metadata from {item.get('database') or 'provider'} with accessible abstract"
+            f"Verified scholarly metadata from {databases_text} with accessible abstract"
             if item["claim_support_eligible"]
-            else f"Verified scholarly metadata from {item.get('database') or 'provider'}; claim-level evidence unavailable"
+            else f"Verified scholarly metadata from {databases_text}; claim-level evidence unavailable"
             if metadata_verified
             else "Incomplete scholarly metadata; not citation eligible"
         )
@@ -670,16 +911,10 @@ def _dedupe_and_rank(records: list[dict[str, Any]], query: str, recent_start_yea
         record["relevance_metrics"] = metrics
         record["search_query"] = query
         record["attachment_origin"] = "automated_source_search"
-        record["relevance_score"] = _relevance_score(
-            record,
-            query,
-            recent_start_year,
-            relevance_profile=relevance_profile,
-        )
+        record["relevance_score"] = _relevance_score(record, query, recent_start_year, relevance_profile=relevance_profile)
 
     deduped.sort(key=lambda item: item.get("relevance_score", 0), reverse=True)
     return deduped
-
 
 def _relevance_score(
     record: dict[str, Any],
@@ -705,7 +940,7 @@ def _relevance_score(
     abstract_bonus = 3 if record.get("abstract") else 0
     citations = _safe_int(record.get("citation_count")) or 0
     citation_bonus = min(6, citations ** 0.5) if citations else 0
-    db_bonus = {"OpenAlex": 2, "Crossref": 2, "Semantic Scholar": 2, "ERIC": 1}.get(record.get("database"), 0)
+    db_bonus = {"OpenAlex": 2, "Crossref": 2, "Semantic Scholar": 2, "ERIC": 2, "DataCite": 1, "Europe PMC": 2, "PubMed": 2}.get(record.get("database"), 0)
 
     lexical = (
         float(metrics.get("title_coverage", 0)) * 34

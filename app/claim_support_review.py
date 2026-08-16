@@ -86,19 +86,54 @@ def _sentence_needs_source(sentence: str, chapter_number: int) -> bool:
         return False
     lowered = value.lower()
     if any(lowered.startswith(prefix) for prefix in _PROJECT_SPECIFIC_PREFIXES):
-        # Project-specific statements do not need an external citation unless they
-        # make a broader empirical/factual assertion in the same sentence.
         broader_markers = ("research shows", "evidence", "studies", "literature", "has been", "have been", "%", "percent")
         if not any(marker in lowered for marker in broader_markers):
             return False
+    # Chapter-roadmap and internal navigation sentences are not external claims.
+    roadmap_prefixes = (
+        "this chapter presents", "this chapter outlines", "this chapter introduces",
+        "the chapter presents", "the chapter outlines", "the chapter introduces",
+        "this section presents", "this section introduces", "the present section",
+        "the next section", "the following section", "subsequent sections",
+    )
+    if lowered.startswith(roadmap_prefixes):
+        return False
     if re.match(r"^(?:h\d+[a-z]?|rq\d+|objective\s+\d+)\s*[:.]", lowered):
         return False
     if int(chapter_number or 0) == 4 and not any(token in lowered for token in ("consistent with", "contrasts with", "supports", "previous studies", "literature", "research")):
         return False
-    # A substantive sentence in an evidence-led paragraph is treated as a claim
-    # unless it is plainly a transition or a project-specific instruction.
-    return True
+    # Explicit source placeholders always require review. Otherwise flag only
+    # sentences that visibly make an empirical, factual or relationship claim.
+    if _PLACEHOLDER_RE.search(value):
+        return True
+    evidence_markers = (
+        "research ", "researchers ", "evidence ", "studies ", "study found", "study reported",
+        "literature ", "meta-analysis", "systematic review", "reported that", "found that",
+        "showed that", "demonstrated that", "identified that", "indicated that", "suggested that",
+        "has been associated", "have been associated", "is associated", "are associated",
+        "relationship between", "linked to", "predicts ", "predict ", "influences ", "influence ",
+        "affects ", "affect ", "leads to", "resulted in", "results in", "statistically significant",
+        "prevalence", "incidence", "percentage", " percent", "%", "increased", "decreased",
+    )
+    return any(marker in lowered for marker in evidence_markers)
 
+
+def remove_review_item_placeholder(text: str, item: dict[str, Any]) -> tuple[str, bool]:
+    """Remove only the source-needed placeholder attached to a reviewed item.
+
+    Approval or Ignore should never leave a stale '[insert verified source ...]'
+    marker in the student's chapter. The claim text itself is preserved.
+    """
+    value = str(text or "")
+    original_sentence = str(item.get("original_sentence") or "")
+    if original_sentence and original_sentence in value:
+        cleaned = _PLACEHOLDER_RE.sub("", original_sentence).strip()
+        return value.replace(original_sentence, cleaned, 1), cleaned != original_sentence
+    paragraph_text = str(item.get("paragraph_text") or "")
+    if paragraph_text and paragraph_text in value:
+        cleaned = _PLACEHOLDER_RE.sub("", paragraph_text).strip()
+        return value.replace(paragraph_text, cleaned, 1), cleaned != paragraph_text
+    return value, False
 
 def build_claim_support_review(
     text: str,
@@ -121,9 +156,18 @@ def build_claim_support_review(
         paragraph_records[paragraph_index] = {"heading": heading, "text": paragraph}
         paragraph_used = citation_fingerprints(paragraph)
         paragraph_verified = paragraph_used & allowed
+        explicit_placeholder_present = bool(_PLACEHOLDER_RE.search(paragraph))
+        # When a paragraph already satisfies the verified 2-source minimum, do
+        # not manufacture sentence-level review work unless the draft itself
+        # contains an explicit source-needed placeholder.
+        if len(paragraph_verified) >= PARAGRAPH_MIN_VERIFIED_SOURCES and not explicit_placeholder_present:
+            continue
+        paragraph_claims_added = 0
         for sentence_index, sentence in enumerate(_sentences(paragraph), start=1):
             if not _sentence_needs_source(sentence, chapter_number):
                 continue
+            if paragraph_claims_added >= 3:
+                break
             clean_claim = _PLACEHOLDER_RE.sub("", sentence).strip()
             if not clean_claim:
                 continue
@@ -148,6 +192,7 @@ def build_claim_support_review(
                 "approved_sources": [],
                 "note": "This evidence-bearing claim currently has no in-text citation.",
             })
+            paragraph_claims_added += 1
 
     paragraph_audit = paragraph_citation_audit(
         text,
@@ -226,6 +271,8 @@ def public_candidate(source: dict[str, Any]) -> dict[str, Any]:
         "doi": _clean(source.get("doi")),
         "url": _clean(source.get("url") or source.get("landing_page_url")),
         "database": _clean(source.get("database")),
+        "databases_found": source.get("databases_found") or ([_clean(source.get("database"))] if _clean(source.get("database")) else []),
+        "verification_basis": _clean(source.get("verification_basis")),
         "relevance_tier": _clean(source.get("relevance_tier")),
         "relevance_reason": _clean(source.get("relevance_reason")),
         "suggested_use": _clean(source.get("suggested_use")),
@@ -310,16 +357,47 @@ def apply_approved_claim_citations(
     value = str(text or "")
     applied_claims = 0
     applied_paragraphs = 0
+    added_reference_mentions = 0
+    used_source_keys: set[str] = set()
     unresolved = 0
     style = _clean(citation_style).lower()
     numeric_style = "vancouver" in style or "ieee" in style
 
+    # Apply paragraph-density approvals first. This lets one defensible 2-3 source
+    # group support the paragraph without forcing a citation after every sentence.
+    for gap in review.get("paragraph_density_gaps") or []:
+        if not isinstance(gap, dict) or gap.get("status") == "ignored":
+            continue
+        approved = [item for item in gap.get("approved_sources") or [] if isinstance(item, dict)]
+        paragraph_text = str(gap.get("paragraph_text") or "")
+        target = paragraph_text if paragraph_text in value else _PLACEHOLDER_RE.sub("", paragraph_text).strip()
+        if not approved or not target or target not in value:
+            continue
+        citation, tokens = _citation_group(approved)
+        if not citation:
+            continue
+        if numeric_style:
+            gap["status"] = "approved_for_numeric_formatting"
+            gap["approved_citation_tokens"] = tokens
+            continue
+        replacement = _append_citation_to_sentence(target, citation)
+        value = value.replace(target, replacement, 1)
+        gap["status"] = "resolved"
+        gap["applied_citation"] = citation
+        applied_paragraphs += 1
+        added_reference_mentions += len(tokens)
+        for source in approved[:3]:
+            key = _source_key(source)
+            if key:
+                used_source_keys.add(key)
+
     for claim in review.get("claims") or []:
-        if not isinstance(claim, dict):
+        if not isinstance(claim, dict) or claim.get("status") == "ignored":
             continue
         approved = [item for item in claim.get("approved_sources") or [] if isinstance(item, dict)]
         original_sentence = str(claim.get("original_sentence") or "")
-        if not approved or not original_sentence or original_sentence not in value:
+        target = original_sentence if original_sentence in value else _PLACEHOLDER_RE.sub("", original_sentence).strip()
+        if not approved or not target or target not in value:
             if claim.get("status") != "resolved":
                 unresolved += 1
             continue
@@ -332,49 +410,38 @@ def apply_approved_claim_citations(
             claim["approved_citation_tokens"] = tokens
             unresolved += 1
             continue
-        value = value.replace(original_sentence, _append_citation_to_sentence(original_sentence, citation), 1)
+        # If the paragraph pass already inserted all approved tokens, avoid a
+        # duplicate citation group and allow the fresh audit to decide coverage.
+        window_start = max(0, value.find(target) - 800)
+        window_end = min(len(value), value.find(target) + len(target) + 800)
+        nearby = value[window_start:window_end].lower()
+        if tokens and all(token.lower() in nearby for token in tokens):
+            claim["status"] = "resolved"
+            continue
+        value = value.replace(target, _append_citation_to_sentence(target, citation), 1)
         claim["status"] = "resolved"
         claim["applied_citation"] = citation
         applied_claims += 1
-
-    # Paragraph-level density gaps may remain even when every individual claim has
-    # at least one source. Student-approved sources can be added to the paragraph
-    # only when the exact paragraph text is still present.
-    for gap in review.get("paragraph_density_gaps") or []:
-        if not isinstance(gap, dict):
-            continue
-        approved = [item for item in gap.get("approved_sources") or [] if isinstance(item, dict)]
-        paragraph_text = str(gap.get("paragraph_text") or "")
-        if not approved or not paragraph_text or paragraph_text not in value:
-            continue
-        citation, tokens = _citation_group(approved)
-        if not citation:
-            continue
-        if numeric_style:
-            gap["status"] = "approved_for_numeric_formatting"
-            gap["approved_citation_tokens"] = tokens
-            continue
-        # Do not add the same author-year group twice if a claim-level insertion
-        # has already introduced it into this paragraph.
-        if all(token.lower() in paragraph_text.lower() for token in tokens):
-            continue
-        replacement = _append_citation_to_sentence(paragraph_text, citation)
-        value = value.replace(paragraph_text, replacement, 1)
-        gap["status"] = "resolved"
-        gap["applied_citation"] = citation
-        applied_paragraphs += 1
+        added_reference_mentions += len(tokens)
+        for source in approved[:3]:
+            key = _source_key(source)
+            if key:
+                used_source_keys.add(key)
 
     return value, {
-        "applied_claim_citations": applied_claims,
-        "applied_paragraph_density_citations": applied_paragraphs,
+        "applied_claim_citation_groups": applied_claims,
+        "applied_paragraph_density_citation_groups": applied_paragraphs,
+        "citation_groups_added": applied_claims + applied_paragraphs,
+        "verified_citation_references_added": added_reference_mentions,
+        "unique_verified_sources_added": len(used_source_keys),
         "unresolved_after_apply": unresolved,
         "citation_style": citation_style,
         "note": (
             "Author-date citations are inserted deterministically from student-approved, verified source metadata. "
+            "The final approval summary reports both citation groups and individual verified source references added. "
             "IEEE/Vancouver approvals are retained for the final numbering pass so existing numeric citation order is not corrupted."
         ),
     }
-
 
 def stored_claim_review_status(profile: dict[str, Any], *, workflow: str, chapter_number: int) -> dict[str, Any]:
     store = profile.get("claim_support_reviews") or {}

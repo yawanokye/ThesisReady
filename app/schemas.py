@@ -145,6 +145,12 @@ class ClaimCitationApplyRequest(BaseModel):
     citation_style: str = "APA 7th"
 
 
+class ClaimSupportIgnoreRequest(BaseModel):
+    workflow: str = "draft"
+    chapter_number: int
+    claim_id: str
+
+
 # ----------------------------------------------------------------------
 # Integrated Chapter Strengthener
 # ----------------------------------------------------------------------

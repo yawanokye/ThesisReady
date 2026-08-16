@@ -731,6 +731,7 @@ def remove_unverified_generated_citations(text: str, profile: dict[str, Any], *,
         chunks = re.split(r"\s*;\s*", group)
         kept: list[str] = []
         had_citation = False
+        removed_from_group = False
         for chunk in chunks:
             fps = _fingerprints_from_citation_chunk(chunk)
             if not fps:
@@ -741,11 +742,13 @@ def remove_unverified_generated_citations(text: str, profile: dict[str, Any], *,
                 kept.append(chunk)
             else:
                 removed.append(chunk.strip())
+                removed_from_group = True
         if not had_citation:
             return match.group(0)
         if kept:
             cleaned = "; ".join(x for x in kept if x.strip())
-            return f"({cleaned}) [insert verified source for the unsupported citation removed here]"
+            suffix = " [insert verified source for the unsupported citation removed here]" if removed_from_group else ""
+            return f"({cleaned}){suffix}"
         return "[insert verified source for this claim]"
 
     body = re.sub(r"\(([^()]*?(?:19|20)\d{2}[a-z]?[^()]*)\)", parenthetical_repl, body, flags=re.I)
