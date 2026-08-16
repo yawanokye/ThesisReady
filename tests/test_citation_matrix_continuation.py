@@ -1,9 +1,11 @@
 from pathlib import Path
 
 from app.chapter_continuation import build_chapter_linkage, chapter_selection_is_complete
+from app.ai_service import chapter_output_metrics
 from app.citation_matrix import (
     CITATION_DENSITY_MATRIX,
     citation_target,
+    paragraph_citation_audit,
     reference_mention_count,
     remove_unverified_generated_citations,
 )
@@ -118,3 +120,73 @@ def test_next_chapter_prompt_requires_complete_standard_chapter_selection():
     all_ids = [section["section_id"] for section in selected_sections(1, [])]
     assert chapter_selection_is_complete(1, all_ids) is True
     assert chapter_selection_is_complete(1, all_ids[:3]) is False
+
+
+def test_paragraph_citation_audit_requires_two_verified_sources_and_prefers_three():
+    profile = {
+        "source_bank": [
+            {"authors": ["Ama Mensah"], "year": "2024", "title": "Teacher leadership evidence", "doi": "10.1000/mensah", "citation_eligible": True},
+            {"authors": ["Kojo Boateng"], "year": "2025", "title": "School leadership evidence", "doi": "10.1000/boateng", "citation_eligible": True},
+            {"authors": ["Akosua Owusu"], "year": "2023", "title": "Collegiality evidence", "doi": "10.1000/owusu", "citation_eligible": True},
+        ]
+    }
+    paragraph = (
+        "Teacher leadership develops through professional influence, shared instructional work and sustained collegial interaction. "
+        "Research across school settings indicates that leadership opportunities are shaped by trust, professional discretion and the quality of relationships among teachers. "
+        "These organisational conditions can influence whether teachers share expertise, participate in decisions and support colleagues beyond their own classrooms. "
+        "The evidence therefore supports treating teacher leadership as relational rather than merely positional "
+        "(Mensah, 2024; Boateng, 2025; Owusu, 2023)."
+    )
+    audit = paragraph_citation_audit("# Background to the Study\n\n" + paragraph, profile, chapter_number=1)
+    assert audit["eligible_evidence_paragraphs"] == 1
+    assert audit["paragraphs_meeting_minimum"] == 1
+    assert audit["paragraphs_meeting_preferred"] == 1
+    assert audit["passed"] is True
+
+
+def test_paragraph_citation_audit_does_not_count_hallucinated_source():
+    profile = {
+        "source_bank": [
+            {"authors": ["Ama Mensah"], "year": "2024", "title": "Verified teacher evidence", "doi": "10.1000/mensah", "citation_eligible": True},
+        ]
+    }
+    paragraph = (
+        "Teacher leadership develops through professional influence, shared instructional work and sustained collegial interaction. "
+        "Research across school settings indicates that leadership opportunities are shaped by trust, professional discretion and the quality of relationships among teachers. "
+        "These organisational conditions can influence whether teachers share expertise, participate in decisions and support colleagues beyond their own classrooms. "
+        "The paragraph cites one real source and one invented-looking source, but only the verified source may count toward coverage "
+        "(Mensah, 2024; Fabricated, 2026)."
+    )
+    audit = paragraph_citation_audit("# Background to the Study\n\n" + paragraph, profile, chapter_number=1)
+    assert audit["eligible_evidence_paragraphs"] == 1
+    assert audit["paragraphs_meeting_minimum"] == 0
+    assert audit["under_supported_paragraphs"][0]["verified_sources"] == 1
+    assert audit["passed"] is False
+
+
+def test_objectives_are_not_padded_with_citations_for_paragraph_quota():
+    text = "# Research Objectives\n\nTo examine the relationship between teacher leadership and instructional practice in basic schools."
+    audit = paragraph_citation_audit(text, {"source_bank": []}, chapter_number=1)
+    assert audit["eligible_evidence_paragraphs"] == 0
+    assert audit["passed"] is True
+
+
+def test_generation_metrics_expose_verified_paragraph_coverage():
+    profile = {
+        "level": "Bachelors",
+        "programme": "BEd Education",
+        "source_bank": [
+            {"authors": ["Ama Mensah"], "year": "2024", "title": "Teacher evidence", "doi": "10.1000/mensah", "citation_eligible": True},
+            {"authors": ["Kojo Boateng"], "year": "2025", "title": "Leadership evidence", "doi": "10.1000/boateng", "citation_eligible": True},
+        ],
+    }
+    text = (
+        "# CHAPTER 1\n\n# INTRODUCTION\n\n## 1.1 Background to the Study\n\n"
+        "Teacher leadership develops through professional influence, shared instructional work and sustained collegial interaction. "
+        "Research across school settings indicates that leadership opportunities are shaped by trust, professional discretion and the quality of relationships among teachers. "
+        "These organisational conditions can influence whether teachers share expertise, participate in decisions and support colleagues beyond their own classrooms. "
+        "The evidence therefore supports treating teacher leadership as relational rather than merely positional (Mensah, 2024; Boateng, 2025)."
+    )
+    metrics = chapter_output_metrics(profile, 1, [], text)
+    assert metrics["paragraph_citation_coverage"]["passed"] is True
+    assert metrics["paragraph_citation_coverage"]["minimum_verified_sources_per_evidence_paragraph"] == 2

@@ -12,6 +12,7 @@ def _reload_test_app(tmp_path, monkeypatch):
     monkeypatch.delenv("PROJECTREADY_SQLITE_PAYMENT_DB", raising=False)
     monkeypatch.setenv("APP_BASE_URL", "https://staging.projectreadyai.com")
     monkeypatch.setenv("PROJECTREADY_STRIPE_MODE", "test")
+    monkeypatch.setenv("PROJECTREADY_ENABLE_TEST_CHECKOUTS", "1")
     monkeypatch.setenv("PROJECTREADY_FORCE_STRIPE", "1")
     monkeypatch.setenv("PROJECTREADY_STRIPE_TEST_CHECKOUT_KEY", "private-stripe-test-key-123")
     monkeypatch.setenv("STRIPE_TEST_SECRET_KEY", "sk_test_example")

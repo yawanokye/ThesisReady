@@ -69,3 +69,16 @@ def test_topic_ideas_has_no_admin_trial_endpoint_or_panel(tmp_path, monkeypatch)
     assert "Administrator trial access" not in page.text
     assert "Stripe test mode" not in page.text
     assert "Restore paid access" in page.text
+
+
+def test_stale_test_environment_cannot_force_private_checkout_without_explicit_enable(tmp_path, monkeypatch):
+    _, _, payment_router, stripe_provider, _ = _reload_app(tmp_path, monkeypatch)
+    monkeypatch.setenv("PROJECTREADY_STRIPE_MODE", "test")
+    monkeypatch.setenv("PROJECTREADY_FORCE_STRIPE", "1")
+    monkeypatch.setenv("PROJECTREADY_STRIPE_TEST_CHECKOUT_KEY", "stale-private-key")
+    monkeypatch.delenv("PROJECTREADY_ENABLE_TEST_CHECKOUTS", raising=False)
+
+    assert stripe_provider.stripe_mode() == "live"
+    assert stripe_provider.force_stripe_for_testing() is False
+    assert payment_router.choose_payment_provider("GH") == "paystack"
+    assert payment_router.choose_payment_provider("US") == "stripe"
