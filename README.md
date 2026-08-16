@@ -225,3 +225,7 @@ Chapter Draft Development and Chapter Strengthener now share a pre-output eviden
 
 ## 2026-08-16 claim-support interaction update
 The current build adds responsive source-search/approval states, Ignore controls, automatic placeholder cleanup, final approval citation counts, multi-database scholarly aggregation, project-evidence-bank reuse and a manual Google Scholar search link. See `CLAIM_SUPPORT_REVIEW_INTERACTION_AND_MULTIDATABASE_SEARCH_UPDATE_2026-08-16.md`.
+
+## August 2026 — Research Journey complete-guide architecture
+
+ProjectReady now uses **Research Journey** as its flagship module. Chapter development remains fully available through **Quick Chapter Development**, while the former Chapter Strengthener is presented as **Review & Strengthen**. A persistent **My Research Record**, researcher-confirmed decision checkpoints, adaptive quantitative/qualitative/mixed-methods journey stages, tracked supervisor corrections, a project-aware **Research Coach**, final research audit, viva preparation and **My Research Projects** recovery/progress page have been added. See `RESEARCH_JOURNEY_COMPLETE_GUIDE_UPGRADE_2026-08-16.md`.
