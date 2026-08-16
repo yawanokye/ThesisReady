@@ -28,8 +28,18 @@ def is_african_country(country_code: str) -> bool:
 
 
 def choose_payment_provider(country_code: str) -> str:
-    mode = str(__import__("os").environ.get("PROJECTREADY_STRIPE_MODE", "live") or "live").strip().lower()
-    force_stripe = str(__import__("os").environ.get("PROJECTREADY_FORCE_STRIPE", "0") or "0").strip().lower() in {"1", "true", "yes", "on"}
-    if mode == "test" and force_stripe:
+    """Choose the customer-facing payment provider safely.
+
+    African billing countries normally use Paystack. A Stripe test deployment may
+    force Stripe only when the additional test-routing safety switch is enabled.
+    This prevents a stale PROJECTREADY_STRIPE_MODE=test / PROJECTREADY_FORCE_STRIPE=1
+    pair from blocking real African customers with a private Stripe test-key prompt.
+    """
+    import os
+
+    mode = str(os.environ.get("PROJECTREADY_STRIPE_MODE", "live") or "live").strip().lower()
+    force_stripe = str(os.environ.get("PROJECTREADY_FORCE_STRIPE", "0") or "0").strip().lower() in {"1", "true", "yes", "on"}
+    allow_test_routing = str(os.environ.get("PROJECTREADY_ENABLE_TEST_CHECKOUTS", "0") or "0").strip().lower() in {"1", "true", "yes", "on"}
+    if mode == "test" and force_stripe and allow_test_routing:
         return "stripe"
     return "paystack" if is_african_country(country_code) else "stripe"

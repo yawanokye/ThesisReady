@@ -31,8 +31,15 @@ class StripePaymentError(RuntimeError):
 
 
 def stripe_mode() -> str:
-    mode = str(os.environ.get("PROJECTREADY_STRIPE_MODE", "live") or "live").strip().lower()
-    return "test" if mode == "test" else "live"
+    """Return the effective Stripe environment.
+
+    Test mode is deliberately fail-closed behind a second explicit switch. A stale
+    PROJECTREADY_STRIPE_MODE=test value must never turn a production deployment
+    into private-test checkout for real customers.
+    """
+    requested = str(os.environ.get("PROJECTREADY_STRIPE_MODE", "live") or "live").strip().lower()
+    tests_enabled = str(os.environ.get("PROJECTREADY_ENABLE_TEST_CHECKOUTS", "0") or "0").strip().lower() in {"1", "true", "yes", "on"}
+    return "test" if requested == "test" and tests_enabled else "live"
 
 
 def stripe_test_mode() -> bool:
