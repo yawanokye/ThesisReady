@@ -53,7 +53,7 @@ def _public_job(job: dict[str, Any]) -> dict[str, Any]:
         "stage": job.get("stage"),
         "message": job.get("message"),
         "error": (
-            "The request could not be completed after automatic retries. Any reserved paid entitlement or complimentary page credits were returned."
+            "The request could not be completed. Automatic full-job retries are disabled by default to avoid duplicate API spend. Any reserved paid entitlement or complimentary page credits were returned."
             if str(job.get("status")) == "failed" else ""
         ),
         "result": job.get("result") if str(job.get("status")) == "completed" else {},
@@ -178,6 +178,12 @@ def _rollback_reserved_claim(claim: dict[str, Any]) -> None:
 
 
 def _max_attempts() -> int:
+    # A stale max-attempts environment value must not silently repeat expensive
+    # long-form model calls. Full background-job retries are disabled unless the
+    # developer explicitly enables them.
+    allow = str(os.getenv("PROJECTREADY_ALLOW_JOB_RETRIES", "0") or "0").strip().lower() in {"1", "true", "yes", "on"}
+    if not allow:
+        return 1
     try:
         return max(1, min(int(os.getenv("PROJECTREADY_JOB_MAX_ATTEMPTS", "1") or 1), 4))
     except Exception:
@@ -377,7 +383,7 @@ def cancel_background_job(job_id: str, x_projectready_job_token: str = Header(de
     if not current:
         raise HTTPException(status_code=404, detail="Background request not found.")
     if str(current.get("status")) == "running":
-        raise HTTPException(status_code=409, detail="A running request cannot be cancelled safely. It will finish or retry automatically.")
+        raise HTTPException(status_code=409, detail="A running request cannot be cancelled safely. It will finish its current attempt; automatic full-job retry is disabled unless explicitly enabled by the developer.")
     updated = cancel_job(job_id)
     claim = (current.get("payload") or {}).get("_preauthorized_claim") or {}
     if updated and str(updated.get("status")) == "cancelled":

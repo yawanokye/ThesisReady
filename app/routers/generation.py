@@ -625,7 +625,7 @@ def draft_chapter(project_id: str, payload: DraftRequest, request: Request):
 
         if bool(getattr(request.state, "background_job", False)) and access_mode != "free_starter" and provider_fallback_used:
             raise RuntimeError(
-                "The AI provider did not complete the paid chapter request. The background job will retry, and the entitlement will be returned if all attempts fail."
+                "The AI provider did not complete the paid chapter request. Automatic full-job retry is suppressed by default to avoid duplicate API spend; the entitlement will be returned if this attempt fails."
             )
 
         drafts = project.get("drafts", {})
