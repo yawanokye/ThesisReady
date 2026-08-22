@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.citation_matrix import remove_unverified_generated_citations
-from app.selected_papers import MAX_SELECTED_PAPERS, build_selected_paper_record
+from app.selected_papers import MAX_SELECTED_PAPERS, build_selected_paper_record, prompt_selected_papers
 
 
 def _reload_app(tmp_path, monkeypatch):
@@ -109,7 +109,8 @@ def test_workspace_upload_confirm_and_delete_selected_paper(tmp_path, monkeypatc
         row = conn.execute("SELECT profile_json FROM projects WHERE id = ?", (project_id,)).fetchone()
     raw_profile = json.loads(row[0])
     assert raw_profile["selected_papers"][0]["evidence_excerpt"]
-    assert raw_profile["source_bank"][0]["evidence_excerpt"]
+    assert raw_profile["source_bank"][0]["evidence_excerpt"] == ""
+    assert raw_profile["source_bank"][0]["abstract"]
 
     guarded, audit = remove_unverified_generated_citations(
         "Evidence is available (Mensah, 2025).\n\n# References\nInvented reference.",
@@ -151,3 +152,32 @@ def test_both_student_workflows_expose_fifty_paper_library():
     assert "up to <strong>50 papers</strong>" in strengthener
     assert "/api/chapter-strengthener/extract-selected-papers" in strengthener_js
     assert "selected_papers: strengthenerSelectedPapers" in strengthener_js
+
+
+def test_all_fifty_papers_influence_compact_map_without_fifty_long_excerpts():
+    papers = []
+    for i in range(50):
+        papers.append({
+            "id": f"p{i}",
+            "filename": f"paper-{i}.txt",
+            "title": f"Employee motivation and performance study {i}",
+            "authors": [f"Author {i}"],
+            "year": "2025",
+            "source": "Test Journal",
+            "citation_eligible": True,
+            "metadata_verified": True,
+            "evidence_capsule": f"Results: motivation and performance evidence from paper {i}. Topics: motivation, performance, employees",
+            "evidence_excerpt": (f"Paper {i} reports evidence about employee motivation and task performance. " * 120),
+        })
+    context = prompt_selected_papers({
+        "title": "Employee Motivation and Task Performance",
+        "research_area": "human resource management",
+        "study_context": "public sector",
+        "objectives": ["Examine employee motivation and task performance"],
+        "selected_papers": papers,
+    }, 2)
+    assert context["count"] == 50
+    assert context["library_map_count"] == 50
+    assert len(context["library_map"]) == 50
+    assert len(context["papers"]) <= 8
+    assert all(len(item["evidence_excerpt"]) <= 1400 for item in context["papers"])

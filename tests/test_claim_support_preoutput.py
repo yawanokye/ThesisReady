@@ -133,7 +133,7 @@ def test_preoutput_claim_review_ui_exists_in_both_workflows():
     assert "claim-support/apply-approved" in strengthener_js
 
 
-def test_legacy_draft_is_audited_at_export_and_evidence_claims_are_blocked(tmp_path, monkeypatch):
+def test_legacy_draft_is_audited_at_export_without_claim_review_block(tmp_path, monkeypatch):
     database, _, main = _reload(tmp_path, monkeypatch)
     client = TestClient(main.app)
     created = client.post("/api/projects", json={
@@ -152,9 +152,11 @@ def test_legacy_draft_is_audited_at_export_and_evidence_claims_are_blocked(tmp_p
         conn.execute("UPDATE projects SET drafts_json = ? WHERE id = ?", (json.dumps({"1": draft}), project_id))
         conn.commit()
 
+    import app.access_control as access
+    access.set_access_policy("temporary_open", open_hours=1, updated_by="test")
     response = client.get(f"/api/projects/{project_id}/export/chapter/1")
-    assert response.status_code == 409
-    assert "Claim Support Review" in str(response.json().get("detail")) or "highlighted unsupported claims" in str(response.json().get("detail"))
+    assert response.status_code == 200
+    assert response.headers.get("X-ProjectReady-Evidence-Review") == "pending"
 
     with database.get_conn() as conn:
         row = conn.execute("SELECT profile_json FROM projects WHERE id = ?", (project_id,)).fetchone()
@@ -295,5 +297,39 @@ def test_claim_support_ui_has_progress_ignore_and_final_approval_counts():
     for js in (workspace_js, strengthener_js):
         assert "Searching OpenAlex, Crossref, Semantic Scholar, ERIC, DataCite, Europe PMC and PubMed" in js
         assert "Ignore" in js
+        assert "ignore-bulk" in js
         assert "verified citation reference(s) added" in js
         assert "Google Scholar" in js
+
+
+def test_bulk_ignore_removes_multiple_review_items_once(tmp_path, monkeypatch):
+    database, _sources, main = _reload(tmp_path, monkeypatch)
+    client = TestClient(main.app)
+    created = client.post("/api/projects", json={
+        "title": "Teacher Leadership in Basic Schools",
+        "level": "Research Masters / MPhil",
+        "programme": "MPhil Education",
+        "academic_integrity_confirmed": True,
+        "user_contribution_confirmed": True,
+    }).json()
+    project_id = created["id"]
+    draft = (
+        "# Background to the Study\n\n"
+        "Research shows that teacher leadership improves professional learning [insert verified source for the unsupported citation removed here]. "
+        "Studies also indicate that professional trust is associated with teachers' willingness to lead [insert verified source for the unsupported citation removed here]."
+    )
+    with database.get_conn() as conn:
+        conn.execute("UPDATE projects SET drafts_json = ? WHERE id = ?", (json.dumps({"1": draft}), project_id))
+        conn.commit()
+    review = client.get(f"/api/projects/{project_id}/claim-support-review?workflow=draft&chapter_number=1").json()["review"]
+    ids = [item["id"] for item in review["claims"][:2]]
+    assert len(ids) == 2
+    response = client.post(f"/api/projects/{project_id}/claim-support/ignore-bulk", json={
+        "workflow": "draft", "chapter_number": 1, "claim_ids": ids,
+    })
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ignored_count"] == 2
+    assert "insert verified source" not in body["text"].lower()
+    remaining_ids = {item["id"] for item in body["review"]["claims"]}
+    assert not remaining_ids.intersection(ids)

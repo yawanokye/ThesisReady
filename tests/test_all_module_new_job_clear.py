@@ -28,7 +28,7 @@ def test_strengthener_has_clean_new_job_flow():
     assert "STRENGTHENER_NEW_JOB_PARAM" in js
     assert "storage.removeItem(PROJECT_STORAGE_KEY)" in js
     assert "projectready-strengthener-job:" in js
-    assert "20260718-all-clear-trend-v1" in html
+    assert "20260822-evidence-efficiency-v1" in html
 
 
 def test_topic_ideas_keeps_clear_new_job_and_updated_cache_version():
