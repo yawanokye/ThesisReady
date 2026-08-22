@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Review & Strengthen | ProjectReady AI</title>
-  <link rel="stylesheet" href="/static/chapter_strengthener.css?v=20260718-all-clear-trend-v1">
+  <link rel="stylesheet" href="/static/chapter_strengthener.css?v=20260822-evidence-efficiency-v1">
   <link rel="stylesheet" href="/static/projectready_payments.css?v=20260709-live-payments-v1">
   <link rel="stylesheet" href="/static/user_guide_shared.css?v=20260816-guide-v3">
-  <link rel="stylesheet" href="/static/guided-workspace.css?v=20260815-selected-papers-v1">
+  <link rel="stylesheet" href="/static/guided-workspace.css?v=20260822-evidence-efficiency-v1">
 </head>
 <body class="chapter-strengthener-page" data-guide-module="chapter-strengthener">
   <header class="topbar">
@@ -44,7 +44,7 @@
 
     <section class="guide-help-card" aria-label="Chapter Strengthener user guidance">
       <div><h2>Before uploading a chapter</h2><p>Review complete-chapter and selected-section scope, required research logic and how revision colours should be interpreted.</p></div>
-      <div class="guide-help-actions"><a href="/user-guide#review-strengthen">Read Strengthener guide</a><a href="/user-guide#video">Watch walkthrough</a><a href="/static/guides/projectready-ai-annotated-user-guide.pdf" target="_blank" rel="noopener">Open PDF</a></div>
+      <div class="guide-help-actions"><a href="/user-guide#chapter-strengthener">Read Strengthener guide</a><a href="/user-guide#video">Watch walkthrough</a><a href="/static/guides/projectready-ai-annotated-user-guide.pdf" target="_blank" rel="noopener">Open PDF</a></div>
     </section>
 
     <section class="review-mode-panel card" aria-label="Review and Strengthen modes">
@@ -360,11 +360,16 @@
 
       <section id="strengthenerClaimSupportPanel" class="card claim-support-review-panel" hidden aria-live="polite">
         <div class="claim-support-head">
-          <div><p class="eyebrow">Pre-output evidence gate</p><h2>Claim Support Review</h2></div>
+          <div><p class="eyebrow">Pre-export evidence review</p><h2>Claim Support Review</h2></div>
           <span id="strengthenerClaimSupportBadge" class="claim-support-badge">Review required</span>
         </div>
-        <p class="help">ProjectReady first tries to meet the discipline-specific citation-density target while strengthening the chapter. Only unresolved evidence gaps are listed here. Search OpenAlex, Crossref, Semantic Scholar, ERIC, DataCite, Europe PMC and PubMed, inspect the evidence excerpt or original paper, and approve only sources that truly support the claim. Google Scholar is offered as a manual external search and is not scraped.</p>
+        <p class="help">ProjectReady first tries to meet the discipline-specific citation-density target while strengthening the chapter. Only unresolved evidence gaps are listed here. Search OpenAlex, Crossref, Semantic Scholar, ERIC, DataCite, Europe PMC and PubMed, inspect the evidence excerpt or original paper, and approve only sources that truly support the claim. Google Scholar is offered as a manual external search and is not scraped. <strong>The review does not block Word export</strong>; the exported working revision can be used to guide further reading and source verification.</p>
         <div id="strengthenerClaimSupportSummary" class="claim-support-summary"></div>
+        <div id="strengthenerClaimSupportBulkActions" class="claim-support-bulk-actions" hidden>
+          <label class="inline"><input id="strengthenerClaimSupportSelectAll" type="checkbox" /> Select all unresolved items</label>
+          <button id="strengthenerBulkIgnoreClaimSupportBtn" type="button" class="secondary">Ignore selected</button>
+          <span class="help">Ignoring removes items from this review; it does not verify the claim.</span>
+        </div>
         <div id="strengthenerClaimSupportList" class="claim-support-list"></div>
         <div class="actions">
           <button id="strengthenerApplyApprovedSourcesBtn" type="button">Finalise approved citations</button>
@@ -402,7 +407,7 @@
 
   <footer class="footer">ProjectReady AI, self-service academic research support with user authorship, verification and supervisor review.</footer>
   <script src="/static/projectready_payments.js?v=20260815-complimentary-v2"></script>
-  <script src="/static/chapter_strengthener.js?v=20260816-claim-support-v2"></script>
+  <script src="/static/chapter_strengthener.js?v=20260822-evidence-efficiency-v1"></script>
   <script src="/static/guide_banner.js?v=20260816-guide-v3"></script>
 </body>
 </html>

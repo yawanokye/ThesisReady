@@ -1353,7 +1353,7 @@ function applyDraftResult(result) {
   renderDraftPreview(result.draft || "");
   showDraftQualityHint(result.draft || "", result.generation_metrics || null);
   if (result.warning) {
-    $("draftStatus").textContent = result.warning + " Review the working draft and complete every placeholder before export.";
+    $("draftStatus").textContent = result.warning + " Review the working draft and complete every material placeholder before academic use.";
   }
   setClaimReviewExportGate();
   renderChapterContinuation(result.next_chapter || null);
@@ -1374,13 +1374,15 @@ function findClaimReviewItem(itemId) {
 function setClaimReviewExportGate() {
   const ready = !currentClaimSupportReview || Boolean(currentClaimSupportReview.final_output_ready);
   if ($("downloadDraftBtn")) {
-    $("downloadDraftBtn").disabled = !ready || !$('draftOutput')?.value.trim();
-    $("downloadDraftBtn").classList.toggle('claim-review-locked', !ready);
-    $("downloadDraftBtn").title = ready ? "" : "Complete the Claim Support Review before exporting the chapter.";
+    $("downloadDraftBtn").disabled = !$('draftOutput')?.value.trim();
+    $("downloadDraftBtn").classList.toggle('claim-review-advisory', !ready);
+    $("downloadDraftBtn").classList.remove('claim-review-locked');
+    $("downloadDraftBtn").title = ready ? "" : "Export is available. Claim Support Review is incomplete, so use the working DOCX to continue reading and source verification.";
   }
   if ($("downloadProjectBtn")) {
-    $("downloadProjectBtn").disabled = !ready || Object.keys(savedProjectDrafts || {}).length === 0;
-    $("downloadProjectBtn").classList.toggle('claim-review-locked', !ready);
+    $("downloadProjectBtn").disabled = Object.keys(savedProjectDrafts || {}).length === 0;
+    $("downloadProjectBtn").classList.toggle('claim-review-advisory', !ready);
+    $("downloadProjectBtn").classList.remove('claim-review-locked');
   }
 }
 
@@ -1434,6 +1436,8 @@ function renderClaimSupportReview(review = currentClaimSupportReview) {
   const list = $("claimSupportReviewList");
   const summary = $("claimSupportSummary");
   const badge = $("claimSupportReviewBadge");
+  const bulkActions = $("claimSupportBulkActions");
+  const selectAll = $("claimSupportSelectAll");
   if (!panel || !list || !summary || !badge) return;
   if (!review) {
     panel.hidden = true;
@@ -1442,7 +1446,7 @@ function renderClaimSupportReview(review = currentClaimSupportReview) {
   }
   panel.hidden = false;
   const ready = Boolean(review.final_output_ready);
-  badge.textContent = ready ? 'Evidence gate passed' : 'Review required';
+  badge.textContent = ready ? 'Evidence review complete' : 'Review recommended';
   badge.classList.toggle('ready', ready);
   const finalSummary = review.final_approval_summary || review.application_summary || null;
   const finalBlock = finalSummary ? `<div class="claim-final-approval"><strong>Final approval</strong><br>${Number(finalSummary.verified_citation_references_added || 0)} verified citation reference(s) added · ${Number(finalSummary.unique_verified_sources_added || 0)} unique source(s) · ${Number(finalSummary.ignored_items ?? review.ignored_item_count ?? 0)} item(s) ignored</div>` : '';
@@ -1459,6 +1463,7 @@ function renderClaimSupportReview(review = currentClaimSupportReview) {
       const searching = Boolean(item._searching);
       const searchedDatabases = Array.isArray(item.search_databases) && item.search_databases.length ? `<p class="claim-support-small">Searched: ${escapeHtml(item.search_databases.join(', '))}</p>` : '';
       return `<article class="claim-support-card" data-claim-support-item="${escapeHtml(item.id)}">
+        <label class="claim-support-select"><input type="checkbox" data-claim-ignore-select="${escapeHtml(item.id)}" /> Select for bulk ignore</label>
         <h4>${escapeHtml(title)}</h4>
         <p class="claim-support-small">${escapeHtml(item.heading || 'Chapter body')} · ${isClaim ? `paragraph ${item.paragraph_index}, sentence ${item.sentence_index}` : `paragraph ${item.paragraph_index}`} · ${approved} source(s) approved</p>
         <div class="claim-support-claim">${escapeHtml(text || '')}</div>
@@ -1470,6 +1475,13 @@ function renderClaimSupportReview(review = currentClaimSupportReview) {
         ${searchedDatabases}${claimSupportExternalLinks(item)}${renderClaimSupportCandidates(item)}
       </article>`;
     }).join('');
+  }
+  if (bulkActions) bulkActions.hidden = items.length === 0;
+  if (selectAll) {
+    selectAll.checked = false;
+    selectAll.onchange = () => {
+      list.querySelectorAll('[data-claim-ignore-select]').forEach(box => { box.checked = selectAll.checked; });
+    };
   }
   list.querySelectorAll('[data-find-claim-sources]').forEach(button => button.addEventListener('click', () => findSourcesForClaimReviewItem(button.dataset.findClaimSources).catch(err => { if ($('claimSupportStatus')) $('claimSupportStatus').textContent = err.message || 'Source search failed.'; })));
   list.querySelectorAll('[data-approve-claim-source]').forEach(button => button.addEventListener('click', () => approveClaimReviewSource(button.dataset.approveClaimSource, button.dataset.candidateId).catch(err => { if ($('claimSupportStatus')) $('claimSupportStatus').textContent = err.message || 'Source approval failed.'; })));
@@ -1548,6 +1560,24 @@ async function ignoreClaimReviewItem(itemId) {
   if ($('claimSupportStatus')) $('claimSupportStatus').textContent = data.message || 'Item ignored.';
 }
 
+async function bulkIgnoreClaimReviewItems() {
+  if (!currentProjectId) throw new Error('Create or recover the project first.');
+  const ids = [...document.querySelectorAll('[data-claim-ignore-select]:checked')].map(box => box.dataset.claimIgnoreSelect).filter(Boolean);
+  if (!ids.length) throw new Error('Select one or more unresolved items first.');
+  if (!window.confirm(`Ignore ${ids.length} selected evidence-review item(s)? This removes them from the review list but does not verify their claims.`)) return;
+  if ($('claimSupportStatus')) $('claimSupportStatus').textContent = `Ignoring ${ids.length} selected item(s) and removing matching source-needed markers…`;
+  const data = await api(`/api/projects/${encodeURIComponent(currentProjectId)}/claim-support/ignore-bulk`, {
+    method:'POST', body:JSON.stringify({workflow:'draft', chapter_number:Number(currentChapter), claim_ids:ids})
+  });
+  if (data.text && $('draftOutput')) {
+    $('draftOutput').value = data.text;
+    savedProjectDrafts[String(currentChapter)] = data.text;
+  }
+  currentClaimSupportReview = data.review || currentClaimSupportReview;
+  renderClaimSupportReview(currentClaimSupportReview);
+  if ($('claimSupportStatus')) $('claimSupportStatus').textContent = data.message || `${data.ignored_count || 0} item(s) ignored.`;
+}
+
 async function applyApprovedClaimSources() {
   if (!currentProjectId) throw new Error('Create or recover the project first.');
   if ($('claimSupportStatus')) $('claimSupportStatus').textContent = 'Finalising only approved, verified citations and re-running citation density and claim-support checks…';
@@ -1562,7 +1592,7 @@ async function applyApprovedClaimSources() {
   const summary = currentClaimSupportReview?.final_approval_summary || {};
   const prefix = `Final approval: ${Number(summary.verified_citation_references_added || 0)} verified citation reference(s) added from ${Number(summary.unique_verified_sources_added || 0)} unique source(s); ${Number(summary.ignored_items || 0)} item(s) ignored.`;
   const remainder = currentClaimSupportReview?.final_output_ready
-    ? ' Citation density and claim-support checks now pass. Export is unlocked.'
+    ? ' Citation density and claim-support checks now pass. Evidence review is complete.'
     : ` ${Number(summary.remaining_claims_without_citations || 0)} unsupported claim(s) and ${Number(summary.remaining_paragraph_density_gaps || 0)} paragraph density gap(s) remain.`;
   if ($('claimSupportStatus')) $('claimSupportStatus').textContent = prefix + remainder;
 }
@@ -2046,7 +2076,7 @@ function renderSelectedPapers() {
   const papers = Array.isArray(selectedPapers) ? selectedPapers : [];
   const ready = papers.filter((paper) => paper?.citation_eligible).length;
   if (status && papers.length) {
-    status.textContent = `${papers.length} of 50 selected papers attached. ${ready} citation-ready; ${papers.length - ready} need citation metadata confirmation.`;
+    status.textContent = `${papers.length} of 50 selected papers attached and represented in the evidence map. ${ready} citation-ready; ${papers.length - ready} need citation metadata confirmation. Section writing retrieves only the most relevant original passages.`;
   }
   if (!papers.length) {
     box.innerHTML = '<p class="hint">No selected papers have been uploaded. ProjectReady can still find literature automatically.</p>';
@@ -2538,7 +2568,7 @@ async function restoreChapterVersion(versionId) {
   savedProjectDrafts[String(currentChapter)] = result.draft || "";
   currentClaimSupportReview = null;
   renderDraftPreview(result.draft || "");
-  if ($("draftStatus")) $("draftStatus").textContent = `Version ${result.restored_from} restored as a new recoverable snapshot. Claim support will be re-audited before export.`;
+  if ($("draftStatus")) $("draftStatus").textContent = `Version ${result.restored_from} restored as a new recoverable snapshot. Claim support should be re-audited when convenient; working Word export remains available.`;
   await refreshClaimSupportReview();
   await refreshResearchCockpit();
 }
@@ -2599,7 +2629,7 @@ if ($("draftOutput")) {
     if (currentClaimSupportReview) {
       currentClaimSupportReview.final_output_ready = false;
       currentClaimSupportReview.status = "stale_after_manual_edit";
-      if ($("claimSupportStatus")) $("claimSupportStatus").textContent = "The chapter was edited after the last evidence audit. Re-run Claim Support Review before export.";
+      if ($("claimSupportStatus")) $("claimSupportStatus").textContent = "The chapter was edited after the last evidence audit. Re-run Claim Support Review when convenient; Word export remains available for reading and supervisor review.";
       setClaimReviewExportGate();
     }
     renderDraftPreview($("draftOutput").value);
@@ -2615,6 +2645,7 @@ document.addEventListener("change", (event) => { if (event.target?.closest?.(".w
 window.addEventListener("projectready:session-ready", () => refreshWorkspaceAccessStatus().catch(() => {}));
 $("applyApprovedClaimSourcesBtn")?.addEventListener("click", () => applyApprovedClaimSources().catch(err => { if ($("claimSupportStatus")) $("claimSupportStatus").textContent = err.message || "Approved citations could not be applied."; }));
 $("refreshClaimSupportReviewBtn")?.addEventListener("click", () => refreshClaimSupportReview().catch(err => { if ($("claimSupportStatus")) $("claimSupportStatus").textContent = err.message || "Claim-support review could not be refreshed."; }));
+$("bulkIgnoreClaimSupportBtn")?.addEventListener("click", () => bulkIgnoreClaimReviewItems().catch(err => { if ($("claimSupportStatus")) $("claimSupportStatus").textContent = err.message || "Selected items could not be ignored."; }));
 $("createProjectBtn").addEventListener("click", () => createProject().catch(err => handleWorkspaceError(err, "projectStatus")));
 if ($("saveProjectProfileBtn")) $("saveProjectProfileBtn").addEventListener("click", () => saveCurrentProjectProfile().catch(err => handleWorkspaceError(err, "projectStatus")));
 if ($("refreshCockpitBtn")) $("refreshCockpitBtn").addEventListener("click", () => refreshResearchCockpit().catch(err => handleWorkspaceError(err, "projectStatus")));
@@ -2660,6 +2691,9 @@ if ($("uploadSelectedPapersBtn")) {
 }
 $("checkBtn").addEventListener("click", () => runCheck().then(updatePaymentPanel).catch(err => handleWorkspaceError(err, "draftStatus")));
 $("downloadDraftBtn").addEventListener("click", () => {
+  if (currentClaimSupportReview && !currentClaimSupportReview.final_output_ready && $("draftStatus")) {
+    $("draftStatus").textContent = "Exporting a working draft with unresolved Claim Support Review items. Use the DOCX to guide further reading, source verification and supervisor review.";
+  }
   protectedDownload(`/api/projects/${currentProjectId}/export/chapter/${currentChapter}`, currentChapter)
     .then(updatePaymentPanel)
     .catch(err => handleWorkspaceError(err, "draftStatus"));
@@ -2667,6 +2701,9 @@ $("downloadDraftBtn").addEventListener("click", () => {
 $("downloadCheckBtn").addEventListener("click", () => download(`/api/projects/${currentProjectId}/export/check/${currentChapter}`));
 if ($("downloadProjectBtn")) $("downloadProjectBtn").addEventListener("click", () => {
   if (!currentProjectId) return handleWorkspaceError(new Error("Create or restore a project first."), "draftStatus");
+  if (currentClaimSupportReview && !currentClaimSupportReview.final_output_ready && $("draftStatus")) {
+    $("draftStatus").textContent = "Compiling a project working file with unresolved evidence-review items. This is allowed for reading and supervisor review; unresolved claims are not treated as verified.";
+  }
   download(`/api/projects/${currentProjectId}/export/project-working-file`);
 });
 if ($("unlockChapterBtn")) $("unlockChapterBtn").addEventListener("click", () => openCurrentCheckout().catch(err => handleWorkspaceError(err, "chapterAccessStatus")));

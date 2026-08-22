@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="/static/projectready-suite.css?v=20260710-nav-tabs-v1" />
   <link rel="stylesheet" href="/static/projectready_payments.css?v=20260709-live-payments-v2" />
   <link rel="stylesheet" href="/static/user_guide_shared.css?v=20260816-guide-v3" />
-  <link rel="stylesheet" href="/static/guided-workspace.css?v=20260815-selected-papers-v1" />
+  <link rel="stylesheet" href="/static/guided-workspace.css?v=20260822-evidence-efficiency-v1" />
 </head>
 <body class="workspace-clarity-theme suite-page thesis-suite" data-guide-module="thesis-workspace" data-product-module="research-journey">
   <header class="workspace-topbar">
@@ -43,7 +43,7 @@
 
   <section class="guide-help-card" aria-label="Thesis Workspace user guidance">
     <div><h2>New to the Research Journey?</h2><p>Start with your research logic, then ProjectReady shows what is complete, what is missing and what you should do next. Major research choices remain researcher-approved decisions.</p></div>
-    <div class="guide-help-actions"><a href="/user-guide#research-journey">Read Workspace guide</a><a href="/user-guide#video">Watch walkthrough</a><a href="/static/guides/projectready-ai-annotated-user-guide.pdf" target="_blank" rel="noopener">Open PDF</a></div>
+    <div class="guide-help-actions"><a href="/user-guide#thesis-workspace">Read Workspace guide</a><a href="/user-guide#video">Watch walkthrough</a><a href="/static/guides/projectready-ai-annotated-user-guide.pdf" target="_blank" rel="noopener">Open PDF</a></div>
   </section>
 
   <section class="suite-module-grid journey-module-grid" aria-label="ProjectReady AI main modules">
@@ -434,7 +434,7 @@
 
         <div class="selected-paper-library" id="selectedPaperLibrary">
           <h3>Use my selected papers</h3>
-          <p class="hint">Optional. Upload up to <strong>50 papers</strong> that you want ProjectReady to consider alongside the literature it finds automatically. Your papers are prioritised when relevant to the active section. ProjectReady still checks claim support and will never cite a paper merely because it was uploaded.</p>
+          <p class="hint">Optional. Upload up to <strong>50 papers</strong> that you want ProjectReady to consider alongside the literature it finds automatically. <strong>All uploaded papers are represented in a compact evidence map for synthesis</strong>; only the most relevant original passages are sent to the writing model for the active section. This keeps all 50 available to enrich the work without repeatedly transmitting all 50 papers. ProjectReady still checks claim support and will never cite a paper merely because it was uploaded.</p>
           <label><span class="field-label">Selected papers, up to 50 per project</span>
             <input id="selectedPaperFiles" type="file" multiple accept=".pdf,.docx,.txt,.md,.rtf" />
           </label>
@@ -661,11 +661,16 @@
       </div>
       <section id="claimSupportReviewPanel" class="claim-support-review-panel" hidden aria-live="polite">
         <div class="claim-support-head">
-          <div><p class="eyebrow">Pre-output evidence gate</p><h3>Claim Support Review</h3></div>
+          <div><p class="eyebrow">Pre-export evidence review</p><h3>Claim Support Review</h3></div>
           <span id="claimSupportReviewBadge" class="claim-support-badge">Review required</span>
         </div>
-        <p class="hint">ProjectReady highlights evidence-bearing claims that still have no citation and paragraphs below the 2-3 verified-source target. ProjectReady first tries to meet the discipline-specific citation-density target during drafting. Only unresolved evidence gaps are listed here. Search OpenAlex, Crossref, Semantic Scholar, ERIC, DataCite, Europe PMC and PubMed, inspect the evidence, then approve only sources that genuinely support the statement. Google Scholar is available as a manual external search because it is not scraped. Search results are never inserted automatically.</p>
+        <p class="hint">ProjectReady highlights evidence-bearing claims that still have no citation and paragraphs below the 2-3 verified-source target. ProjectReady first tries to meet the discipline-specific citation-density target during drafting. Only unresolved evidence gaps are listed here. Search OpenAlex, Crossref, Semantic Scholar, ERIC, DataCite, Europe PMC and PubMed, inspect the evidence, then approve only sources that genuinely support the statement. Google Scholar is available as a manual external search because it is not scraped. <strong>This review is strongly recommended but does not block Word export</strong>, so you can use the exported working draft to guide reading and source checking.</p>
         <div id="claimSupportSummary" class="claim-support-summary"></div>
+        <div id="claimSupportBulkActions" class="claim-support-bulk-actions" hidden>
+          <label class="inline"><input id="claimSupportSelectAll" type="checkbox" /> Select all unresolved items</label>
+          <button id="bulkIgnoreClaimSupportBtn" type="button" class="secondary-action">Ignore selected</button>
+          <span class="hint">Ignoring removes items from this review; it does not verify the claim.</span>
+        </div>
         <div id="claimSupportReviewList" class="claim-support-list"></div>
         <div class="actions compact-actions">
           <button id="applyApprovedClaimSourcesBtn" type="button" class="primary-action">Finalise approved citations</button>
@@ -733,7 +738,7 @@
     </div>
   </div>
   <script src="/static/projectready_payments.js?v=20260815-complimentary-v2"></script>
-  <script src="/static/app.js?v=20260816-claim-support-v2"></script>
+  <script src="/static/app.js?v=20260822-evidence-efficiency-v1"></script>
   <script src="/static/guide_banner.js?v=20260816-guide-v3"></script>
 </body>
 </html>

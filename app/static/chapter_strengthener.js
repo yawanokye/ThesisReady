@@ -478,7 +478,7 @@ function renderStrengthenerSelectedPapers() {
     return;
   }
   const ready = all.filter(({paper}) => paper?.citation_eligible).length;
-  if (status) status.textContent = `${all.length} of 50 selected papers available; ${ready} citation-ready.`;
+  if (status) status.textContent = `${all.length} of 50 selected papers available in the evidence map; ${ready} citation-ready. Section strengthening retrieves only the most relevant original passages.`;
   box.innerHTML = all.map(({paper, persisted}, index) => {
     const citationReady = Boolean(paper.citation_eligible);
     const authors = strengthenerPaperAuthors(paper);
@@ -1006,7 +1006,7 @@ function applyStrengthenerResult(data) {
     : (data.saved_to_project ? ' The strengthened chapter was saved to the project.' : '');
   message(errors.length
     ? `Revision completed with ${errors.length} provider warning(s). Review the report and action items.`
-    : `Working revision completed.${saveMessage} Review the working revision, report, sources, facts and all action items before export or academic use.`);
+    : `Working revision completed.${saveMessage} Review the working revision, report, sources, facts and all action items before relying on it for academic use. Word export remains available for guided reading and review.`);
   updateAccessSummary();
   updateStrengthenerFlow();
 }
@@ -1083,11 +1083,13 @@ function renderStrengthenerClaimSupportReview(review = currentStrengthenerClaimR
   const list = byId('strengthenerClaimSupportList');
   const summary = byId('strengthenerClaimSupportSummary');
   const badge = byId('strengthenerClaimSupportBadge');
+  const bulkActions = byId('strengthenerClaimSupportBulkActions');
+  const selectAll = byId('strengthenerClaimSupportSelectAll');
   if (!panel || !list || !summary || !badge) return;
   if (!review) { panel.hidden = true; renderStrengthenerHighlightedPreview(); enableOutputs(Boolean(revisedChapter.value.trim())); return; }
   panel.hidden = false;
   const ready = Boolean(review.final_output_ready);
-  badge.textContent = ready ? 'Evidence gate passed' : 'Review required';
+  badge.textContent = ready ? 'Evidence review complete' : 'Review recommended';
   badge.classList.toggle('ready', ready);
   const finalSummary = review.final_approval_summary || review.application_summary || null;
   const finalBlock = finalSummary ? `<div class="claim-final-approval"><strong>Final approval</strong><br>${Number(finalSummary.verified_citation_references_added || 0)} verified citation reference(s) added · ${Number(finalSummary.unique_verified_sources_added || 0)} unique source(s) · ${Number(finalSummary.ignored_items ?? review.ignored_item_count ?? 0)} item(s) ignored</div>` : '';
@@ -1099,13 +1101,20 @@ function renderStrengthenerClaimSupportReview(review = currentStrengthenerClaimR
     const approved = Array.isArray(item.approved_sources) ? item.approved_sources.length : 0;
     const searching = Boolean(item._searching);
     const searchedDatabases = Array.isArray(item.search_databases) && item.search_databases.length ? `<p class="claim-support-small">Searched: ${escapeHtmlLocal(item.search_databases.join(', '))}</p>` : '';
-    return `<article class="claim-support-card"><h4>${isClaim ? 'Claim needs source support' : `Paragraph needs ${item.minimum_verified_sources || 2}-${item.preferred_verified_sources || 3} distinct verified sources`}</h4>
+    return `<article class="claim-support-card"><label class="claim-support-select"><input type="checkbox" data-strength-ignore-select="${escapeHtmlLocal(item.id)}" /> Select for bulk ignore</label><h4>${isClaim ? 'Claim needs source support' : `Paragraph needs ${item.minimum_verified_sources || 2}-${item.preferred_verified_sources || 3} distinct verified sources`}</h4>
       <p class="claim-support-small">${escapeHtmlLocal(item.heading || 'Chapter body')} · paragraph ${Number(item.paragraph_index || 0)}${isClaim ? `, sentence ${Number(item.sentence_index || 0)}` : ''} · ${approved} source(s) approved</p>
       <div class="claim-support-claim">${escapeHtmlLocal(text || '')}</div>
       <div class="actions"><button type="button" class="secondary" data-strength-find-sources="${escapeHtmlLocal(item.id)}" ${searching ? 'disabled' : ''}>${searching ? 'Searching…' : 'Find verified sources'}</button><button type="button" class="secondary claim-ignore-action" data-strength-ignore-support="${escapeHtmlLocal(item.id)}" ${searching ? 'disabled' : ''}>Ignore</button></div>
       ${searching ? '<div class="claim-search-progress"><span class="claim-spinner" aria-hidden="true"></span> Searching OpenAlex, Crossref, Semantic Scholar, ERIC, DataCite, Europe PMC and PubMed…</div>' : ''}
       ${searchedDatabases}${strengthenerExternalSearchLinks(item)}${renderStrengthenerCandidates(item)}</article>`;
   }).join('') : `<div class="claim-support-card"><strong>Claim-support review passed.</strong><p>Only unresolved evidence gaps are listed here. No unsupported evidence-bearing claims or paragraph-density gaps remain.</p></div>`;
+  if (bulkActions) bulkActions.hidden = items.length === 0;
+  if (selectAll) {
+    selectAll.checked = false;
+    selectAll.onchange = () => {
+      list.querySelectorAll('[data-strength-ignore-select]').forEach(box => { box.checked = selectAll.checked; });
+    };
+  }
   list.querySelectorAll('[data-strength-find-sources]').forEach(button => button.addEventListener('click', () => findStrengthenerClaimSources(button.dataset.strengthFindSources).catch(error => { byId('strengthenerClaimSupportStatus').textContent = error.message || 'Source search failed.'; })));
   list.querySelectorAll('[data-strength-approve-source]').forEach(button => button.addEventListener('click', () => approveStrengthenerClaimSource(button.dataset.strengthApproveSource, button.dataset.candidateId).catch(error => { byId('strengthenerClaimSupportStatus').textContent = error.message || 'Source approval failed.'; })));
   list.querySelectorAll('[data-strength-ignore-support]').forEach(button => button.addEventListener('click', () => ignoreStrengthenerClaimItem(button.dataset.strengthIgnoreSupport).catch(error => { byId('strengthenerClaimSupportStatus').textContent = error.message || 'Item could not be ignored.'; })));
@@ -1187,6 +1196,27 @@ async function ignoreStrengthenerClaimItem(itemId) {
   byId('strengthenerClaimSupportStatus').textContent = data.message || 'Item ignored.';
 }
 
+async function bulkIgnoreStrengthenerClaimItems() {
+  if (!projectId()) throw new Error('Connect or recover a project first.');
+  const ids = [...document.querySelectorAll('[data-strength-ignore-select]:checked')].map(box => box.dataset.strengthIgnoreSelect).filter(Boolean);
+  if (!ids.length) throw new Error('Select one or more unresolved items first.');
+  if (!window.confirm(`Ignore ${ids.length} selected evidence-review item(s)? This removes them from the review list but does not verify their claims.`)) return;
+  byId('strengthenerClaimSupportStatus').textContent = `Ignoring ${ids.length} selected item(s) and removing matching source-needed markers…`;
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectId())}/claim-support/ignore-bulk`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({workflow:'strengthener', chapter_number:chapterNumber(), claim_ids:ids})
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.detail || 'Selected items could not be ignored.');
+  if (data.text) {
+    revisedChapter.value = data.text;
+    if (lastResult) lastResult.revised_chapter_text = data.text;
+  }
+  currentStrengthenerClaimReview = data.review || currentStrengthenerClaimReview;
+  renderStrengthenerClaimSupportReview(currentStrengthenerClaimReview);
+  byId('strengthenerClaimSupportStatus').textContent = data.message || `${data.ignored_count || 0} item(s) ignored.`;
+}
+
 async function applyStrengthenerApprovedSources() {
   if (!projectId()) throw new Error('Connect or recover a project first.');
   byId('strengthenerClaimSupportStatus').textContent = 'Finalising only approved, verified citations and re-running citation density and claim-support checks…';
@@ -1203,7 +1233,7 @@ async function applyStrengthenerApprovedSources() {
   const summary = currentStrengthenerClaimReview?.final_approval_summary || {};
   const prefix = `Final approval: ${Number(summary.verified_citation_references_added || 0)} verified citation reference(s) added from ${Number(summary.unique_verified_sources_added || 0)} unique source(s); ${Number(summary.ignored_items || 0)} item(s) ignored.`;
   const remainder = currentStrengthenerClaimReview?.final_output_ready
-    ? ' Citation density and claim-support checks now pass. Export is unlocked.'
+    ? ' Citation density and claim-support checks now pass. Evidence review is complete.'
     : ` ${Number(summary.remaining_claims_without_citations || 0)} unsupported claim(s) and ${Number(summary.remaining_paragraph_density_gaps || 0)} paragraph density gap(s) remain.`;
   byId('strengthenerClaimSupportStatus').textContent = prefix + remainder;
 }
@@ -1264,6 +1294,7 @@ async function cancelActiveStrengthenerJob() {
 
 byId('strengthenerApplyApprovedSourcesBtn')?.addEventListener('click', () => applyStrengthenerApprovedSources().catch(error => { byId('strengthenerClaimSupportStatus').textContent = error.message || 'Approved citations could not be applied.'; }));
 byId('strengthenerRefreshClaimReviewBtn')?.addEventListener('click', () => refreshStrengthenerClaimReview().catch(error => { byId('strengthenerClaimSupportStatus').textContent = error.message || 'Claim-support review could not be refreshed.'; }));
+byId('strengthenerBulkIgnoreClaimSupportBtn')?.addEventListener('click', () => bulkIgnoreStrengthenerClaimItems().catch(error => { byId('strengthenerClaimSupportStatus').textContent = error.message || 'Selected items could not be ignored.'; }));
 
 byId('cancelStrengthenerJobBtn')?.addEventListener('click', async () => {
   try {
@@ -1275,12 +1306,13 @@ byId('cancelStrengthenerJobBtn')?.addEventListener('click', async () => {
 
 function enableOutputs(enabled) {
   const evidenceReady = !currentStrengthenerClaimReview || Boolean(currentStrengthenerClaimReview.final_output_ready);
-  copyChapterBtn.disabled = !enabled || !evidenceReady;
+  copyChapterBtn.disabled = !enabled;
   copyReportBtn.disabled = !enabled;
-  downloadRevisionBtn.disabled = !enabled || !evidenceReady;
-  copyChapterBtn.classList.toggle('claim-review-locked', enabled && !evidenceReady);
-  downloadRevisionBtn.classList.toggle('claim-review-locked', enabled && !evidenceReady);
-  downloadRevisionBtn.title = enabled && !evidenceReady ? 'Complete the Claim Support Review before exporting the strengthened chapter.' : '';
+  downloadRevisionBtn.disabled = !enabled;
+  copyChapterBtn.classList.remove('claim-review-locked');
+  downloadRevisionBtn.classList.remove('claim-review-locked');
+  downloadRevisionBtn.classList.toggle('claim-review-advisory', enabled && !evidenceReady);
+  downloadRevisionBtn.title = enabled && !evidenceReady ? 'Export is available. Claim Support Review is incomplete, so use the working revision to continue reading and source verification.' : '';
 }
 
 form.addEventListener('submit', async (event) => {
@@ -1417,7 +1449,11 @@ copyMatrixBtn.addEventListener('click', () => copyText(supervisorMatrix.value, '
 
 downloadRevisionBtn.addEventListener('click', async () => {
   if (!lastResult || !revisedChapter.value.trim()) return;
-  message('Preparing the DOCX with revisions in blue and action items in red…');
+  if (currentStrengthenerClaimReview && !currentStrengthenerClaimReview.final_output_ready) {
+    message('Preparing a working DOCX with unresolved Claim Support Review items. Use it to guide reading, source verification and supervisor review.');
+  } else {
+    message('Preparing the DOCX with revisions in blue and action items in red…');
+  }
   downloadRevisionBtn.disabled = true;
 
   try {
