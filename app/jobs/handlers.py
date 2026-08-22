@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import re
 from typing import Any, Callable
 
 from fastapi import HTTPException
@@ -12,6 +14,15 @@ from app.schemas import ChapterRevisionRequest, DraftRequest
 
 class PermanentJobError(RuntimeError):
     """A request problem that should not be retried by another worker attempt."""
+
+
+def _retry_expensive_model_timeout() -> bool:
+    return str(os.getenv("PROJECTREADY_RETRY_MODEL_TIMEOUT_JOBS", "0") or "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _looks_like_expensive_model_timeout(message: str) -> bool:
+    value = str(message or "")
+    return bool(re.search(r"timed?\s*out|timeout|model was unavailable|provider did not complete|revision model was unavailable", value, flags=re.I))
 
 
 def _worker_request(path: str, claim: dict[str, Any] | None = None) -> Request:
@@ -75,6 +86,10 @@ def process_job(job: dict[str, Any], progress: Callable[[int, str, str], None]) 
             message = str(detail)
         if int(exc.status_code or 500) < 500:
             raise PermanentJobError(message) from exc
+        if _looks_like_expensive_model_timeout(message) and not _retry_expensive_model_timeout():
+            raise PermanentJobError(
+                message + " Automatic full-job retry was suppressed to avoid duplicate API spend. Retry manually when appropriate."
+            ) from exc
         raise RuntimeError(message) from exc
     except (ValueError, TypeError) as exc:
         raise PermanentJobError(str(exc)) from exc
