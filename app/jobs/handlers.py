@@ -10,6 +10,7 @@ from starlette.requests import Request
 from app.routers.chapter_strengthener import strengthen_project_chapter
 from app.routers.generation import draft_chapter
 from app.schemas import ChapterRevisionRequest, DraftRequest
+from app.ai_usage import start_usage_tracking, finish_usage_tracking
 
 
 class PermanentJobError(RuntimeError):
@@ -51,6 +52,8 @@ def process_job(job: dict[str, Any], progress: Callable[[int, str, str], None]) 
     job_type = str(job.get("job_type") or "")
     project_id = str(job.get("project_id") or payload.get("project_id") or "")
     claim = payload.get("_preauthorized_claim") or {}
+    chapter_number = int(job.get("chapter_number") or (payload.get("request") or {}).get("chapter_number") or 0)
+    start_usage_tracking(job_type=job_type, project_id=project_id, chapter_number=chapter_number)
 
     try:
         if job_type == "chapter_draft":
@@ -63,6 +66,9 @@ def process_job(job: dict[str, Any], progress: Callable[[int, str, str], None]) 
                 _worker_request(f"/api/projects/{project_id}/draft", claim),
             )
             progress(90, "saving", "Saving the completed working draft and quality metrics.")
+            usage = finish_usage_tracking()
+            result["ai_usage"] = usage
+            print(f"[ai-usage {job_type} {project_id} ch{chapter_number}] {usage}", flush=True)
             return result
 
         if job_type == "chapter_strengthener":
@@ -75,10 +81,16 @@ def process_job(job: dict[str, Any], progress: Callable[[int, str, str], None]) 
                 _worker_request(f"/api/projects/{project_id}/chapter-strengthener/revise", claim),
             )
             progress(90, "saving", "Saving the strengthened chapter and revision report.")
+            usage = finish_usage_tracking()
+            result["ai_usage"] = usage
+            print(f"[ai-usage {job_type} {project_id} ch{chapter_number}] {usage}", flush=True)
             return result
 
         raise PermanentJobError(f"Unsupported background job type: {job_type}")
     except HTTPException as exc:
+        usage = finish_usage_tracking()
+        if usage.get("call_count"):
+            print(f"[ai-usage failed {job_type} {project_id} ch{chapter_number}] {usage}", flush=True)
         detail = exc.detail
         if isinstance(detail, dict):
             message = str(detail.get("message") or detail.get("detail") or detail)
@@ -92,4 +104,12 @@ def process_job(job: dict[str, Any], progress: Callable[[int, str, str], None]) 
             ) from exc
         raise RuntimeError(message) from exc
     except (ValueError, TypeError) as exc:
+        usage = finish_usage_tracking()
+        if usage.get("call_count"):
+            print(f"[ai-usage failed {job_type} {project_id} ch{chapter_number}] {usage}", flush=True)
         raise PermanentJobError(str(exc)) from exc
+    except Exception:
+        usage = finish_usage_tracking()
+        if usage.get("call_count"):
+            print(f"[ai-usage failed {job_type} {project_id} ch{chapter_number}] {usage}", flush=True)
+        raise
