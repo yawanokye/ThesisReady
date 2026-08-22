@@ -219,15 +219,14 @@ def _call_responses_with_fallbacks(
     instructions: str,
     max_output_tokens: int,
 ) -> tuple[str, str, list[dict[str, str]]]:
-    """Call the revision model with retries and configured fallbacks.
+    """Call the revision model with deliberate, cost-controlled fallbacks.
 
-    The old implementation made one very large request. A single timeout then
-    returned the chapter unchanged and consumed the user's revision entitlement.
-    This helper tries configured fallback models and reduces the token ceiling on
-    retry so a transient timeout does not become a completed fallback report.
+    Large automatic retries can repeat almost the entire paid context after a
+    provider timeout. The default is therefore one attempt per configured model;
+    deployments may explicitly raise PROJECTREADY_CHAPTER_REVISION_MODEL_ATTEMPTS.
     """
     errors: list[dict[str, str]] = []
-    attempts_per_model = _env_int("PROJECTREADY_CHAPTER_REVISION_MODEL_ATTEMPTS", 2, minimum=1, maximum=4)
+    attempts_per_model = _env_int("PROJECTREADY_CHAPTER_REVISION_MODEL_ATTEMPTS", 1, minimum=1, maximum=4)
     for candidate in _revision_model_candidates(level):
         token_budget = max_output_tokens
         for attempt in range(1, attempts_per_model + 1):
@@ -450,7 +449,11 @@ def _source_identity(source: dict[str, Any]) -> str:
 
 def _source_context(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
     result = []
-    for index, source in enumerate(sources[:90], start=1):
+    ordinary_sources = [
+        source for source in sources
+        if isinstance(source, dict) and str(source.get("attachment_origin") or "") != "uploaded_selected_paper"
+    ]
+    for index, source in enumerate(ordinary_sources[:60], start=1):
         result.append({
             "key": f"S{index}",
             "title": source.get("title", ""),
@@ -460,7 +463,7 @@ def _source_context(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "doi": source.get("doi", ""),
             "url": source.get("url", ""),
             "abstract": str(source.get("abstract") or "")[:900],
-            "uploaded_evidence_excerpt": str(source.get("evidence_excerpt") or "")[:3600],
+            "uploaded_evidence_excerpt": "",
             "attachment_origin": source.get("attachment_origin", ""),
             "user_uploaded_full_text": bool(source.get("user_uploaded_full_text")),
             "citation_eligible": bool(source.get("citation_eligible", True)),
@@ -477,7 +480,7 @@ def _search_sources(payload: dict[str, Any]) -> tuple[list[dict[str, Any]], list
     for paper in payload.get("selected_papers") or []:
         if not isinstance(paper, dict):
             continue
-        source = paper_to_source_record(paper)
+        source = paper_to_source_record(paper, include_evidence=True)
         if source:
             attached.append(source)
     blocked = [item for item in attached if _looks_retracted(item)]

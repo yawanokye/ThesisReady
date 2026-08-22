@@ -169,6 +169,12 @@ class ClaimSupportIgnoreRequest(BaseModel):
     claim_id: str
 
 
+class ClaimSupportBulkIgnoreRequest(BaseModel):
+    workflow: str = "draft"
+    chapter_number: int
+    claim_ids: list[str] = Field(default_factory=list, min_length=1, max_length=300)
+
+
 class ResearchCoachRequest(BaseModel):
     project_id: str = ""
     mode: str = "explain"

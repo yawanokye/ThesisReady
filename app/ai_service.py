@@ -854,8 +854,10 @@ def _retrieved_sources_for_prompt(profile: dict[str, Any], chapter_number: int |
     """Return source-search results in a compact prompt-friendly form."""
     retrieved = profile.get("retrieved_sources") or {}
     source_bank = _merged_source_bank(profile)
+    selected_mirror_count = sum(1 for src in source_bank if str(src.get("attachment_origin") or "") == "uploaded_selected_paper")
+    prompt_source_bank = [src for src in source_bank if str(src.get("attachment_origin") or "") != "uploaded_selected_paper"]
     compact_sources = []
-    for src in source_bank:
+    for src in prompt_source_bank:
         compact_sources.append({
             "citation_key": src.get("citation_key", ""),
             "title": src.get("title", ""),
@@ -864,8 +866,8 @@ def _retrieved_sources_for_prompt(profile: dict[str, Any], chapter_number: int |
             "source": src.get("source", ""),
             "doi": src.get("doi", ""),
             "url": src.get("url", ""),
-            "abstract": src.get("abstract", ""),
-            "uploaded_evidence_excerpt": str(src.get("evidence_excerpt") or "")[:3600],
+            "abstract": str(src.get("abstract") or "")[:1200],
+            "uploaded_evidence_excerpt": "",
             "attachment_origin": src.get("attachment_origin", ""),
             "user_uploaded_full_text": bool(src.get("user_uploaded_full_text")),
             "citation_eligible": bool(src.get("citation_eligible", True)),
@@ -897,6 +899,7 @@ def _retrieved_sources_for_prompt(profile: dict[str, Any], chapter_number: int |
         "databases": retrieved.get("databases", []),
         "usage_note": retrieved.get("usage_note", ""),
         "source_count": total_source_count,
+        "selected_paper_mirrors_excluded_from_prompt": selected_mirror_count,
         "sources_in_prompt": len(compact_sources),
         "relevance_counts": _source_relevance_counts(compact_sources),
         "recommended_relevant_sources_to_review": target,
@@ -922,6 +925,74 @@ def _retrieved_sources_for_prompt(profile: dict[str, Any], chapter_number: int |
             "Minimise em dashes and en dashes. Prefer commas, semicolons, colons, parentheses, or separate sentences.",
             "Only bracketed attention placeholders should require user attention, such as [insert current statistic], [verify source], [confirm sample size], or [provide supervisor-approved wording]."
         ],
+    }
+
+
+def _planning_source_metadata(source_context: dict[str, Any]) -> dict[str, Any]:
+    """Strip abstracts/evidence from the long-chapter planning call.
+
+    Planning needs coverage and source identity, not repeated article excerpts.
+    Detailed evidence is retrieved again only for the active section chunk.
+    """
+    sources = []
+    for src in (source_context or {}).get("sources") or []:
+        if not isinstance(src, dict):
+            continue
+        sources.append({
+            "citation_key": src.get("citation_key", ""),
+            "title": src.get("title", ""),
+            "authors": src.get("authors", []),
+            "year": src.get("year", ""),
+            "source": src.get("source", ""),
+            "doi": src.get("doi", ""),
+            "database": src.get("database", ""),
+            "relevance_tier": src.get("relevance_tier", "unclassified"),
+            "relevance_reason": src.get("relevance_reason", ""),
+            "suggested_use": src.get("suggested_use", ""),
+        })
+    return {
+        "query": (source_context or {}).get("query", ""),
+        "source_count": (source_context or {}).get("source_count", len(sources)),
+        "sources_in_plan": len(sources),
+        "sources": sources,
+        "rule": "Metadata only for planning. Retrieve accessible evidence again for the section before making a detailed claim.",
+    }
+
+
+def _context_tokens(values: list[str] | str) -> set[str]:
+    if isinstance(values, str):
+        values = [values]
+    stop = {"chapter", "section", "study", "research", "introduction", "review", "analysis", "results"}
+    return {
+        token for token in re.findall(r"[a-z0-9]{4,}", " ".join(str(v or "") for v in values).lower())
+        if token not in stop
+    }
+
+
+def _retrieved_sources_for_context(source_context: dict[str, Any], context_terms: list[str] | str, *, limit: int = 14) -> dict[str, Any]:
+    """Select only the automatic-source evidence most relevant to one chunk."""
+    query = _context_tokens(context_terms)
+    ranked: list[tuple[float, dict[str, Any]]] = []
+    for src in (source_context or {}).get("sources") or []:
+        if not isinstance(src, dict):
+            continue
+        title = str(src.get("title") or "")
+        abstract = str(src.get("abstract") or "")
+        tokens = _context_tokens([title, abstract, str(src.get("suggested_use") or "")])
+        title_hits = len(query & _context_tokens(title))
+        hits = len(query & tokens)
+        tier = str(src.get("relevance_tier") or "").lower()
+        score = float(hits + 2 * title_hits + (3 if tier == "highly_relevant" else 1 if tier == "partly_relevant" else 0))
+        ranked.append((score, src))
+    ranked.sort(key=lambda pair: pair[0], reverse=True)
+    selected = [src for score, src in ranked[:max(1, min(int(limit), 20))] if score > 0]
+    if not selected:
+        selected = [src for _, src in ranked[:min(8, len(ranked))]]
+    return {
+        **{k: v for k, v in (source_context or {}).items() if k != "sources"},
+        "sources_in_prompt": len(selected),
+        "sources": selected,
+        "section_retrieval_note": "Only sources relevant to this section chunk are carrying abstracts into this model call. The full source catalogue remains available to the project and long-chapter plan.",
     }
 
 
@@ -2169,10 +2240,12 @@ def _call_openai_response_safely(
         response = client.responses.create(**request_kwargs)
         return str(getattr(response, "output_text", "") or "").strip()
     except Exception:
-        # Some model snapshots have lower per-response output limits. Retry once
-        # with a conservative cap before moving to the configured fallback model.
+        # Repeating a large request after a timeout can duplicate substantial API
+        # spend. Same-model automatic retries are therefore opt-in. A configured
+        # fallback model remains available as a deliberate recovery route.
+        allow_same_model_retry = str(os.getenv("PROJECTREADY_SAFE_MODEL_RETRY", "0") or "0").strip().lower() in {"1", "true", "yes", "on"}
         safe_retry_cap = int(os.getenv("OPENAI_SAFE_RETRY_MAX_OUTPUT_TOKENS", "12000") or 12000)
-        if max_output_tokens and int(max_output_tokens) > safe_retry_cap:
+        if allow_same_model_retry and max_output_tokens and int(max_output_tokens) > safe_retry_cap:
             try:
                 request_kwargs["max_output_tokens"] = safe_retry_cap
                 response = client.responses.create(**request_kwargs)
@@ -2354,7 +2427,13 @@ def _build_long_chapter_plan(
         "project_profile": base_prompt.get("project_profile") or {},
         "draft_grounding_and_provisional_mode": base_prompt.get("draft_grounding_and_provisional_mode") or {},
         "previous_chapters_for_alignment": base_prompt.get("previous_chapters_for_alignment") or {},
-        "retrieved_sources": base_prompt.get("retrieved_sources") or {},
+        "retrieved_sources": _planning_source_metadata(base_prompt.get("retrieved_sources") or {}),
+        "selected_paper_library": {
+            "count": (base_prompt.get("user_selected_papers") or {}).get("count", 0),
+            "citation_ready": (base_prompt.get("user_selected_papers") or {}).get("citation_ready", 0),
+            "library_map": (base_prompt.get("user_selected_papers") or {}).get("library_map", []),
+            "rule": "Use all paper capsules to plan themes, contradictions, contexts, methods and gaps. Detailed claims still require section-level evidence retrieval.",
+        },
         "chapter_page_word_and_citation_targets": full_req,
         "selected_sections": base_prompt.get("selected_sections") or [],
         "chunk_map": [
@@ -2441,6 +2520,16 @@ def _generate_chapter_in_chunks(
         chunk_prompt = dict(base_prompt)
         chunk_prompt["task"] = f"Develop contiguous section chunk {chunk_index} of {len(chunks)} for one coherent academic working draft."
         chunk_prompt["selected_sections"] = chunk_sections
+        chunk_context_terms = [
+            str(section.get("section_title") or section.get("section_id") or "")
+            for section in chunk_sections
+        ]
+        chunk_prompt["retrieved_sources"] = _retrieved_sources_for_context(
+            base_prompt.get("retrieved_sources") or {}, chunk_context_terms, limit=14
+        )
+        chunk_prompt["user_selected_papers"] = prompt_selected_papers(
+            profile, chapter_number, context_terms=chunk_context_terms, include_library_map=False
+        )
         chunk_prompt["chapter_page_word_and_citation_targets"] = chunk_req
         chunk_prompt["long_chapter_development_plan"] = long_chapter_plan
         chunk_prompt["output_requirements"] = list(base_prompt.get("output_requirements") or []) + [

@@ -65,6 +65,8 @@ def research_record(profile: dict[str, Any], project_title: str = "") -> dict[st
         "theory_framework": {
             "theoretical_framework": str(profile.get("theoretical_framework") or "").strip(),
             "conceptual_framework_summary": str(profile.get("conceptual_framework_summary") or "").strip(),
+            "conceptual_framework_paths": profile.get("conceptual_framework_paths") if isinstance(profile.get("conceptual_framework_paths"), list) else [],
+            "conceptual_framework_optional": True,
         },
         "method": {
             "research_approach": str(profile.get("research_approach") or "").strip(),
@@ -100,7 +102,7 @@ def decision_checkpoints(profile: dict[str, Any]) -> list[dict[str, Any]]:
         ("theoretical_framework", "Theory/theoretical framework", "Confirm the theoretical basis rather than allowing the system to silently choose it."),
         ("sampling_strategy", "Sampling strategy", "Confirm how participants, cases or records will be selected and why the approach is defensible."),
         ("analysis_plan", "Analysis plan", "Confirm how each objective/question/hypothesis will be analysed before results are interpreted."),
-        ("conceptual_framework", "Conceptual framework", "Confirm the direction and role of constructs, mediators, moderators or qualitative concepts."),
+        ("conceptual_framework", "Conceptual framework (optional)", "Use a conceptual framework when it helps clarify constructs, mediators, moderators or paths. Analysis may proceed without it when the objectives, design and data structure are sufficient."),
     ]
     if family == "qualitative":
         specs.insert(1, ("philosophical_position", "Philosophical position", "Confirm the philosophical or interpretive position where the design requires it."))
@@ -144,7 +146,7 @@ def build_journey(project: dict[str, Any]) -> dict[str, Any]:
     evidence = record["evidence"]
     expected, developed, started = _draft_state(project)
     decisions = decision_checkpoints(profile)
-    unresolved_decisions = [item for item in decisions if item["status"] not in {"approved", "confirmed"}]
+    unresolved_decisions = [item for item in decisions if item["status"] not in {"approved", "confirmed"} and item.get("key") != "conceptual_framework"]
     corrections = profile.get("supervisor_corrections") if isinstance(profile.get("supervisor_corrections"), list) else []
     open_corrections = [item for item in corrections if isinstance(item, dict) and str(item.get("status") or "open") not in {"resolved", "ignored"}]
 
@@ -162,7 +164,7 @@ def build_journey(project: dict[str, Any]) -> dict[str, Any]:
     if total_sources < 8: evidence_missing.append("a stronger verified evidence base")
     theory_missing = []
     if not record["theory_framework"]["theoretical_framework"]: theory_missing.append("approved theory/theoretical framework")
-    if not record["theory_framework"]["conceptual_framework_summary"] and family in {"quantitative", "mixed_methods"}: theory_missing.append("conceptual framework/path summary")
+    # A conceptual framework is optional. When supplied it can guide variable roles, mediation/moderation and SEM paths, but its absence must not block analysis.
     design_missing = []
     if not method["research_approach"]: design_missing.append("research approach")
     if not method["research_design"]: design_missing.append("research design")
@@ -190,7 +192,7 @@ def build_journey(project: dict[str, Any]) -> dict[str, Any]:
         {"key":"design","number":5,"label":"Research Design","description":"Design, sampling, instruments, ethics and analysis plan.","href":"/workspace#researchRecordPanel","missing":design_missing},
         {"key":"chapters","number":6,"label":"Develop Chapters","description":"Develop full chapters or selected sections using the saved research record.","href":"/quick-chapter","missing":[] if developed or started else ["first chapter working draft"]},
         {"key":"strengthen","number":7,"label":"Review & Strengthen","description":"Strengthen existing work, resolve citation gaps and apply supervisor guidance.","href":"/review-strengthen","missing":[]},
-        {"key":"analysis","number":8,"label":"Data & Analysis","description":("Upload and analyse qualitative evidence, coding and themes." if family == "qualitative" else "Upload real data/results and align analysis with objectives."),"href":"/workspace#generationStep","missing":[] if method["analysis_plan"] else ["confirmed analysis plan"]},
+        {"key":"analysis","number":8,"label":"Data & Analysis Workspace","description":("Traceable qualitative coding, themes and mixed-methods integration." if family == "qualitative" else "Upload raw data, compute descriptives/diagnostics and estimate regression, time-series, panel, mediation, moderation or SEM models."),"href":"/data-analysis","missing":[] if (profile.get("analysis_run_summaries") or method["analysis_plan"]) else ["analysis plan or first verified analysis run"]},
         {"key":"supervisor","number":9,"label":"Supervisor Corrections","description":"Track, address, ignore with reason and resolve supervisor comments.","href":"/review-strengthen#strengthenerOptionalSupport","missing":[f"{len(open_corrections)} open correction(s)"] if open_corrections else []},
         {"key":"audit","number":10,"label":"Final Research Audit","description":"Check objective coverage, citations, references, results and conclusions.","href":"/workspace#reviewStep","missing":[] if developed >= expected and not unresolved_decisions else ([f"{expected-developed} chapter(s) not yet complete"] if developed < expected else []) + ([f"{len(unresolved_decisions)} research decision(s) pending"] if unresolved_decisions else [])},
         {"key":"compile","number":11,"label":"Compile Thesis","description":"Compile the project working file after research and evidence checks.","href":"/workspace#compileProjectBtn","missing":[] if developed >= expected else [f"complete {expected-developed} remaining chapter(s)"]},
@@ -238,15 +240,19 @@ def final_audit(project: dict[str, Any], logic: dict[str, Any] | None = None) ->
     logic = logic or {}
     checks: list[dict[str, Any]] = []
     record = journey["research_record"]
+    profile = project.get("profile") or {}
     obj = record["logic"]["objectives"]
     rq = record["logic"]["research_questions"]
     checks.append({"key":"objective_question_alignment","label":"Objectives and questions","status":"pass" if obj and len(rq) >= len(obj) else "needs_action","message":"Every objective should trace to a research question."})
-    checks.append({"key":"decision_checkpoints","label":"Research decisions","status":"pass" if all(d["status"] in {"approved","confirmed"} for d in journey["decision_checkpoints"]) else "needs_action","message":"Confirm major theory, design, sampling and analysis decisions."})
+    required_decisions = [d for d in journey["decision_checkpoints"] if d.get("key") != "conceptual_framework"]
+    checks.append({"key":"decision_checkpoints","label":"Research decisions","status":"pass" if all(d["status"] in {"approved","confirmed"} for d in required_decisions) else "needs_action","message":"Confirm major theory, design, sampling and analysis decisions. The conceptual framework is optional."})
     developed = journey["progress"]["developed_chapters"]
     expected = journey["progress"]["expected_chapters"]
     checks.append({"key":"chapter_completion","label":"Chapter coverage","status":"pass" if developed >= expected else "needs_action","message":f"{developed} of {expected} expected chapters are substantially developed."})
     source_count = int(record["evidence"]["source_count"]) + int(record["evidence"]["selected_paper_count"])
     checks.append({"key":"evidence_base","label":"Evidence base","status":"pass" if source_count >= 8 else "needs_action","message":f"{source_count} attached/discovered source records are currently available. Claim-level verification remains required."})
+    analysis_runs = profile.get("analysis_run_summaries") if isinstance(profile.get("analysis_run_summaries"), list) else []
+    checks.append({"key":"data_analysis","label":"Verified data analysis","status":"pass" if analysis_runs or journey.get("approach_family") == "qualitative" else "needs_action","message":(f"{len(analysis_runs)} deterministic analysis run(s) are recorded." if analysis_runs else "Run or attach the approved analysis in the Data & Analysis Workspace before final quantitative results are treated as verified.")})
     profile = project.get("profile") or {}
     reviews = profile.get("claim_support_reviews") if isinstance(profile.get("claim_support_reviews"), dict) else {}
     unresolved_reviews = [key for key, value in reviews.items() if isinstance(value, dict) and not bool(value.get("final_output_ready"))]

@@ -4,6 +4,8 @@ import hashlib
 import re
 from typing import Any
 
+from app.selected_papers import paper_to_source_record
+
 _NUMERIC_SIGNAL_RE = re.compile(
     r"(?:\b\d+(?:\.\d+)?\s*%|\b\d+(?:\.\d+)?\s*(?:percent|percentage|million|billion|thousand|"
     r"years?|months?|days?|respondents?|participants?|households?|firms?|students?|workers?|cases?|"
@@ -34,6 +36,15 @@ def _structured_sources(profile: dict[str, Any]) -> list[dict[str, Any]]:
     retrieved = profile.get("retrieved_sources") or {}
     if isinstance(retrieved, dict) and isinstance(retrieved.get("sources"), list):
         collections.append([x for x in retrieved.get("sources") or [] if isinstance(x, dict)])
+    selected_records = []
+    for paper in profile.get("selected_papers") or []:
+        if not isinstance(paper, dict):
+            continue
+        source = paper_to_source_record(paper, include_evidence=True)
+        if source:
+            selected_records.append(source)
+    if selected_records:
+        collections.append(selected_records)
 
     out: list[dict[str, Any]] = []
     seen: set[str] = set()

@@ -17,6 +17,9 @@ MAX_SELECTED_PAPER_EVIDENCE_CHARS = max(
     8000,
     min(40000, int(os.getenv("PROJECTREADY_SELECTED_PAPER_EVIDENCE_CHARS", "26000") or 26000)),
 )
+PROMPT_SELECTED_PAPER_LIMIT = max(4, min(12, int(os.getenv("PROJECTREADY_SELECTED_PAPERS_PER_SECTION", "8") or 8)))
+PROMPT_SELECTED_PAPER_EXCERPT_CHARS = max(700, min(2200, int(os.getenv("PROJECTREADY_SELECTED_PAPER_PROMPT_CHARS", "1400") or 1400)))
+PROMPT_SELECTED_PAPER_CAPSULE_CHARS = max(260, min(800, int(os.getenv("PROJECTREADY_SELECTED_PAPER_CAPSULE_CHARS", "520") or 520)))
 _METADATA_TIMEOUT = max(2, min(15, int(os.getenv("PROJECTREADY_SELECTED_PAPER_METADATA_TIMEOUT_SECONDS", "7") or 7)))
 _ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md", ".rtf"}
 _DOI_RE = re.compile(r"\b10\.\d{4,9}/[-._;()/:A-Z0-9]+", re.I)
@@ -124,6 +127,53 @@ def evidence_excerpt(text: str) -> str:
         out.append(clipped)
         total += len(clipped)
     return "\n\n--- selected paper evidence excerpt ---\n\n".join(out).strip()
+
+
+
+
+_CAPSULE_STOPWORDS = {
+    "about", "after", "again", "against", "among", "because", "been", "before", "being", "between",
+    "could", "from", "have", "into", "more", "most", "other", "paper", "research", "results", "study",
+    "than", "that", "their", "there", "these", "this", "through", "using", "were", "which", "with", "within",
+}
+
+def _top_terms(text: str, limit: int = 10) -> list[str]:
+    counts: dict[str, int] = {}
+    for token in re.findall(r"[a-z][a-z0-9-]{3,}", str(text or "").lower()):
+        if token in _CAPSULE_STOPWORDS or token.isdigit():
+            continue
+        counts[token] = counts.get(token, 0) + 1
+    return [term for term, _ in sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))[:limit]]
+
+def evidence_capsule(text: str) -> str:
+    """Return a small locally derived evidence capsule used to represent every uploaded paper.
+
+    The capsule is created without an LLM so all 50 papers can inform planning at
+    negligible API cost. Detailed claims still require retrieval of the original
+    stored evidence excerpt before citation.
+    """
+    raw = str(text or "").strip()
+    if not raw:
+        return ""
+    snippets: list[str] = []
+    front = _clean(raw[:900])
+    if front:
+        snippets.append(front[:180])
+    section_patterns = [
+        ("Method", r"^\s*(?:\d+(?:\.\d+)*\s+)?(?:materials\s+and\s+methods|methodology|methods?)\b"),
+        ("Results", r"^\s*(?:\d+(?:\.\d+)*\s+)?(?:results?|findings?)\b"),
+        ("Discussion", r"^\s*(?:\d+(?:\.\d+)*\s+)?discussion\b"),
+        ("Conclusion", r"^\s*(?:\d+(?:\.\d+)*\s+)?conclusions?\b"),
+    ]
+    for label, pattern in section_patterns:
+        window = _clean(_section_window(raw, pattern, span=1200))
+        if window:
+            snippets.append(f"{label}: {window[:150]}")
+    terms = _top_terms(raw, 8)
+    if terms:
+        snippets.append("Topics: " + ", ".join(terms))
+    capsule = " | ".join(snippets)
+    return capsule[:PROMPT_SELECTED_PAPER_CAPSULE_CHARS].strip()
 
 
 def _crossref_metadata(doi: str) -> dict[str, Any] | None:
@@ -253,6 +303,7 @@ def build_selected_paper_record(filename: str, content: bytes) -> dict[str, Any]
         "url": _clean(meta.get("url")),
         "database": "User uploaded full text + Crossref" if verified else "User uploaded full text",
         "evidence_excerpt": evidence_excerpt(text),
+        "evidence_capsule": evidence_capsule(text),
         "relevance_tier": "unclassified",
         "relevance_reason": "Selected and uploaded by the student for this research project.",
         "suggested_use": "Prioritise where the uploaded full text directly supports the active claim or section.",
@@ -281,7 +332,7 @@ def public_paper_record(record: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def paper_to_source_record(paper: dict[str, Any]) -> dict[str, Any] | None:
+def paper_to_source_record(paper: dict[str, Any], *, include_evidence: bool = False) -> dict[str, Any] | None:
     if not bool(paper.get("citation_eligible")):
         return None
     title = _clean(paper.get("title"))
@@ -308,10 +359,10 @@ def paper_to_source_record(paper: dict[str, Any]) -> dict[str, Any] | None:
         "metadata_verified": bool(paper.get("metadata_verified")),
         "user_metadata_confirmed": bool(paper.get("user_metadata_confirmed")),
         "citation_eligible": True,
-        "claim_support_eligible": True,
+        "claim_support_eligible": bool(include_evidence),
         "verification_basis": "User-uploaded full text with verified or user-confirmed bibliographic metadata",
-        "evidence_excerpt": str(paper.get("evidence_excerpt") or "")[:MAX_SELECTED_PAPER_EVIDENCE_CHARS],
-        "abstract": str(paper.get("evidence_excerpt") or "")[:1400],
+        "evidence_excerpt": str(paper.get("evidence_excerpt") or "")[:MAX_SELECTED_PAPER_EVIDENCE_CHARS] if include_evidence else "",
+        "abstract": (str(paper.get("evidence_excerpt") or "")[:1400] if include_evidence else (_clean(paper.get("evidence_capsule")) or evidence_capsule(str(paper.get("evidence_excerpt") or "")))[:PROMPT_SELECTED_PAPER_CAPSULE_CHARS]),
         "relevance_tier": str(paper.get("relevance_tier") or "unclassified"),
         "relevance_reason": str(paper.get("relevance_reason") or "Selected and uploaded by the student."),
         "suggested_use": str(paper.get("suggested_use") or "Use where the uploaded full text directly supports the active claim."),
@@ -359,6 +410,9 @@ def sync_selected_papers_to_source_bank(profile: dict[str, Any], *, limit: int =
         "citation_ready": sum(1 for item in papers if isinstance(item, dict) and item.get("citation_eligible")),
         "needs_metadata_confirmation": sum(1 for item in papers if isinstance(item, dict) and not item.get("citation_eligible")),
         "maximum": MAX_SELECTED_PAPERS,
+        "evidence_strategy": "all-paper capsule map plus section-relevant passage retrieval",
+        "default_papers_per_section": PROMPT_SELECTED_PAPER_LIMIT,
+        "default_passage_chars_per_paper": PROMPT_SELECTED_PAPER_EXCERPT_CHARS,
     }
     return merged
 
@@ -413,42 +467,59 @@ def update_selected_paper_metadata(paper: dict[str, Any], updates: dict[str, Any
     return updated
 
 
-def prompt_selected_papers(profile: dict[str, Any], chapter_number: int, *, limit: int = 16) -> dict[str, Any]:
+def prompt_selected_papers(
+    profile: dict[str, Any],
+    chapter_number: int,
+    *,
+    limit: int | None = None,
+    context_terms: list[str] | str | None = None,
+    include_library_map: bool = True,
+) -> dict[str, Any]:
+    """Build a cost-efficient prompt view over the complete selected-paper library.
+
+    Every uploaded paper is represented by a compact locally created capsule in
+    ``library_map``. Only the most relevant papers contribute longer evidence
+    excerpts to the active drafting call. This lets all 50 papers shape synthesis
+    without repeatedly transmitting all 50 full-text excerpts.
+    """
     papers = profile.get("selected_papers") or []
     if not isinstance(papers, list) or not papers:
-        return {"count": 0, "citation_ready": 0, "papers": []}
+        return {"count": 0, "citation_ready": 0, "library_map_count": 0, "papers_in_prompt": 0, "papers": [], "library_map": []}
 
     query_parts = [
         _clean(profile.get("title")), _clean(profile.get("research_area")), _clean(profile.get("study_context")),
     ]
     objectives = profile.get("objectives") or []
     if isinstance(objectives, list):
-        query_parts.extend(_clean(item) for item in objectives[:4])
+        query_parts.extend(_clean(item) for item in objectives[:6])
     variables = profile.get("variables") or {}
     if isinstance(variables, dict):
         raw = variables.get("raw_variables") or variables.get("constructs") or []
         if isinstance(raw, list):
-            query_parts.extend(_clean(item) for item in raw[:8])
+            query_parts.extend(_clean(item) for item in raw[:12])
         else:
             query_parts.append(_clean(raw))
     chapter_terms = {
         1: "background problem context significance",
-        2: "literature theory conceptual empirical gap framework",
+        2: "literature theory conceptual empirical gap framework synthesis",
         3: "method methodology measurement sampling instrument validity reliability",
         4: "results findings discussion interpretation",
         5: "conclusion implication recommendation",
     }.get(int(chapter_number or 0), "")
     query_parts.append(chapter_terms)
+    if isinstance(context_terms, list):
+        query_parts.extend(_clean(item) for item in context_terms if _clean(item))
+    elif context_terms:
+        query_parts.append(_clean(context_terms))
     query_tokens = {tok for tok in re.findall(r"[a-z0-9]{4,}", " ".join(query_parts).lower())}
 
     ranked: list[tuple[float, dict[str, Any]]] = []
-    for paper in papers:
+    library_map: list[dict[str, Any]] = []
+    for paper in papers[:MAX_SELECTED_PAPERS]:
         if not isinstance(paper, dict):
             continue
-        haystack = (" ".join([
-            _clean(paper.get("title")),
-            str(paper.get("evidence_excerpt") or "")[:12000],
-        ])).lower()
+        capsule = _clean(paper.get("evidence_capsule")) or evidence_capsule(str(paper.get("evidence_excerpt") or ""))
+        haystack = " ".join([_clean(paper.get("title")), capsule, str(paper.get("evidence_excerpt") or "")[:8000]]).lower()
         tokens = set(re.findall(r"[a-z0-9]{4,}", haystack))
         overlap = len(query_tokens & tokens)
         score = float(overlap)
@@ -457,10 +528,20 @@ def prompt_selected_papers(profile: dict[str, Any], chapter_number: int, *, limi
         if paper.get("metadata_verified"):
             score += 1.5
         ranked.append((score, paper))
+        if include_library_map:
+            library_map.append({
+                "selected_paper_id": paper.get("id"),
+                "title": paper.get("title") or paper.get("filename"),
+                "authors": paper.get("authors") or [],
+                "year": paper.get("year"),
+                "citation_eligible": bool(paper.get("citation_eligible")),
+                "evidence_capsule": capsule[:PROMPT_SELECTED_PAPER_CAPSULE_CHARS],
+            })
     ranked.sort(key=lambda pair: pair[0], reverse=True)
 
+    evidence_limit = max(1, min(int(limit or PROMPT_SELECTED_PAPER_LIMIT), 12))
     compact: list[dict[str, Any]] = []
-    for _score, paper in ranked[: max(1, min(limit, 20))]:
+    for score, paper in ranked[:evidence_limit]:
         compact.append({
             "selected_paper_id": paper.get("id"),
             "filename": paper.get("filename"),
@@ -473,22 +554,29 @@ def prompt_selected_papers(profile: dict[str, Any], chapter_number: int, *, limi
             "metadata_status": paper.get("metadata_status"),
             "citation_eligible": bool(paper.get("citation_eligible")),
             "provenance_note": paper.get("provenance_note"),
-            "evidence_excerpt": str(paper.get("evidence_excerpt") or "")[:3600],
+            "relevance_score": round(score, 2),
+            "evidence_excerpt": str(paper.get("evidence_excerpt") or "")[:PROMPT_SELECTED_PAPER_EXCERPT_CHARS],
         })
     return {
-        "count": len(papers),
+        "count": len([paper for paper in papers if isinstance(paper, dict)]),
         "citation_ready": sum(1 for paper in papers if isinstance(paper, dict) and paper.get("citation_eligible")),
         "needs_metadata_confirmation": sum(1 for paper in papers if isinstance(paper, dict) and not paper.get("citation_eligible")),
+        "library_map_count": len(library_map),
         "papers_in_prompt": len(compact),
+        "selection_mode": "all-paper synthesis map plus section-relevant evidence retrieval",
+        "library_map": library_map,
         "papers": compact,
         "rules": [
+            "All uploaded papers are represented in library_map when include_library_map=true, so the complete student-curated library can shape chapter planning and synthesis.",
+            "Only the highest-relevance evidence excerpts are sent for the active section. This is a context-efficiency measure, not a limit on how many uploaded papers may inform the project.",
+            "Use library_map to identify themes, contrasts, contexts, theories, methods and gaps across the complete uploaded-paper collection, then rely on papers.evidence_excerpt for claim-level wording and citation support.",
             "The user deliberately selected and uploaded these papers. Prioritise them when they are directly relevant, while still using ProjectReady-discovered literature where useful.",
             "Use the evidence excerpt only for claims actually supported by the uploaded text. Do not infer results, statistics, quotations or methods that are not visible in the excerpt.",
             "A paper with citation_eligible=true may be cited using its supplied metadata. A paper with citation_eligible=false may inform understanding, but do not create an author-year citation or reference entry from it until the user confirms the bibliographic metadata.",
-            "If a non-citation-ready paper is essential to a claim, insert [confirm citation metadata for uploaded paper: filename] rather than inventing author/year details.",
             "Never assume that a user-selected paper supports a claim merely because it was uploaded. Apply the same claim-support and relevance checks used for automatically discovered sources.",
         ],
     }
+
 
 
 def public_source_bank(sources: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
@@ -499,5 +587,6 @@ def public_source_bank(sources: list[dict[str, Any]] | None) -> list[dict[str, A
             continue
         item = dict(source)
         item.pop("evidence_excerpt", None)
+        item.pop("evidence_capsule", None)
         output.append(item)
     return output

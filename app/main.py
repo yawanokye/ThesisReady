@@ -10,11 +10,12 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.database import init_db
+from app.data_analysis import init_analysis_tables
 from app.access_control import init_access_control_tables
 from app.internal_portal import init_internal_portal_tables, internal_session_or_none, router as internal_portal_router
 from app.jobs.store import init_job_tables
 from app.payments.store import init_payment_tables
-from app.routers import access, chapter_strengthener, generation, jobs, journal_article, payments, projects, research_coach, sources, templates, topic_ideas
+from app.routers import access, chapter_strengthener, data_analysis, generation, jobs, journal_article, payments, projects, research_coach, sources, templates, topic_ideas
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -38,6 +39,7 @@ async def lifespan(_: FastAPI):
     init_access_control_tables()
     init_job_tables()
     init_internal_portal_tables()
+    init_analysis_tables()
     yield
 
 
@@ -83,6 +85,7 @@ app.add_middleware(
 app.include_router(access.router)
 app.include_router(templates.router)
 app.include_router(projects.router)
+app.include_router(data_analysis.router)
 app.include_router(research_coach.router)
 app.include_router(sources.router)
 app.include_router(topic_ideas.router)
@@ -124,6 +127,14 @@ def quick_chapter_page() -> FileResponse:
 @app.get("/review-strengthen")
 def review_strengthen_page() -> FileResponse:
     return chapter_strengthener_page()
+
+
+@app.get("/data-analysis")
+def data_analysis_page() -> FileResponse:
+    return FileResponse(
+        STATIC_DIR / "data_analysis.html",
+        headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
+    )
 
 
 @app.get("/research-coach")
