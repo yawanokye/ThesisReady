@@ -232,3 +232,6 @@ ProjectReady now uses **Research Journey** as its flagship module. Chapter devel
 
 ## August 2026 — Full Data & Analysis Workspace
 Research Journey Stage 8 now provides raw-data analysis for CSV/Excel datasets, deterministic descriptive statistics and diagnostics, regression-family models, mediation/moderation, time-series analysis, panel regression, multilevel models and SEM with a professional SVG path diagram. The conceptual framework is optional and can assist variable/path mapping. Qualitative coding support remains traceable to uploaded transcript excerpts, and mixed-methods integration uses only researcher-confirmed findings/themes. See `docs/updates/u15.md`.
+
+## August 2026: evidence-efficient selected-paper library and non-blocking Word export
+Claim Support Review is now advisory for Word export, with bulk Ignore in both Draft Development and Chapter Strengthener. The 50-paper library now uses an all-paper compact evidence map plus section-level passage retrieval, eliminating repeated transmission of all uploaded excerpts while preserving their contribution to synthesis. Cost-safe retry defaults also prevent automatic repetition of expensive timeout jobs. See `EVIDENCE_EFFICIENCY_AND_NONBLOCKING_EXPORT_UPDATE_2026-08-22.md`.
