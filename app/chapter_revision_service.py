@@ -13,6 +13,7 @@ from app.citation_matrix import citation_target, citation_density_metrics, parag
 from app.provisional_statistics import provisional_statistic_prompt_context
 from app.selected_papers import paper_to_source_record, prompt_selected_papers
 from app.action_items import detach_action_items
+from app.ai_usage import record_openai_response, record_openai_failure, optional_pass_budget_exceeded
 from app.ai_service import (
     _clean_chapter_references,
     _ensure_markdown_heading_spacing,
@@ -226,8 +227,13 @@ def _call_responses_with_fallbacks(
     deployments may explicitly raise PROJECTREADY_CHAPTER_REVISION_MODEL_ATTEMPTS.
     """
     errors: list[dict[str, str]] = []
-    attempts_per_model = _env_int("PROJECTREADY_CHAPTER_REVISION_MODEL_ATTEMPTS", 1, minimum=1, maximum=4)
-    for candidate in _revision_model_candidates(level):
+    allow_retries = str(os.getenv("PROJECTREADY_ALLOW_CHAPTER_REVISION_RETRIES", "0") or "0").strip().lower() in {"1", "true", "yes", "on"}
+    attempts_per_model = _env_int("PROJECTREADY_CHAPTER_REVISION_MODEL_ATTEMPTS", 1, minimum=1, maximum=4) if allow_retries else 1
+    candidates = _revision_model_candidates(level)
+    allow_fallback_models = str(os.getenv("PROJECTREADY_ALLOW_CHAPTER_REVISION_FALLBACK_MODELS", "0") or "0").strip().lower() in {"1", "true", "yes", "on"}
+    if not allow_fallback_models and candidates:
+        candidates = candidates[:1]
+    for candidate in candidates:
         token_budget = max_output_tokens
         for attempt in range(1, attempts_per_model + 1):
             try:
@@ -236,7 +242,10 @@ def _call_responses_with_fallbacks(
                     max_output_tokens=max(3500, token_budget),
                     instructions=instructions,
                     input=json.dumps(prompt, ensure_ascii=False, indent=2),
+                    reasoning={"effort": str(os.getenv("PROJECTREADY_OPENAI_REASONING_EFFORT", "low") or "low")},
+                    service_tier=str(os.getenv("PROJECTREADY_OPENAI_SERVICE_TIER", "default") or "default"),
                 )
+                record_openai_response(response, candidate, purpose="chapter_strengthener_main")
                 output = _response_output_text(response)
                 if output:
                     return output, candidate, errors
@@ -246,6 +255,7 @@ def _call_responses_with_fallbacks(
                 })
             except Exception as exc:
                 message = str(exc)[:240]
+                record_openai_failure(candidate, purpose="chapter_strengthener_main", error=message)
                 errors.append({
                     "provider": "openai",
                     "error": f"{candidate} attempt {attempt}: {message}",
@@ -816,7 +826,8 @@ def _humanize_strengthened_chapter_with_model(
     Balanced mode touches only the weakest batches and Deep mode covers all eligible
     batches up to a configurable cap.
     """
-    if mode not in {"balanced", "deep"} or not client or not text.strip():
+    enable_model_humanizer = str(os.getenv("PROJECTREADY_ENABLE_MODEL_HUMANIZER", "0") or "0").strip().lower() in {"1", "true", "yes", "on"}
+    if mode not in {"balanced", "deep"} or not client or not text.strip() or not enable_model_humanizer or optional_pass_budget_exceeded():
         return text
 
     threshold = _env_int("PROJECTREADY_HUMANIZER_MODEL_THRESHOLD", 97, minimum=60, maximum=99)
@@ -889,7 +900,10 @@ def _humanize_strengthened_chapter_with_model(
                 max_output_tokens=_humanizer_batch_output_tokens(int(batch.get("word_count") or 0)),
                 instructions="Perform an evidence-preserving, high-variation scholarly naturalness edit. Return only the revised section.",
                 input=json.dumps(prompt, ensure_ascii=False, indent=2),
+                reasoning={"effort": "none"},
+                service_tier=str(os.getenv("PROJECTREADY_OPENAI_SERVICE_TIER", "default") or "default"),
             )
+            record_openai_response(response, model, purpose="strengthener_humanizer")
             candidate = _response_output_text(response)
             candidate, _ = humanize_scholarly_text(candidate, mode="balanced") if candidate else (original, {})
             valid, _issues = validate_humanizer_preservation(
@@ -898,7 +912,8 @@ def _humanize_strengthened_chapter_with_model(
                 max_word_change_ratio=float(variation_profile["model_word_change_limit"]),
             )
             output.append(candidate if candidate and valid else original)
-        except Exception:
+        except Exception as exc:
+            record_openai_failure(model, purpose="strengthener_humanizer", error=str(exc))
             output.append(original)
 
     candidate = "\n\n".join(part.strip() for part in output if part.strip()).strip()

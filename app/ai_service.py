@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import hashlib
 import re
 import subprocess
 from datetime import datetime
@@ -20,6 +21,7 @@ from app.citation_matrix import (
     remove_unverified_generated_citations,
 )
 from app.provisional_statistics import provisional_statistic_prompt_context
+from app.ai_usage import record_openai_response, record_openai_failure, optional_pass_budget_exceeded
 from app.selected_papers import prompt_selected_papers
 from app.scholarly_humanizer import (
     analyse_scholarly_style,
@@ -2052,6 +2054,8 @@ def _review_source_integration(
         instructions + " Revise rather than restart. Preserve the student's context and depth. Use only directly relevant attached sources and return one clean References section containing only cited sources.",
         json.dumps(repair_payload, ensure_ascii=False, indent=2),
         max_output_tokens=_max_output_tokens_for_length(length_requirements, revision=True),
+        purpose="source_integration_review",
+        reasoning_effort="low",
     )
     if revised:
         return _polish_generated_text(revised)
@@ -2117,7 +2121,7 @@ def _refine_humanizer_batch_with_model(
             "Keep the word count within six percent of the supplied section.",
             "Return only the complete revised section with its original headings. Do not add a report.",
         ],
-        "original_generation_context": original_prompt,
+        "original_generation_context": str(original_prompt or "")[:4000],
         "section_to_refine": batch_text,
     }
     candidate = _call_openai_response_safely(
@@ -2126,6 +2130,8 @@ def _refine_humanizer_batch_with_model(
         instructions + " Perform one preservation-gated, high-variation scholarly naturalness edit. Return only the revised section.",
         json.dumps(payload, ensure_ascii=False, indent=2),
         max_output_tokens=_humanizer_batch_token_budget(int(diagnostic.get("word_count") or 0)),
+        purpose="scholarly_humanizer",
+        reasoning_effort="none",
     )
     if not candidate:
         return batch_text
@@ -2157,7 +2163,13 @@ def _human_academic_revision_pass(
     controls = _student_contribution_requirements(profile)
     mode = _humanizer_mode(profile)
     local_draft, local_report = humanize_scholarly_text(draft, mode=mode)
-    if mode in {"off", "light"} or not controls.get("human_revision_pass_requested", True):
+    enable_model_humanizer = str(os.getenv("PROJECTREADY_ENABLE_MODEL_HUMANIZER", "0") or "0").strip().lower() in {"1", "true", "yes", "on"}
+    if (
+        mode in {"off", "light"}
+        or not controls.get("human_revision_pass_requested", True)
+        or not enable_model_humanizer
+        or optional_pass_budget_exceeded()
+    ):
         return local_draft
 
     has_style_context = any(str(controls.get(k) or "").strip() for k in [
@@ -2228,37 +2240,63 @@ def _call_openai_response_safely(
     prompt: str,
     *,
     max_output_tokens: int | None = None,
+    purpose: str = "model_call",
+    reasoning_effort: str | None = None,
+    cache_key: str | None = None,
 ) -> str:
+    # Long-form academic writing is primarily a synthesis/writing task. The old
+    # default inherited the model's medium reasoning effort on every chunk, which
+    # can generate substantial billed reasoning tokens that never appear in the
+    # chapter. Low reasoning is the safe default; individual high-complexity calls
+    # can explicitly opt up.
+    effort = str(reasoning_effort or os.getenv("PROJECTREADY_OPENAI_REASONING_EFFORT", "low") or "low").strip().lower()
+    if effort not in {"none", "low", "medium", "high", "xhigh", "max"}:
+        effort = "low"
     request_kwargs: dict[str, Any] = {
         "model": model,
         "instructions": instructions,
         "input": prompt,
+        "reasoning": {"effort": effort},
+        # Do not inherit an account/project Fast/Priority default accidentally.
+        # Long academic background jobs favour predictable standard pricing.
+        "service_tier": str(os.getenv("PROJECTREADY_OPENAI_SERVICE_TIER", "default") or "default"),
     }
     if max_output_tokens:
         request_kwargs["max_output_tokens"] = int(max_output_tokens)
+    if cache_key:
+        request_kwargs["prompt_cache_key"] = str(cache_key)[:64]
     try:
         response = client.responses.create(**request_kwargs)
+        record_openai_response(response, model, purpose=purpose)
         return str(getattr(response, "output_text", "") or "").strip()
-    except Exception:
-        # Repeating a large request after a timeout can duplicate substantial API
-        # spend. Same-model automatic retries are therefore opt-in. A configured
-        # fallback model remains available as a deliberate recovery route.
+    except Exception as exc:
+        record_openai_failure(model, purpose=purpose, error=str(exc))
+        # Repeating a long request after a timeout can duplicate substantial API
+        # spend. Same-model retries and cross-model fallback are both opt-in. This
+        # prevents a stale OPENAI_FALLBACK_MODEL (especially a Sol alias) from
+        # silently doubling a paid chapter request after Terra already consumed
+        # tokens.
         allow_same_model_retry = str(os.getenv("PROJECTREADY_SAFE_MODEL_RETRY", "0") or "0").strip().lower() in {"1", "true", "yes", "on"}
         safe_retry_cap = int(os.getenv("OPENAI_SAFE_RETRY_MAX_OUTPUT_TOKENS", "12000") or 12000)
         if allow_same_model_retry and max_output_tokens and int(max_output_tokens) > safe_retry_cap:
             try:
                 request_kwargs["max_output_tokens"] = safe_retry_cap
                 response = client.responses.create(**request_kwargs)
+                record_openai_response(response, model, purpose=f"{purpose}:same_model_retry")
                 return str(getattr(response, "output_text", "") or "").strip()
-            except Exception:
+            except Exception as retry_exc:
+                record_openai_failure(model, purpose=f"{purpose}:same_model_retry", error=str(retry_exc))
                 pass
-        fallback_model = os.getenv("OPENAI_FALLBACK_MODEL", "").strip()
+        allow_fallback = str(os.getenv("PROJECTREADY_ALLOW_FALLBACK_MODEL", "0") or "0").strip().lower() in {"1", "true", "yes", "on"}
+        fallback_model = os.getenv("OPENAI_FALLBACK_MODEL", "").strip() if allow_fallback else ""
         if fallback_model and fallback_model != model:
             try:
                 request_kwargs["model"] = fallback_model
                 response = client.responses.create(**request_kwargs)
+                record_openai_response(response, fallback_model, purpose=f"{purpose}:fallback")
                 return str(getattr(response, "output_text", "") or "").strip()
-            except Exception:
+            except Exception as fallback_exc:
+                record_openai_failure(fallback_model, purpose=f"{purpose}:fallback", error=str(fallback_exc))
                 return ""
         return ""
 
@@ -2418,7 +2456,8 @@ def _build_long_chapter_plan(
 ) -> str:
     """Ask the model for a compact plan before generating a very long chapter."""
     fallback = _long_chapter_plan_fallback(base_prompt, chunks, full_req)
-    if not client:
+    ai_plan_enabled = str(os.getenv("PROJECTREADY_LONG_CHAPTER_AI_PLAN", "0") or "0").strip().lower() in {"1", "true", "yes", "on"}
+    if not client or not ai_plan_enabled or optional_pass_budget_exceeded():
         return fallback
     chapter = base_prompt.get("chapter") or {}
     plan_payload = {
@@ -2452,12 +2491,15 @@ def _build_long_chapter_plan(
         ],
     }
     try:
+        planning_model = os.getenv("OPENAI_LONG_CHAPTER_PLANNING_MODEL", "gpt-5.6-luna").strip() or "gpt-5.6-luna"
         plan = _call_openai_response_safely(
             client,
-            model,
+            planning_model,
             instructions + " Create the long-chapter plan only. Do not draft the chapter yet.",
             json.dumps(plan_payload, ensure_ascii=False, indent=2),
-            max_output_tokens=6000,
+            max_output_tokens=2400,
+            purpose="long_chapter_plan",
+            reasoning_effort="none",
         )
     except Exception:
         plan = ""
@@ -2502,6 +2544,10 @@ def _generate_chapter_in_chunks(
     bodies: list[str] = []
     references: list[str] = []
     citation_density = full_req.get("references_per_1000_words") or full_req.get("citation_occurrences_per_1000_words") or {}
+    cache_seed = f"{profile.get('title','')}|{chapter_number}|{model}".encode("utf-8", errors="ignore")
+    chapter_cache_key = "pr-" + hashlib.sha256(cache_seed).hexdigest()[:40]
+    continuation_count = 0
+    max_continuations = max(0, min(12, int(os.getenv("PROJECTREADY_MAX_CHUNK_CONTINUATIONS", "8") or 8)))
 
     for chunk_index, chunk_sections in enumerate(chunks, start=1):
         chunk_ids = [str(section.get("section_id") or "") for section in chunk_sections]
@@ -2518,7 +2564,15 @@ def _generate_chapter_in_chunks(
             "chunk_sequence": {"current": chunk_index, "total": len(chunks)},
         }
         chunk_prompt = dict(base_prompt)
-        chunk_prompt["task"] = f"Develop contiguous section chunk {chunk_index} of {len(chunks)} for one coherent academic working draft."
+        # Keep the reusable project/chapter prefix stable across chunk requests so
+        # GPT-5.6 prompt caching can discount repeated context. All chunk-varying
+        # fields are moved behind the stable project/alignment prefix instead of
+        # invalidating the cache near the beginning of the request.
+        for dynamic_key in (
+            "task", "chapter_page_word_and_citation_targets", "retrieved_sources",
+            "user_selected_papers", "selected_sections", "output_requirements"
+        ):
+            chunk_prompt.pop(dynamic_key, None)
         chunk_prompt["selected_sections"] = chunk_sections
         chunk_context_terms = [
             str(section.get("section_title") or section.get("section_id") or "")
@@ -2542,42 +2596,60 @@ def _generate_chapter_in_chunks(
             "At the end, add a heading exactly named '## References Used in This Chunk' and list complete APA 7 entries only for sources cited in this chunk.",
             "Do not add a Source Use Audit. The final chapter must end with the clean consolidated References list only.",
         ]
+        chunk_prompt["task"] = f"Develop contiguous section chunk {chunk_index} of {len(chunks)} for one coherent academic working draft."
         chunk_text = _call_openai_response_safely(
             client,
             model,
             instructions + f" Produce chunk {chunk_index} of {len(chunks)} only. Maintain continuity with the overall chapter plan.",
             json.dumps(chunk_prompt, ensure_ascii=False, indent=2),
             max_output_tokens=_max_output_tokens_for_length(chunk_req),
+            purpose=f"chapter_chunk_{chunk_index}",
+            reasoning_effort="low",
+            cache_key=chapter_cache_key,
         )
         if not chunk_text:
             return ""
 
         chunk_body, chunk_refs = _strip_chunk_wrappers(_polish_generated_text(chunk_text))
         current_chunk_words = _chapter_word_count(chunk_body)
-        if current_chunk_words < int(chunk_min_words * 0.72):
-            retry_payload = {
-                "task": "Expand this chapter chunk without changing its assigned headings or inventing evidence.",
-                "chunk_length_requirements": chunk_req,
+        # If a chunk is short, do not pay to rewrite the entire chunk. Ask only for
+        # the missing depth, then append it. This preserves the first paid output and
+        # makes the extra token spend proportional to the actual shortfall.
+        if current_chunk_words < int(chunk_min_words * 0.72) and continuation_count < max_continuations:
+            missing_words = max(250, chunk_min_words - current_chunk_words)
+            continuation_payload = {
+                "task": "Add only the missing academic depth to this already drafted chapter chunk.",
+                "additional_words_target": missing_words,
+                "assigned_sections": [section.get("section_title") or section.get("section_id") for section in chunk_sections],
+                "relevant_automatic_sources": chunk_prompt.get("retrieved_sources") or {},
+                "relevant_user_selected_papers": chunk_prompt.get("user_selected_papers") or {},
                 "rules": [
-                    "Return the complete replacement chunk.",
-                    "Preserve accurate content, citations, tables, equations, results and placeholders.",
-                    "Add depth through synthesis, critique, explanation, interpretation and context-specific application.",
-                    "Do not repeat content or add unsupported facts.",
-                    "End with '## References Used in This Chunk'.",
+                    "Return only new paragraphs or lower-level subsections that can be appended to the existing chunk. Do not rewrite or repeat the existing chunk.",
+                    "Use the same headings only where a lower-level heading is academically useful; never duplicate the main section heading.",
+                    "Add depth through synthesis, critique, explanation, contradiction, methodological comparison and context-specific application.",
+                    "Use only verified/user-supplied sources available in the evidence payload. Do not invent citations, findings, statistics or reference details.",
+                    "Do not restate paragraphs already present in existing_chunk.",
+                    "End with '## References Used in This Chunk' and list only references newly cited in the continuation.",
                 ],
-                "chunk_to_expand": chunk_text,
+                "existing_chunk": chunk_body,
             }
-            retry = _call_openai_response_safely(
+            continuation_req = {**chunk_req, "target_words": missing_words, "minimum_words": max(200, int(missing_words * 0.7)), "maximum_words": int(missing_words * 1.25) + 250}
+            continuation = _call_openai_response_safely(
                 client,
                 model,
-                instructions + " Expand the assigned chunk to its minimum depth while preserving evidence integrity.",
-                json.dumps(retry_payload, ensure_ascii=False, indent=2),
-                max_output_tokens=_max_output_tokens_for_length(chunk_req, revision=True),
+                instructions + " Add only the missing depth. Preserve the paid draft already produced and avoid duplicated prose.",
+                json.dumps(continuation_payload, ensure_ascii=False, indent=2),
+                max_output_tokens=_max_output_tokens_for_length(continuation_req),
+                purpose=f"chapter_chunk_{chunk_index}_continuation",
+                reasoning_effort="low",
+                cache_key=chapter_cache_key,
             )
-            if retry:
-                retry_body, retry_refs = _strip_chunk_wrappers(_polish_generated_text(retry))
-                if _chapter_word_count(retry_body) > current_chunk_words:
-                    chunk_body, chunk_refs = retry_body, retry_refs
+            continuation_count += 1
+            if continuation:
+                add_body, add_refs = _strip_chunk_wrappers(_polish_generated_text(continuation))
+                if _chapter_word_count(add_body) >= 120:
+                    chunk_body = (chunk_body.rstrip() + "\n\n" + add_body.strip()).strip()
+                    chunk_refs = _dedupe_reference_entries([*chunk_refs, *add_refs])
 
         chunk_body, _chunk_humanizer_report = humanize_scholarly_text(
             chunk_body,
@@ -2645,6 +2717,8 @@ def _ensure_chapter_depth(
         instructions + " Expand for academic depth without padding, repetition or invented evidence. Preserve the complete chapter structure.",
         json.dumps(expansion_payload, ensure_ascii=False, indent=2),
         max_output_tokens=_max_output_tokens_for_length(requirements, revision=True),
+        purpose="chapter_depth_expansion",
+        reasoning_effort="low",
     )
     if not expanded:
         return draft
@@ -2786,6 +2860,8 @@ def generate_chapter(
                 instructions,
                 prompt,
                 max_output_tokens=_max_output_tokens_for_length(length_requirements),
+                purpose="chapter_single_pass",
+                reasoning_effort="low",
             )
         if text:
             # 1. Basic polish
@@ -2808,16 +2884,17 @@ def generate_chapter(
 
             # 4. Enforce the page/word depth target before the final naturalness pass.
             # This ensures any added depth receives the same protected style refinement.
-            polished = _ensure_chapter_depth(
-                client=client,
-                model=revision_model,
-                instructions=instructions,
-                original_prompt=prompt,
-                draft=polished,
-                profile=profile,
-                chapter_number=chapter_number,
-                selected_section_ids=selected_section_ids,
-            )
+            if not chunked_generation:
+                polished = _ensure_chapter_depth(
+                    client=client,
+                    model=revision_model,
+                    instructions=instructions,
+                    original_prompt=prompt,
+                    draft=polished,
+                    profile=profile,
+                    chapter_number=chapter_number,
+                    selected_section_ids=selected_section_ids,
+                )
 
             # 5. Refine weak sections in controlled batches. Long chapters are no longer
             # skipped or rewritten as one block, which protects depth and controls cost.
