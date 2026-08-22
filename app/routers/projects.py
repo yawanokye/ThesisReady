@@ -347,7 +347,7 @@ def update_project_profile(project_id: str, payload: dict[str, Any]):
         "population", "sample_size", "sampling_strategy", "participants", "instruments",
         "validity_reliability", "trustworthiness", "ethics", "analysis_plan", "coding_approach",
         "mixed_methods_design", "integration_strategy", "research_decisions", "supervisor_corrections",
-        "result_notes", "final_audit_notes",
+        "result_notes", "final_audit_notes", "conceptual_framework_paths", "analysis_run_summaries",
     }
     for key in allowed:
         if key not in payload:
@@ -415,7 +415,7 @@ def update_research_record(project_id: str, payload: dict[str, Any]):
         "variables", "theoretical_framework", "conceptual_framework_summary", "research_approach",
         "research_design", "philosophy", "population", "sample_size", "sampling_strategy",
         "participants", "instruments", "validity_reliability", "trustworthiness", "ethics",
-        "analysis_plan", "coding_approach", "mixed_methods_design", "integration_strategy",
+        "analysis_plan", "coding_approach", "mixed_methods_design", "integration_strategy", "conceptual_framework_paths",
     }
     for key, value in payload.items():
         if key not in allowed:

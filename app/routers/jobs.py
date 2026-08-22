@@ -179,9 +179,9 @@ def _rollback_reserved_claim(claim: dict[str, Any]) -> None:
 
 def _max_attempts() -> int:
     try:
-        return max(1, min(int(os.getenv("PROJECTREADY_JOB_MAX_ATTEMPTS", "2") or 2), 4))
+        return max(1, min(int(os.getenv("PROJECTREADY_JOB_MAX_ATTEMPTS", "1") or 1), 4))
     except Exception:
-        return 2
+        return 1
 
 
 @router.post("/api/projects/{project_id}/draft-jobs", status_code=status.HTTP_202_ACCEPTED)

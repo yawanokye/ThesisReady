@@ -591,8 +591,10 @@ def export_project_strengthened_chapter(
             conn.commit()
         project["profile"] = profile
         claim_gate = stored_claim_review_status(profile, workflow="strengthener", chapter_number=chapter_number)
-    if not claim_gate["ready"]:
-        raise HTTPException(status_code=409, detail=claim_gate["reason"] + " Complete the pre-output Claim Support Review before exporting the strengthened chapter.")
+    # Evidence review remains strongly recommended, but it does not block a
+    # working-revision export. This lets the DOCX itself guide subsequent reading,
+    # source checking and supervisor discussion.
+    evidence_review_pending = not bool(claim_gate.get("ready"))
     title = _chapter_title(payload.chapter_type, payload.chapter_title)
     try:
         with _paid_context(
@@ -613,7 +615,10 @@ def export_project_strengthened_chapter(
         return StreamingResponse(
             stream,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "X-ProjectReady-Evidence-Review": "pending" if evidence_review_pending else "complete",
+            },
         )
     except PaymentRequiredError as exc:
         raise HTTPException(

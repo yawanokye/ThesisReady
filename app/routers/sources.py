@@ -9,6 +9,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from app.database import get_conn, row_to_dict, save_draft_version
 from app.schemas import (
     ClaimCitationApplyRequest,
+    ClaimSupportBulkIgnoreRequest,
     ClaimSupportIgnoreRequest,
     ClaimSourceApprovalRequest,
     ClaimSourceSearchRequest,
@@ -28,6 +29,7 @@ from app.selected_papers import (
     MAX_SELECTED_PAPERS,
     MAX_SELECTED_PAPERS_TOTAL_BYTES,
     build_selected_paper_record,
+    paper_to_source_record,
     public_paper_record,
     public_source_bank,
     sync_selected_papers_to_source_bank,
@@ -248,7 +250,8 @@ async def upload_selected_papers(
         "needs_metadata_confirmation": sum(1 for item in papers if not item.get("citation_eligible")),
         "source_bank": public_source_bank(source_bank),
         "message": (
-            "Selected papers attached. Crossref-verified papers are citation-ready. "
+            "Selected papers attached and added to the complete evidence map. Crossref-verified papers are citation-ready. "
+            "All selected papers remain available for synthesis; only section-relevant original passages are sent to the writing model. "
             "Any paper without verified bibliographic metadata remains usable as uploaded evidence, but ProjectReady will not create a new citation from it until the user confirms its citation details."
         ),
     }
@@ -442,10 +445,22 @@ def _project_evidence_candidates(profile: dict[str, Any], query: str, limit: int
     if not query_tokens:
         return []
     candidates: list[tuple[float, dict[str, Any]]] = []
-    for source in profile.get("source_bank") or []:
-        if not isinstance(source, dict):
+    source_records: list[dict[str, Any]] = [source for source in (profile.get("source_bank") or []) if isinstance(source, dict)]
+    # Selected papers are kept in their own full-text store. Their source-bank
+    # mirror is metadata-only to avoid duplicating large excerpts in project JSON.
+    for paper in profile.get("selected_papers") or []:
+        if not isinstance(paper, dict):
             continue
+        source = paper_to_source_record(paper, include_evidence=True)
+        if source:
+            source_records.append(source)
+    seen: set[str] = set()
+    for source in source_records:
         public = public_candidate(source)
+        identity = str(public.get("candidate_id") or source.get("doi") or source.get("title") or "").lower()
+        if not identity or identity in seen:
+            continue
+        seen.add(identity)
         if not public.get("citation_eligible"):
             continue
         title_tokens = _claim_search_tokens(str(source.get("title") or ""))
@@ -689,6 +704,76 @@ def ignore_claim_support_item(project_id: str, payload: ClaimSupportIgnoreReques
         "text": cleaned_text,
         "review": refreshed,
         "message": "Item ignored by the user. Any matching source-needed placeholder was removed and the item will not be re-listed unless the text changes materially.",
+    }
+
+
+@router.post("/{project_id}/claim-support/ignore-bulk")
+def bulk_ignore_claim_support_items(project_id: str, payload: ClaimSupportBulkIgnoreRequest) -> dict[str, Any]:
+    """Ignore several unresolved review items in one operation.
+
+    Ignore is a reading/workflow decision, not evidence verification. Matching
+    source-needed placeholders are removed where present, and the review is
+    rebuilt once after all selected items have been processed.
+    """
+    project = _get_project_or_404(project_id)
+    profile = project.get("profile") or {}
+    key = _claim_review_key(payload.workflow, payload.chapter_number)
+    store = _review_store(profile)
+    review = store.get(key)
+    if not isinstance(review, dict):
+        raise HTTPException(status_code=404, detail="Run the claim-support review first.")
+
+    requested = []
+    seen_ids: set[str] = set()
+    for raw in payload.claim_ids or []:
+        item_id = str(raw or "").strip()
+        if item_id and item_id not in seen_ids:
+            seen_ids.add(item_id)
+            requested.append(item_id)
+    if not requested:
+        raise HTTPException(status_code=400, detail="Select at least one claim-support item to ignore.")
+
+    current_text, original = _claim_review_text(project, payload.workflow, payload.chapter_number)
+    cleaned_text = current_text
+    ignored_store = _ignored_review_store(profile)
+    ignored = list(ignored_store.get(key) or [])
+    ignored_count = 0
+    placeholders_removed = 0
+    missing_ids: list[str] = []
+
+    for item_id in requested[:300]:
+        item = _find_review_item(review, item_id)
+        if not item:
+            missing_ids.append(item_id)
+            continue
+        cleaned_text, removed = remove_review_item_placeholder(cleaned_text, item)
+        placeholders_removed += int(bool(removed))
+        ignore_key = _review_ignore_key(item)
+        if ignore_key and ignore_key not in ignored:
+            ignored.append(ignore_key)
+        ignored_count += 1
+
+    ignored_store[key] = ignored[-600:]
+    refreshed = _merge_review_state(
+        build_claim_support_review(
+            cleaned_text, profile, chapter_number=payload.chapter_number, workflow=payload.workflow, original_text=original
+        ),
+        review,
+    )
+    refreshed = _apply_ignored_review_state(refreshed, ignored_store.get(key) or [])
+    store[key] = refreshed
+    _store_review_text(
+        project_id, project, profile, workflow=payload.workflow, chapter_number=payload.chapter_number, text=cleaned_text
+    )
+    return {
+        "project_id": project_id,
+        "ignored_count": ignored_count,
+        "requested_count": len(requested),
+        "placeholders_removed": placeholders_removed,
+        "missing_ids": missing_ids,
+        "text": cleaned_text,
+        "review": refreshed,
+        "message": f"{ignored_count} selected evidence-review item(s) ignored. Ignore does not verify a claim; it only removes the item from the current review list.",
     }
 
 

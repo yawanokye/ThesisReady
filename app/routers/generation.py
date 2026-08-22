@@ -986,8 +986,11 @@ def export_chapter(project_id: str, chapter_number: int, request: Request):
             conn.commit()
         project["profile"] = profile
         claim_gate = stored_claim_review_status(profile, workflow="draft", chapter_number=chapter_number)
-    if not claim_gate["ready"]:
-        raise HTTPException(status_code=409, detail=claim_gate["reason"] + " Open Claim Support Review, find and approve verified sources, then apply the approved citations.")
+    # Claim Support Review is advisory for working-draft export. Students may
+    # export an unfinished evidence review to guide reading and supervisor work.
+    # Unresolved items remain visible in the chapter and stored review; export
+    # must never imply that those claims have been verified.
+    evidence_review_pending = not bool(claim_gate.get("ready"))
     try:
         chapter = get_chapter(chapter_number)
         chapter_title = str(chapter.get("chapter_title") or f"Chapter {chapter_number}")
@@ -1002,7 +1005,10 @@ def export_chapter(project_id: str, chapter_number: int, request: Request):
             action="export",
         ):
             path = export_chapter_docx(project, chapter_number, draft, EXPORT_DIR)
-        return FileResponse(path, filename=path.name, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        headers = {
+            "X-ProjectReady-Evidence-Review": "pending" if evidence_review_pending else "complete",
+        }
+        return FileResponse(path, filename=path.name, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", headers=headers)
     except PaymentRequiredError as exc:
         raise HTTPException(
             status_code=402,
@@ -1075,14 +1081,17 @@ def export_project_working_file(project_id: str):
             )
             conn.commit()
         project["profile"] = profile
-    if unresolved:
-        chapters = ", ".join(str(x) for x in sorted(set(unresolved)))
-        raise HTTPException(status_code=409, detail=f"Complete Claim Support Review for Chapter(s) {chapters} before compiling the project working file.")
+    # A project working file is allowed even when evidence review is incomplete.
+    # This is intentionally a working/review artefact, not an academic approval.
     try:
         path = export_project_working_file_docx(project, EXPORT_DIR)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return FileResponse(path, filename=path.name, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    headers = {
+        "X-ProjectReady-Evidence-Review": "pending" if unresolved else "complete",
+        "X-ProjectReady-Unresolved-Chapters": ",".join(str(x) for x in sorted(set(unresolved))),
+    }
+    return FileResponse(path, filename=path.name, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", headers=headers)
 
 
 @router.get("/{project_id}/export/check/{chapter_number}")
