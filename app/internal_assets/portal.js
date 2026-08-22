@@ -56,7 +56,13 @@
         if (["failed", "cancelled"].includes(job.status)) {
           actions.appendChild(actionButton("Retry", async () => { await api(endpoint(`jobs/${job.id}/retry`), {method:"POST"}); await loadJobs(); }));
         }
-        row.innerHTML = `<td>${String(job.created_at || "").replace("T", " ").slice(0,19)}</td><td>${job.job_type || ""}</td><td>${(job.project_id || "").slice(0,12)} · Ch ${job.chapter_number || ""}</td><td>${job.status || ""}<br><small>${job.stage || ""}</small></td><td>${job.progress || 0}%</td>`;
+        const usage = job.result?.ai_usage || {};
+        const cost = Number(usage.estimated_cost_usd || 0);
+        const failedAttempts = Number(usage.failed_attempt_count || 0);
+        const usageText = usage.call_count
+          ? `${usage.call_count} completed API call(s)${failedAttempts ? ` · ${failedAttempts} failed attempt(s)` : ""}<br><small>${Number(usage.input_tokens || 0).toLocaleString()} in · ${Number(usage.cached_input_tokens || 0).toLocaleString()} cached · ${Number(usage.output_tokens || 0).toLocaleString()} out · ${Number(usage.reasoning_tokens || 0).toLocaleString()} reasoning<br>~$${cost.toFixed(4)} metered locally</small>`
+          : (job.status === "failed" ? "<small>Failed-call usage is written to worker logs; a provider timeout can still incur API charges.</small>" : "—");
+        row.innerHTML = `<td>${String(job.created_at || "").replace("T", " ").slice(0,19)}</td><td>${job.job_type || ""}</td><td>${(job.project_id || "").slice(0,12)} · Ch ${job.chapter_number || ""}</td><td>${job.status || ""}<br><small>${job.stage || ""}</small></td><td>${job.progress || 0}%</td><td>${usageText}</td>`;
         row.appendChild(actions);
         body.appendChild(row);
       }
